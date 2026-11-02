@@ -16,7 +16,7 @@ import {
   ImageObject
 } from "../src/types";
 
-describe("Obsinotes Full Lifecycle Integration", () => {
+describe("NotePages Full Lifecycle Integration", () => {
   const minimalPngBase64 =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
   const minimalPngBytes = Uint8Array.from(Buffer.from(minimalPngBase64, "base64"));

@@ -442,7 +442,7 @@ page-count: ${pageCount}
 updated: "${updatedDate}"
 ---
 
-> [!NOTE] Obsinotes Notebook
+> [!NOTE] NotePages Notebook
 > Pages: ${pageCount} | Size: ${doc.metadata.defaultPageSize} ${doc.metadata.defaultOrientation}
 > Last modified: ${updatedDate}${linksLine}
 

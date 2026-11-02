@@ -23,7 +23,7 @@ export class PdfSourceModal extends Modal {
     titleEl.style.marginBottom = "16px";
 
     const descEl = contentEl.createEl("p", {
-      text: "Choose the PDF source to import as an Obsinotes notebook:"
+      text: "Choose the PDF source to import as a NotePages notebook:"
     });
     descEl.style.color = "var(--text-muted)";
     descEl.style.marginBottom = "20px";

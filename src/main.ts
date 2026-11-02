@@ -453,7 +453,7 @@ page-count: 1
 updated: "${isoDate}"
 ---
 
-> [!NOTE] Obsinotes Notebook
+> [!NOTE] NotePages Notebook
 > Pages: 1 | Format: ${this.settings.defaultPageSize} ${this.settings.defaultOrientation}
 > Created: ${isoDate}
 

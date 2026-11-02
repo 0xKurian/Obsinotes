@@ -1,5 +1,5 @@
 {
-  "name": "obsinotes",
+  "name": "notepages",
   "version": "1.0.0",
   "description": "Create multi-page digital notebooks and whiteboards with stylus inking, paper templates, sticky notes, LaTeX math, and continuous scrolling.",
   "main": "main.js",

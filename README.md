@@ -1,6 +1,6 @@
-# Obsinotes
+# NotePages
 
-Obsinotes is a modern, high-performance digital whiteboard and multi-page notebook plugin for [Obsidian](https://obsidian.md), designed for handwriting with stylus inking, paper templates, sticky notes, rich geometric shapes, LaTeX math, PDF annotation, off-screen multi-format export, and Goodnotes-like continuous vertical scrolling.
+NotePages is a modern, high-performance digital whiteboard and multi-page notebook plugin for [Obsidian](https://obsidian.md), designed for handwriting with stylus inking, paper templates, sticky notes, rich geometric shapes, LaTeX math, PDF annotation, off-screen multi-format export, and Goodnotes-like continuous vertical scrolling.
 
 ---
 
@@ -58,7 +58,7 @@ Obsinotes is a modern, high-performance digital whiteboard and multi-page notebo
 | **Hold-to-Snap Shape** | Draw shape and hold stylus still for ~350ms |
 | **Quick Text Box** | Double-click canvas or use Canvas Context Menu |
 | **Canvas Context Menu** | Right-click on empty canvas area |
-| **Export Notebook** | Toolbar export icon (`file-down`) or Command Palette `Obsinotes: Export notebook` |
+| **Export Notebook** | Toolbar export icon (`file-down`) or Command Palette `NotePages: Export notebook` |
 
 ---
 
@@ -78,15 +78,15 @@ Obsinotes is a modern, high-performance digital whiteboard and multi-page notebo
 
 ### Via Obsidian Community Plugins (Once Approved)
 1. Open Obsidian **Settings** -> **Community Plugins**.
-2. Search for **Obsinotes** and click **Install**.
+2. Search for **NotePages** and click **Install**.
 3. Toggle the plugin to **Enable**.
 
 ### Manual Installation
 1. Download the latest release assets (`main.js`, `manifest.json`, `styles.css`) from the [Releases](https://github.com/0xKurian/Obsinotes/releases) page.
-2. Create a folder named `obsinotes` in your vault's plugin directory:
-   `<Vault>/.obsidian/plugins/obsinotes/`
+2. Create a folder named `notepages` in your vault's plugin directory:
+   `<Vault>/.obsidian/plugins/notepages/`
 3. Copy `main.js`, `manifest.json`, and `styles.css` into that folder.
-4. Reload Obsidian Community Plugins and enable **Obsinotes**.
+4. Reload Obsidian Community Plugins and enable **NotePages**.
 
 ---
 

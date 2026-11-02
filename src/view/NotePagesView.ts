@@ -588,7 +588,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.document?.metadata?.title) {
       return this.document.metadata.title;
     }
-    return "Obsinotes Notebook";
+    return "NotePages Notebook";
   }
 
   getIcon(): string {
@@ -976,7 +976,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     banner.createEl("h3", {
-      text: "Obsinotes Safe Mode: Data Protection Activated"
+      text: "NotePages Safe Mode: Data Protection Activated"
     });
 
     banner.createEl("p", {
