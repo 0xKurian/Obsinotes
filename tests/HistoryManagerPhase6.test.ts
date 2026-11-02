@@ -5,6 +5,8 @@ import {
   ModifyTextCommand,
   AddImageCommand,
   DeleteElementsCommand,
+  TransformElementsCommand,
+  MoveElementsAcrossPagesCommand,
   HistoryManager
 } from "../src/history/HistoryManager";
 import { PageData, TextObject, ImageObject } from "../src/types";
@@ -193,5 +195,122 @@ describe("HistoryManager - Phase 6 Commands", () => {
     assert.strictEqual(page.images.length, 1);
     assert.strictEqual(page.texts[0].id, "txt_del");
     assert.strictEqual(page.images[0].id, "img_del");
+  });
+
+  it("transforms texts via TransformElementsCommand with undo and redo", () => {
+    const page = createSamplePage();
+    const textObj: TextObject = {
+      id: "txt_tf",
+      elementType: "text",
+      x: 50,
+      y: 50,
+      width: 100,
+      height: 30,
+      content: "Transform me",
+      fontSize: 14,
+      fontFamily: "Inter",
+      fontWeight: "normal",
+      color: "#000",
+      textAlign: "left"
+    };
+    page.texts.push({ ...textObj });
+
+    const transformedText: TextObject = {
+      ...textObj,
+      x: 120,
+      y: 180,
+      width: 150,
+      height: 45
+    };
+
+    const history = new HistoryManager();
+    const cmd = new TransformElementsCommand(
+      page,
+      [],
+      [],
+      [],
+      [],
+      () => {},
+      [],
+      [],
+      [textObj],
+      [transformedText]
+    );
+
+    history.execute(cmd);
+    assert.strictEqual(page.texts[0].x, 120);
+    assert.strictEqual(page.texts[0].y, 180);
+    assert.strictEqual(page.texts[0].width, 150);
+
+    history.undo();
+    assert.strictEqual(page.texts[0].x, 50);
+    assert.strictEqual(page.texts[0].y, 50);
+    assert.strictEqual(page.texts[0].width, 100);
+
+    history.redo();
+    assert.strictEqual(page.texts[0].x, 120);
+    assert.strictEqual(page.texts[0].y, 180);
+    assert.strictEqual(page.texts[0].width, 150);
+  });
+
+  it("moves texts across pages cleanly via MoveElementsAcrossPagesCommand", () => {
+    const sourcePage = createSamplePage();
+    const targetPage = createSamplePage();
+    targetPage.id = "p2";
+    targetPage.pageNumber = 2;
+
+    const textObj: TextObject = {
+      id: "txt_move",
+      elementType: "text",
+      x: 40,
+      y: 60,
+      width: 120,
+      height: 35,
+      content: "Move across pages",
+      fontSize: 16,
+      fontFamily: "Inter",
+      fontWeight: "normal",
+      color: "#111",
+      textAlign: "left"
+    };
+    sourcePage.texts.push({ ...textObj });
+
+    const targetText: TextObject = {
+      ...textObj,
+      x: 80,
+      y: 100
+    };
+
+    const history = new HistoryManager();
+    const cmd = new MoveElementsAcrossPagesCommand(
+      sourcePage,
+      targetPage,
+      [],
+      [],
+      [],
+      [],
+      () => {},
+      [],
+      [],
+      [textObj],
+      [targetText]
+    );
+
+    history.execute(cmd);
+    assert.strictEqual(sourcePage.texts.length, 0);
+    assert.strictEqual(targetPage.texts.length, 1);
+    assert.strictEqual(targetPage.texts[0].x, 80);
+    assert.strictEqual(targetPage.texts[0].y, 100);
+
+    history.undo();
+    assert.strictEqual(sourcePage.texts.length, 1);
+    assert.strictEqual(targetPage.texts.length, 0);
+    assert.strictEqual(sourcePage.texts[0].x, 40);
+    assert.strictEqual(sourcePage.texts[0].y, 60);
+
+    history.redo();
+    assert.strictEqual(sourcePage.texts.length, 0);
+    assert.strictEqual(targetPage.texts.length, 1);
+    assert.strictEqual(targetPage.texts[0].id, "txt_move");
   });
 });

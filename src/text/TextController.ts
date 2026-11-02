@@ -16,6 +16,7 @@ export interface TextControllerCallbacks {
   onTextCommitted: (page: PageData, text: TextObject, isNew: boolean) => void;
   onTextDeleted: (page: PageData, textId: string) => void;
   onWikilinkClick: (linkTarget: string, event: MouseEvent) => void;
+  onWikilinkHover?: (linkTarget: string, targetEl: HTMLElement, event: MouseEvent) => void;
   onActiveFormattingChanged?: (formatting: {
     fontSize: number;
     fontWeight: string;
@@ -461,6 +462,9 @@ export class TextController {
           e.preventDefault();
           e.stopPropagation();
           this.callbacks.onWikilinkClick(tok.target || tok.value, e);
+        });
+        linkEl.addEventListener("mouseover", (e: MouseEvent) => {
+          this.callbacks.onWikilinkHover?.(tok.target || tok.value, linkEl, e);
         });
         container.appendChild(linkEl);
       } else if (tok.type === "math-inline" || tok.type === "math-display") {

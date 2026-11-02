@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
 import { SelectionController } from "../src/selection/SelectionController";
-import { PageData, ShapeObject, StrokeObject } from "../src/types";
+import { PageData, ShapeObject, StrokeObject, TextObject } from "../src/types";
 
 describe("SelectionController", () => {
   function createSamplePage(): PageData {
@@ -363,5 +363,81 @@ describe("SelectionController", () => {
     assert.strictEqual(controller.getActivePageId(), "page_2");
     assert.ok(Math.abs((controller.getCombinedBounds()?.minX ?? 0) - 200) < 2);
     assert.ok(Math.abs((controller.getCombinedBounds()?.minY ?? 0) - 200) < 2);
+  });
+
+  test("selects text via lasso and commits transformed text position", () => {
+    let committedTexts: TextObject[] = [];
+    const controller = new SelectionController({
+      onSelectionChanged: () => {},
+      onTransformCommitted: (
+        pageId,
+        prevStrokes,
+        nextStrokes,
+        prevShapes,
+        nextShapes,
+        prevImages,
+        nextImages,
+        prevTexts,
+        nextTexts
+      ) => {
+        committedTexts = nextTexts || [];
+      },
+      onElementsDeleted: () => {},
+      onRequestRedraw: () => {}
+    });
+
+    const page = createSamplePage();
+    page.strokes = [];
+    page.shapes = [];
+    page.texts = [
+      {
+        id: "t_sel",
+        elementType: "text",
+        x: 30,
+        y: 30,
+        width: 120,
+        height: 60,
+        content: "Selectable text",
+        fontSize: 14,
+        fontFamily: "Inter",
+        fontWeight: "normal",
+        color: "#000",
+        textAlign: "left"
+      }
+    ];
+
+    const canvas = createMockCanvas();
+
+    controller.handlePointerDown(
+      { button: 0, pointerType: "mouse", pointerId: 1 } as PointerEvent,
+      page,
+      canvas,
+      { x: 10, y: 10 }
+    );
+    controller.handlePointerMove(canvas, { x: 180, y: 10 });
+    controller.handlePointerMove(canvas, { x: 180, y: 120 });
+    controller.handlePointerMove(canvas, { x: 10, y: 120 });
+    controller.handlePointerUp({ pointerId: 1 } as PointerEvent, page, canvas);
+
+    assert.strictEqual(controller.hasSelection(), true);
+    assert.strictEqual(controller.getSelectedTexts().length, 1);
+    assert.strictEqual(controller.getSelectedTexts()[0].id, "t_sel");
+
+    const bounds = controller.getCombinedBounds()!;
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+
+    controller.handlePointerDown(
+      { button: 0, pointerType: "mouse", pointerId: 1 } as PointerEvent,
+      page,
+      canvas,
+      { x: cx, y: cy }
+    );
+    controller.handlePointerMove(canvas, { x: cx + 50, y: cy + 30 });
+    controller.handlePointerUp({ pointerId: 1 } as PointerEvent, page, canvas);
+
+    assert.strictEqual(committedTexts.length, 1);
+    assert.strictEqual(committedTexts[0].id, "t_sel");
+    assert.ok(committedTexts[0].x > 30);
   });
 });

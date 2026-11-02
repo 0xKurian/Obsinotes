@@ -164,6 +164,8 @@ export class TransformElementsCommand implements HistoryCommand {
   private nextShapes: ShapeObject[];
   private prevImages: ImageObject[];
   private nextImages: ImageObject[];
+  private prevTexts: TextObject[];
+  private nextTexts: TextObject[];
   private onMutate: () => void;
 
   constructor(
@@ -174,7 +176,9 @@ export class TransformElementsCommand implements HistoryCommand {
     nextShapes: ShapeObject[],
     onMutate: () => void,
     prevImages: ImageObject[] = [],
-    nextImages: ImageObject[] = []
+    nextImages: ImageObject[] = [],
+    prevTexts: TextObject[] = [],
+    nextTexts: TextObject[] = []
   ) {
     this.id = `cmd_transform_${Date.now()}`;
     this.page = page;
@@ -184,10 +188,17 @@ export class TransformElementsCommand implements HistoryCommand {
     this.nextShapes = [...nextShapes];
     this.prevImages = [...prevImages];
     this.nextImages = [...nextImages];
+    this.prevTexts = [...prevTexts];
+    this.nextTexts = [...nextTexts];
     this.onMutate = onMutate;
   }
 
-  private applyState(strokes: StrokeObject[], shapes: ShapeObject[], images: ImageObject[]): void {
+  private applyState(
+    strokes: StrokeObject[],
+    shapes: ShapeObject[],
+    images: ImageObject[],
+    texts: TextObject[] = []
+  ): void {
     const strokeMap = new Map(strokes.map((s) => [s.id, s]));
     this.page.strokes = this.page.strokes.map((s) =>
       strokeMap.has(s.id) ? strokeMap.get(s.id)! : s
@@ -205,15 +216,22 @@ export class TransformElementsCommand implements HistoryCommand {
       );
     }
 
+    if (texts.length > 0) {
+      const textMap = new Map(texts.map((t) => [t.id, t]));
+      this.page.texts = this.page.texts.map((t) =>
+        textMap.has(t.id) ? textMap.get(t.id)! : t
+      );
+    }
+
     this.onMutate();
   }
 
   execute(): void {
-    this.applyState(this.nextStrokes, this.nextShapes, this.nextImages);
+    this.applyState(this.nextStrokes, this.nextShapes, this.nextImages, this.nextTexts);
   }
 
   undo(): void {
-    this.applyState(this.prevStrokes, this.prevShapes, this.prevImages);
+    this.applyState(this.prevStrokes, this.prevShapes, this.prevImages, this.prevTexts);
   }
 
   redo(): void {
@@ -486,6 +504,8 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
   private targetShapes: ShapeObject[];
   private sourceImages: ImageObject[];
   private targetImages: ImageObject[];
+  private sourceTexts: TextObject[];
+  private targetTexts: TextObject[];
   private onMutate: (sourcePage: PageData, targetPage: PageData) => void;
 
   constructor(
@@ -497,7 +517,9 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
     targetShapes: ShapeObject[],
     onMutate: (sourcePage: PageData, targetPage: PageData) => void,
     sourceImages: ImageObject[] = [],
-    targetImages: ImageObject[] = []
+    targetImages: ImageObject[] = [],
+    sourceTexts: TextObject[] = [],
+    targetTexts: TextObject[] = []
   ) {
     this.id = `cmd_move_across_${Date.now()}`;
     this.sourcePage = sourcePage;
@@ -508,6 +530,8 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
     this.targetShapes = [...targetShapes];
     this.sourceImages = [...sourceImages];
     this.targetImages = [...targetImages];
+    this.sourceTexts = [...sourceTexts];
+    this.targetTexts = [...targetTexts];
     this.onMutate = onMutate;
   }
 
@@ -515,9 +539,11 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
     const srcStrokeIds = new Set(this.sourceStrokes.map((s) => s.id));
     const srcShapeIds = new Set(this.sourceShapes.map((sh) => sh.id));
     const srcImageIds = new Set(this.sourceImages.map((img) => img.id));
+    const srcTextIds = new Set(this.sourceTexts.map((t) => t.id));
     this.sourcePage.strokes = this.sourcePage.strokes.filter((s) => !srcStrokeIds.has(s.id));
     this.sourcePage.shapes = this.sourcePage.shapes.filter((sh) => !srcShapeIds.has(sh.id));
     this.sourcePage.images = this.sourcePage.images.filter((img) => !srcImageIds.has(img.id));
+    this.sourcePage.texts = this.sourcePage.texts.filter((t) => !srcTextIds.has(t.id));
 
     for (const s of this.targetStrokes) {
       if (!this.targetPage.strokes.some((existing) => existing.id === s.id)) {
@@ -534,6 +560,11 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
         this.targetPage.images.push(img);
       }
     }
+    for (const t of this.targetTexts) {
+      if (!this.targetPage.texts.some((existing) => existing.id === t.id)) {
+        this.targetPage.texts.push(t);
+      }
+    }
     this.onMutate(this.sourcePage, this.targetPage);
   }
 
@@ -541,9 +572,11 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
     const tgtStrokeIds = new Set(this.targetStrokes.map((s) => s.id));
     const tgtShapeIds = new Set(this.targetShapes.map((sh) => sh.id));
     const tgtImageIds = new Set(this.targetImages.map((img) => img.id));
+    const tgtTextIds = new Set(this.targetTexts.map((t) => t.id));
     this.targetPage.strokes = this.targetPage.strokes.filter((s) => !tgtStrokeIds.has(s.id));
     this.targetPage.shapes = this.targetPage.shapes.filter((sh) => !tgtShapeIds.has(sh.id));
     this.targetPage.images = this.targetPage.images.filter((img) => !tgtImageIds.has(img.id));
+    this.targetPage.texts = this.targetPage.texts.filter((t) => !tgtTextIds.has(t.id));
 
     for (const s of this.sourceStrokes) {
       if (!this.sourcePage.strokes.some((existing) => existing.id === s.id)) {
@@ -558,6 +591,11 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
     for (const img of this.sourceImages) {
       if (!this.sourcePage.images.some((existing) => existing.id === img.id)) {
         this.sourcePage.images.push(img);
+      }
+    }
+    for (const t of this.sourceTexts) {
+      if (!this.sourcePage.texts.some((existing) => existing.id === t.id)) {
+        this.sourcePage.texts.push(t);
       }
     }
     this.onMutate(this.sourcePage, this.targetPage);

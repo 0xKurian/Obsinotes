@@ -4,6 +4,7 @@ import {
   TFile,
   Notice,
   Scope,
+  Menu,
   renderMath,
   finishRenderMath,
   loadMathJax
@@ -231,6 +232,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
             event.ctrlKey || event.metaKey
           );
         },
+        onWikilinkHover: (linkTarget, targetEl, event) => {
+          this.app.workspace.trigger("hover-link", {
+            event,
+            source: "notepages",
+            hoverParent: this.rootContainerEl,
+            targetEl,
+            linktext: linkTarget,
+            sourcePath: this.file?.path || ""
+          });
+        },
         onActiveFormattingChanged: (formatting) => {
           this.syncTextToolbar(formatting);
         },
@@ -347,7 +358,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         prevShapes: ShapeObject[],
         nextShapes: ShapeObject[],
         prevImages: ImageObject[] = [],
-        nextImages: ImageObject[] = []
+        nextImages: ImageObject[] = [],
+        prevTexts: TextObject[] = [],
+        nextTexts: TextObject[] = []
       ) => {
         if (!this.pageManager) {
           return;
@@ -365,11 +378,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
                 this.handleMutation(page);
                 const frameEl = this.getPageFrame(page.pageNumber);
                 if (frameEl) {
+                  this.textController.renderPageTexts(page, frameEl);
                   this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
                 }
               },
               prevImages,
-              nextImages
+              nextImages,
+              prevTexts,
+              nextTexts
             )
           );
         }
@@ -421,7 +437,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         sourceShapes: ShapeObject[],
         targetShapes: ShapeObject[],
         sourceImages: ImageObject[] = [],
-        targetImages: ImageObject[] = []
+        targetImages: ImageObject[] = [],
+        sourceTexts: TextObject[] = [],
+        targetTexts: TextObject[] = []
       ) => {
         if (!this.pageManager || !this.document) {
           return;
@@ -445,10 +463,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
               this.redrawCommittedCanvas(tgt.id);
               const srcFrame = this.getPageFrame(src.pageNumber);
               if (srcFrame) {
+                this.textController.renderPageTexts(src, srcFrame);
                 this.imageController.renderPageImages(src, srcFrame, (p) => this.resolveResourcePath(p));
               }
               const tgtFrame = this.getPageFrame(tgt.pageNumber);
               if (tgtFrame) {
+                this.textController.renderPageTexts(tgt, tgtFrame);
                 this.imageController.renderPageImages(tgt, tgtFrame, (p) => this.resolveResourcePath(p));
               }
               this.updateThumbnailStrokes(src);
@@ -459,7 +479,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
               this.requestSave();
             },
             sourceImages,
-            targetImages
+            targetImages,
+            sourceTexts,
+            targetTexts
           )
         );
 
@@ -1182,9 +1204,91 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(this.scrollerEl, "contextmenu", (e: MouseEvent) => {
-      if (this.isPanning || this.inkingController.activeTool === "select") {
+      if (this.isPanning) {
         e.preventDefault();
+        return;
       }
+      e.preventDefault();
+      const menu = new Menu();
+
+      const hasSelection = this.selectionController.hasSelection();
+      if (hasSelection) {
+        menu.addItem((item) => {
+          item
+            .setTitle("Delete selected")
+            .setIcon("trash")
+            .onClick(() => {
+              this.deleteActiveSelection();
+            });
+        });
+        menu.addItem((item) => {
+          item
+            .setTitle("Clear selection")
+            .setIcon("x")
+            .onClick(() => {
+              this.selectionController.clearSelection();
+            });
+        });
+        menu.addSeparator();
+      }
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Add text box")
+          .setIcon("type")
+          .onClick(() => {
+            this.insertTextBox();
+          });
+      });
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Add sticky note")
+          .setIcon("sticky-note")
+          .onClick(() => {
+            this.insertStickyNote();
+          });
+      });
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Insert image...")
+          .setIcon("image")
+          .onClick(() => {
+            this.openImagePicker();
+          });
+      });
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Import PDF / SVG...")
+          .setIcon("file-text")
+          .onClick(() => {
+            this.openPdfPicker(false);
+          });
+      });
+
+      menu.addSeparator();
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Add page below")
+          .setIcon("plus")
+          .onClick(() => {
+            this.addNewPage();
+          });
+      });
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Duplicate current page")
+          .setIcon("copy")
+          .onClick(() => {
+            this.duplicateCurrentPage();
+          });
+      });
+
+      menu.showAtMouseEvent(e);
     });
 
     this.registerDomEvent(this.scrollerEl, "wheel", (e: WheelEvent) => {
@@ -3449,6 +3553,23 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const frameEl = this.getPageFrame(targetPage.pageNumber);
     if (frameEl) {
       this.textController.startEditing(targetPage, frameEl, undefined, 60, 100, undefined, undefined, this.currentTextOptions);
+    }
+  }
+
+  insertStickyNote(targetPageId?: string): void {
+    const targetPage = targetPageId
+      ? this.pageManager?.getPage(targetPageId)
+      : this.pageManager?.getPageByNumber(this.currentPageNumber);
+    if (!targetPage) {
+      return;
+    }
+    this.setActiveTool("sticky");
+    const frameEl = this.getPageFrame(targetPage.pageNumber);
+    if (frameEl) {
+      this.textController.startEditing(targetPage, frameEl, undefined, 60, 100, 140, 140, {
+        isSticky: true,
+        backgroundColor: this.currentStickyColor
+      });
     }
   }
 }

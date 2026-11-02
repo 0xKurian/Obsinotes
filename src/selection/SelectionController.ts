@@ -27,7 +27,9 @@ export interface SelectionControllerCallbacks {
     prevShapes: ShapeObject[],
     nextShapes: ShapeObject[],
     prevImages?: ImageObject[],
-    nextImages?: ImageObject[]
+    nextImages?: ImageObject[],
+    prevTexts?: TextObject[],
+    nextTexts?: TextObject[]
   ) => void;
   onElementsDeleted: (
     pageId: string,
@@ -45,7 +47,9 @@ export interface SelectionControllerCallbacks {
     sourceShapes: ShapeObject[],
     targetShapes: ShapeObject[],
     sourceImages?: ImageObject[],
-    targetImages?: ImageObject[]
+    targetImages?: ImageObject[],
+    sourceTexts?: TextObject[],
+    targetTexts?: TextObject[]
   ) => void;
   onMoveStart?: (sourcePageId: string, bounds: StrokeBoundingBox) => void;
 }
@@ -59,6 +63,7 @@ export class SelectionController {
   private selectedImages: ImageObject[] = [];
   private initialStrokes: StrokeObject[] = [];
   private initialShapes: ShapeObject[] = [];
+  private initialTexts: TextObject[] = [];
   private initialImages: ImageObject[] = [];
   private combinedBounds: StrokeBoundingBox | null = null;
   private initialBounds: StrokeBoundingBox | null = null;
@@ -113,6 +118,7 @@ export class SelectionController {
     this.selectedImages = [];
     this.initialStrokes = [];
     this.initialShapes = [];
+    this.initialTexts = [];
     this.initialImages = [];
     this.combinedBounds = null;
     this.initialBounds = null;
@@ -198,6 +204,7 @@ export class SelectionController {
           ...sh,
           geometryData: { ...sh.geometryData }
         }));
+        this.initialTexts = this.selectedTexts.map((t) => ({ ...t }));
         this.initialImages = this.selectedImages.map((img) => ({ ...img }));
         return;
       }
@@ -219,6 +226,7 @@ export class SelectionController {
           ...sh,
           geometryData: { ...sh.geometryData }
         }));
+        this.initialTexts = this.selectedTexts.map((t) => ({ ...t }));
         this.initialImages = this.selectedImages.map((img) => ({ ...img }));
         this.currentPreviewCanvas = activeCanvas;
         this.callbacks.onMoveStart?.(page.id, this.initialBounds);
@@ -427,21 +435,27 @@ export class SelectionController {
               SelectionEngine.isImageSelectedByLasso(img, this.lassoPoints)
             )
           : [];
+        const selectedTexts = page.texts
+          ? page.texts.filter((t) =>
+              SelectionEngine.isTextSelectedByLasso(t, this.lassoPoints)
+            )
+          : [];
 
         if (
           selectedStrokes.length > 0 ||
           selectedShapes.length > 0 ||
-          selectedImages.length > 0
+          selectedImages.length > 0 ||
+          selectedTexts.length > 0
         ) {
           this.selectedStrokes = selectedStrokes;
           this.selectedShapes = selectedShapes;
-          this.selectedTexts = [];
+          this.selectedTexts = selectedTexts;
           this.selectedImages = selectedImages;
           this.activePageId = page.id;
           this.combinedBounds = SelectionEngine.computeCombinedBoundingBox(
             selectedStrokes,
             selectedShapes,
-            [],
+            selectedTexts,
             selectedImages
           );
           this.callbacks.onSelectionChanged(true);
@@ -497,7 +511,9 @@ export class SelectionController {
           this.initialShapes,
           this.selectedShapes,
           this.initialImages,
-          this.selectedImages
+          this.selectedImages,
+          this.initialTexts,
+          this.selectedTexts
         );
 
         const targetCtx = effCanvas.getContext("2d");
@@ -513,7 +529,9 @@ export class SelectionController {
           this.initialShapes,
           this.selectedShapes,
           this.initialImages,
-          this.selectedImages
+          this.selectedImages,
+          this.initialTexts,
+          this.selectedTexts
         );
 
         this.callbacks.onRequestRedraw(this.activePageId);
@@ -758,8 +776,37 @@ export class SelectionController {
       const newY = targetBox.minY + relY * scaleY;
       const newW = Math.max(20, img.width * scaleX);
       const newH = Math.max(20, img.height * scaleY);
+      let nextRotation = img.rotation || 0;
+      if (rotationDelta !== 0) {
+        const deg = Math.round(rotationDelta * (180 / Math.PI));
+        nextRotation = ((img.rotation || 0) + deg) % 360;
+        if (nextRotation < 0) nextRotation += 360;
+      }
       return {
         ...img,
+        x: newX,
+        y: newY,
+        width: newW,
+        height: newH,
+        rotation: nextRotation,
+        bounds: {
+          minX: newX,
+          minY: newY,
+          maxX: newX + newW,
+          maxY: newY + newH
+        }
+      };
+    });
+
+    this.selectedTexts = this.initialTexts.map((t) => {
+      const relX = t.x - origin.minX;
+      const relY = t.y - origin.minY;
+      const newX = targetBox.minX + relX * scaleX;
+      const newY = targetBox.minY + relY * scaleY;
+      const newW = Math.max(40, t.width * scaleX);
+      const newH = Math.max(20, t.height * scaleY);
+      return {
+        ...t,
         x: newX,
         y: newY,
         width: newW,
@@ -903,7 +950,9 @@ export class SelectionController {
         this.initialShapes,
         this.selectedShapes,
         this.initialImages,
-        this.selectedImages
+        this.selectedImages,
+        this.initialTexts,
+        this.selectedTexts
       );
       this.callbacks.onRequestRedraw(sourcePageId);
     } else {
@@ -914,7 +963,9 @@ export class SelectionController {
         this.initialShapes,
         this.selectedShapes,
         this.initialImages,
-        this.selectedImages
+        this.selectedImages,
+        this.initialTexts,
+        this.selectedTexts
       );
       this.callbacks.onRequestRedraw(this.activePageId);
     }
@@ -929,6 +980,8 @@ export class SelectionController {
     this.initialBounds = null;
     this.initialStrokes = [];
     this.initialShapes = [];
+    this.initialTexts = [];
+    this.initialImages = [];
   }
 
   renderSelectionDashedBox(

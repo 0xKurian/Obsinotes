@@ -155,6 +155,41 @@ export class SelectionEngine {
     return insideCount >= 2;
   }
 
+  static isTextSelectedByLasso(
+    text: TextObject,
+    lassoPolygon: { x: number; y: number }[]
+  ): boolean {
+    const w = text.width || 100;
+    const h = text.height || 30;
+    const textBounds: StrokeBoundingBox = {
+      minX: text.x,
+      minY: text.y,
+      maxX: text.x + w,
+      maxY: text.y + h
+    };
+    const lassoBounds = this.computePolygonBoundingBox(lassoPolygon);
+    if (!this.doBoundingBoxesIntersect(textBounds, lassoBounds)) {
+      return false;
+    }
+
+    const keyPoints = [
+      { x: textBounds.minX, y: textBounds.minY },
+      { x: textBounds.maxX, y: textBounds.minY },
+      { x: textBounds.minX, y: textBounds.maxY },
+      { x: textBounds.maxX, y: textBounds.maxY },
+      { x: (textBounds.minX + textBounds.maxX) / 2, y: (textBounds.minY + textBounds.maxY) / 2 }
+    ];
+
+    let insideCount = 0;
+    for (const kp of keyPoints) {
+      if (this.pointInPolygon(kp.x, kp.y, lassoPolygon)) {
+        insideCount++;
+      }
+    }
+
+    return insideCount >= 2;
+  }
+
   static hitTestSingleElement(
     strokes: StrokeObject[],
     shapes: ShapeObject[],

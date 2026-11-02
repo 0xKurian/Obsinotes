@@ -1,6 +1,7 @@
 import {
   Plugin,
   TFile,
+  TFolder,
   WorkspaceLeaf,
   Notice,
   normalizePath,
@@ -45,6 +46,53 @@ export default class NotePagesPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf: WorkspaceLeaf | null) => {
         this.handleActiveLeafChange(leaf);
+      })
+    );
+
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!file) {
+          return;
+        }
+
+        if (file instanceof TFolder) {
+          menu.addItem((item) => {
+            item
+              .setTitle("New Obsinotes notebook")
+              .setIcon("notebook-pen")
+              .onClick(async () => {
+                await this.createNewNotebook(file.path);
+              });
+          });
+          return;
+        }
+
+        if (file instanceof TFile) {
+          if (this.isNotePagesDocument(file)) {
+            menu.addItem((item) => {
+              item
+                .setTitle("Open in Obsinotes")
+                .setIcon("notebook-pen")
+                .onClick(() => {
+                  const leaf = this.app.workspace.getLeaf(false);
+                  leaf.setViewState({
+                    type: NOTE_PAGES_VIEW_TYPE,
+                    state: { file: file.path }
+                  });
+                });
+            });
+          } else if (file.extension.toLowerCase() === "pdf") {
+            menu.addItem((item) => {
+              item
+                .setTitle("Import PDF as Obsinotes notebook")
+                .setIcon("notebook-pen")
+                .onClick(async () => {
+                  const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
+                  await tempView.promptAndImportVaultPdf(file, true);
+                });
+            });
+          }
+        }
       })
     );
 
@@ -281,9 +329,11 @@ export default class NotePagesPlugin extends Plugin {
     }
   }
 
-  async createNewNotebook(): Promise<void> {
+  async createNewNotebook(folderPath?: string): Promise<void> {
     const activeFile = this.app.workspace.getActiveFile();
-    const parentFolder = activeFile ? activeFile.parent?.path ?? "" : "";
+    const parentFolder = folderPath !== undefined
+      ? folderPath
+      : (activeFile ? activeFile.parent?.path ?? "" : "");
 
     let fileName = `Untitled.${NOTE_PAGES_EXTENSION}`;
     let filePath = normalizePath(parentFolder ? `${parentFolder}/${fileName}` : fileName);

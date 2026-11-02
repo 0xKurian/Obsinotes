@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
 import { SelectionEngine } from "../src/selection/SelectionEngine";
-import { ShapeObject, StrokeObject } from "../src/types";
+import { ShapeObject, StrokeObject, TextObject } from "../src/types";
 
 describe("SelectionEngine", () => {
   const squarePolygon = [
@@ -175,5 +175,40 @@ describe("SelectionEngine", () => {
     const transformed = SelectionEngine.transformPoint(pt, originBox, targetBox, 0);
     assert.strictEqual(transformed.x, 150);
     assert.strictEqual(transformed.y, 150);
+  });
+
+  test("isTextSelectedByLasso accurately selects enclosed text box", () => {
+    const textInside: TextObject = {
+      id: "t1",
+      elementType: "text",
+      x: 30,
+      y: 30,
+      width: 40,
+      height: 20,
+      content: "Inside",
+      fontSize: 14,
+      fontFamily: "Inter",
+      fontWeight: "normal",
+      color: "#000",
+      textAlign: "left"
+    };
+
+    const textOutside: TextObject = {
+      id: "t2",
+      elementType: "text",
+      x: 300,
+      y: 300,
+      width: 50,
+      height: 25,
+      content: "Outside",
+      fontSize: 14,
+      fontFamily: "Inter",
+      fontWeight: "normal",
+      color: "#000",
+      textAlign: "left"
+    };
+
+    assert.strictEqual(SelectionEngine.isTextSelectedByLasso(textInside, squarePolygon), true);
+    assert.strictEqual(SelectionEngine.isTextSelectedByLasso(textOutside, squarePolygon), false);
   });
 });
