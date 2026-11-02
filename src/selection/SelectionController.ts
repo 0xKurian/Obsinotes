@@ -578,6 +578,7 @@ export class SelectionController {
 
     const prevStrokes = this.selectedStrokes.map((s) => ({ ...s }));
     const prevShapes = this.selectedShapes.map((sh) => ({ ...sh }));
+    const prevTexts = this.selectedTexts.map((t) => ({ ...t }));
 
     this.selectedStrokes = this.selectedStrokes.map((s) => ({
       ...s,
@@ -589,12 +590,23 @@ export class SelectionController {
       color: newColor
     }));
 
+    this.selectedTexts = this.selectedTexts.map((t) => {
+      if (t.isSticky) {
+        return { ...t, backgroundColor: newColor };
+      }
+      return { ...t, color: newColor };
+    });
+
     this.callbacks.onTransformCommitted(
       page.id,
       prevStrokes,
       this.selectedStrokes,
       prevShapes,
-      this.selectedShapes
+      this.selectedShapes,
+      undefined,
+      undefined,
+      prevTexts,
+      this.selectedTexts
     );
 
     if (this.combinedBounds) {

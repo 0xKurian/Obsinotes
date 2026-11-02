@@ -321,6 +321,15 @@ export class NotePagesToolbar {
       });
     }
 
+    const stickyDoneBtn = this.stickyControlsContainer.createEl("button", {
+      cls: "notepages-tool-button"
+    });
+    stickyDoneBtn.setAttribute("title", "Finish editing (Ctrl+Enter / Esc)");
+    setIcon(stickyDoneBtn, "check");
+    this.delegate.registerDomEvent(stickyDoneBtn, "click", () => {
+      this.delegate.onTextDone();
+    });
+
     leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
 
     this.colorPaletteContainer = leftGroup.createDiv({

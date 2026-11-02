@@ -27,6 +27,7 @@ export interface TextControllerCallbacks {
   }) => void;
   onEditingStarted?: () => void;
   onEditingEnded?: () => void;
+  getActiveTool?: () => string;
 }
 
 export class TextController {
@@ -53,6 +54,10 @@ export class TextController {
 
   isEditing(): boolean {
     return this.activeEditorContainer !== null;
+  }
+
+  getActiveText(): TextObject | null {
+    return this.activeText;
   }
 
   getActiveEditorContainer(): HTMLElement | null {
@@ -132,7 +137,7 @@ export class TextController {
 
     this.closeActiveEditor();
 
-    if (newContent.length === 0) {
+    if (newContent.length === 0 && !textObj.isSticky) {
       if (!isNew) {
         page.texts = page.texts.filter(t => t.id !== textObj.id);
         this.callbacks.onTextDeleted(page, textObj.id);
@@ -257,7 +262,7 @@ export class TextController {
       textarea.style.background = "transparent";
     }
     textarea.value = currentText.content;
-    textarea.placeholder = "Type text, $LaTeX$, [[wikilinks]]...";
+    textarea.placeholder = currentText.isSticky ? "Sticky note..." : "Type text, $LaTeX$, [[wikilinks]]...";
     textarea.style.position = "absolute";
     textarea.style.left = `${currentText.x}px`;
     textarea.style.top = `${currentText.y}px`;
@@ -282,7 +287,16 @@ export class TextController {
     });
 
     textarea.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Escape" || ((e.ctrlKey || e.metaKey) && e.key === "Enter")) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (this.isNewText && !this.activeTextarea?.value.trim()) {
+          this.cancelActiveEdit();
+        } else {
+          this.commitActiveEdit();
+        }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         this.commitActiveEdit();
         return;
@@ -392,6 +406,17 @@ export class TextController {
       return;
     }
 
+    const activeTool = this.callbacks.getActiveTool ? this.callbacks.getActiveTool() : "";
+    const isDrawingTool =
+      activeTool === "pen" ||
+      activeTool === "pressure" ||
+      activeTool === "fountain" ||
+      activeTool === "highlighter" ||
+      activeTool === "eraser" ||
+      activeTool === "shape" ||
+      activeTool === "connector" ||
+      activeTool === "lasso";
+
     const margin = 10;
     page.texts.forEach(t => {
       const box = document.createElement("div");
@@ -413,7 +438,7 @@ export class TextController {
       box.style.textDecoration = t.underline ? "underline" : "none";
       box.style.color = t.color;
       box.style.textAlign = t.textAlign;
-      box.style.pointerEvents = "auto";
+      box.style.pointerEvents = isDrawingTool ? "none" : "auto";
       box.style.userSelect = "text";
       if (t.isSticky) {
         box.classList.add("notepages-sticky-note");
@@ -430,6 +455,14 @@ export class TextController {
       box.addEventListener("dblclick", (e: MouseEvent) => {
         e.stopPropagation();
         this.startEditing(page, pageEl, t);
+      });
+
+      box.addEventListener("click", (e: MouseEvent) => {
+        const curTool = this.callbacks.getActiveTool ? this.callbacks.getActiveTool() : "";
+        if ((curTool === "sticky" && t.isSticky) || (curTool === "text" && !t.isSticky)) {
+          e.stopPropagation();
+          this.startEditing(page, pageEl, t);
+        }
       });
 
       layer!.appendChild(box);

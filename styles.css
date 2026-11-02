@@ -545,6 +545,9 @@
   white-space: pre-wrap;
   word-break: break-word;
   box-sizing: border-box;
+}
+
+.notepages-text-box:not(.notepages-sticky-note) {
   background: transparent;
   background-color: transparent;
 }

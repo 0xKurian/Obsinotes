@@ -32,6 +32,7 @@ import { TemplateRenderer } from "../renderer/TemplateRenderer";
 import { InkingController } from "../ink/InkingController";
 import { StrokeGeometry } from "../ink/StrokeGeometry";
 import { SelectionController } from "../selection/SelectionController";
+import { SelectionEngine } from "../selection/SelectionEngine";
 import { ShapeRecognizer } from "../shape/ShapeRecognizer";
 import {
   HistoryManager,
@@ -252,10 +253,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           this.syncTextToolbar(formatting);
         },
         onEditingStarted: () => {
-          if (this.inkingController.activeTool !== "text") {
-            this.setActiveTool("text");
+          const activeText = this.textController.getActiveText();
+          const targetTool: ToolType = activeText?.isSticky ? "sticky" : "text";
+          if (this.inkingController.activeTool !== targetTool) {
+            this.setActiveTool(targetTool, false);
           }
-        }
+        },
+        getActiveTool: () => this.inkingController.activeTool
       },
       renderMath,
       finishRenderMath
@@ -1156,6 +1160,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.currentStickyColor = color;
     if (this.textController.isEditing()) {
       this.textController.updateActiveFormatting({ backgroundColor: color });
+    } else if (this.selectionController.hasSelection() && this.pageManager) {
+      const pageId = this.selectionController.getActivePageId();
+      if (pageId) {
+        const page = this.pageManager.getPage(pageId);
+        const activeCanvas = this.activeCanvasMap.get(pageId);
+        if (page && activeCanvas) {
+          this.selectionController.changeColor(color, page, activeCanvas);
+        }
+      }
     }
   }
 
@@ -1551,8 +1564,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.updateStatusDisplay();
   }
 
-  private setActiveTool(tool: ToolType): void {
-    if (this.textController.isEditing()) {
+  private setActiveTool(tool: ToolType, commitPendingText: boolean = true): void {
+    if (commitPendingText && this.textController.isEditing()) {
       this.textController.commitActiveEdit();
     }
 
@@ -1574,6 +1587,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         const frameEl = this.getPageFrame(p.pageNumber);
         if (frameEl) {
           this.imageController.renderPageImages(p, frameEl, (path) => this.resolveResourcePath(path));
+          this.textController.renderPageTexts(p, frameEl);
         }
       });
     }
@@ -2597,6 +2611,24 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
 
       if (this.inkingController.activeTool === "text" || this.inkingController.activeTool === "sticky") {
+        const isSticky = this.inkingController.activeTool === "sticky";
+        const hit = SelectionEngine.hitTestSingleElement(
+          [],
+          [],
+          pageX,
+          pageY,
+          8,
+          page.texts,
+          []
+        );
+        if (hit?.text) {
+          if ((isSticky && hit.text.isSticky) || (!isSticky && !hit.text.isSticky)) {
+            this.textController.startEditing(page, pageFrame, hit.text);
+            e.stopPropagation();
+            return;
+          }
+        }
+
         this.isDraggingTextRect = true;
         this.dragTextPage = page;
         this.dragTextPageFrame = pageFrame;
@@ -3067,6 +3099,26 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.selectionController.clearSelection(activeCanvas);
       } else {
         this.inkingController.handlePointerCancel(e);
+      }
+    });
+
+    this.registerDomEvent(activeCanvas, "dblclick", (e: MouseEvent) => {
+      const rect = activeCanvas.getBoundingClientRect();
+      const scaleX = page.dimensions.width / rect.width;
+      const scaleY = page.dimensions.height / rect.height;
+      const pageX = (e.clientX - rect.left) * scaleX;
+      const pageY = (e.clientY - rect.top) * scaleY;
+      const hit = SelectionEngine.hitTestSingleElement(
+        [],
+        [],
+        pageX,
+        pageY,
+        8,
+        page.texts,
+        []
+      );
+      if (hit?.text) {
+        this.textController.startEditing(page, pageFrame, hit.text);
       }
     });
   }
