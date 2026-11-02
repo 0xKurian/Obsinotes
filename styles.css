@@ -895,5 +895,22 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   border: 1px solid var(--background-modifier-border);
 }
 
+.notepages-export-modal {
+  max-width: 520px;
+}
+
+.notepages-export-modal h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.notepages-export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+
 
 

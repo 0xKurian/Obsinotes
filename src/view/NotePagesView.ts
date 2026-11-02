@@ -56,6 +56,8 @@ import { PdfBackgroundManager } from "../pdf/PdfBackgroundManager";
 import { NotePagesImportHandler, NotePagesImportDelegate } from "./NotePagesImportHandler";
 import { NotePagesSidebar, NotePagesSidebarDelegate } from "./NotePagesSidebar";
 import { NotePagesToolbar, NotePagesToolbarDelegate } from "./NotePagesToolbar";
+import { ExportModal } from "../modal/ExportModal";
+import { ExportEngine } from "../export/ExportEngine";
 
 export class NotePagesView extends TextFileView implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate {
   plugin: NotePagesPlugin;
@@ -1061,6 +1063,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.openPdfPicker();
   }
 
+  onExportNotebook(): void {
+    this.openExportModal();
+  }
+
   onAddNewPage(): void {
     this.addNewPage();
   }
@@ -1285,6 +1291,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           .setIcon("copy")
           .onClick(() => {
             this.duplicateCurrentPage();
+          });
+      });
+
+      menu.addSeparator();
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Export notebook...")
+          .setIcon("file-down")
+          .onClick(() => {
+            this.openExportModal();
           });
       });
 
@@ -3507,6 +3524,31 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return this.app.vault.getResourcePath(file);
     }
     return vaultPath;
+  }
+
+  openExportModal(): void {
+    if (!this.document) {
+      new Notice("No notebook document loaded to export");
+      return;
+    }
+    const modal = new ExportModal(
+      this.app,
+      this.document.pages.length,
+      this.currentPageNumber,
+      async (options) => {
+        if (!this.document) {
+          return;
+        }
+        await ExportEngine.exportNotebook(
+          this.app,
+          this.document,
+          options,
+          this.file,
+          this.currentPageNumber
+        );
+      }
+    );
+    modal.open();
   }
 
   openImagePicker(targetPageId?: string): void {

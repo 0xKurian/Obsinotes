@@ -22,6 +22,7 @@ export interface NotePagesToolbarDelegate {
   onChangeZoom(delta: number): void;
   onResetZoom(): void;
   onOpenPdfPicker(): void;
+  onExportNotebook(): void;
   onAddNewPage(): void;
   onDuplicateCurrentPage(): void;
   onDeleteCurrentPage(): void;
@@ -525,6 +526,15 @@ export class NotePagesToolbar {
     importPdfBtn.setAttribute("title", "Import Document (PDF / SVG)");
     this.delegate.registerDomEvent(importPdfBtn, "click", () => {
       this.delegate.onOpenPdfPicker();
+    });
+
+    const exportBtn = rightGroup.createEl("button", {
+      cls: "notepages-tool-button"
+    });
+    setIcon(exportBtn, "file-down");
+    exportBtn.setAttribute("title", "Export Notebook (PDF / PNG / SVG)");
+    this.delegate.registerDomEvent(exportBtn, "click", () => {
+      this.delegate.onExportNotebook();
     });
 
     const addPageBtn = rightGroup.createEl("button", {

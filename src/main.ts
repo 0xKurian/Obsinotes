@@ -81,6 +81,22 @@ export default class NotePagesPlugin extends Plugin {
                   });
                 });
             });
+
+            menu.addItem((item) => {
+              item
+                .setTitle("Export Obsinotes notebook...")
+                .setIcon("file-down")
+                .onClick(async () => {
+                  const leaf = this.app.workspace.getLeaf(false);
+                  await leaf.setViewState({
+                    type: NOTE_PAGES_VIEW_TYPE,
+                    state: { file: file.path }
+                  });
+                  if (leaf.view instanceof NotePagesView) {
+                    leaf.view.openExportModal();
+                  }
+                });
+            });
           } else if (file.extension.toLowerCase() === "pdf") {
             menu.addItem((item) => {
               item
@@ -188,6 +204,22 @@ export default class NotePagesPlugin extends Plugin {
           const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
           tempView.openPdfPicker(true);
         }
+      }
+    });
+
+    this.addCommand({
+      id: "notepages-export-notebook",
+      name: "Obsinotes: Export notebook",
+      checkCallback: (checking: boolean) => {
+        const activeLeaf = this.app.workspace.activeLeaf;
+        if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
+          return false;
+        }
+        if (checking) {
+          return true;
+        }
+        activeLeaf.view.openExportModal();
+        return true;
       }
     });
 
