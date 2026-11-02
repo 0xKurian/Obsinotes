@@ -81,6 +81,9 @@ export class NotePagesToolbar {
   colorPickerInput!: HTMLInputElement;
   widthSelectorContainer!: HTMLElement;
   widthButtons: HTMLElement[] = [];
+  widthSliderInput!: HTMLInputElement;
+  widthValueBadge!: HTMLElement;
+  widthPreviewDot!: HTMLElement;
   eraserControlsContainer!: HTMLElement;
   strokeEraserBtn!: HTMLButtonElement;
   precisionEraserBtn!: HTMLButtonElement;
@@ -381,10 +384,11 @@ export class NotePagesToolbar {
     });
 
     const widthPresets: { width: number; dotSize: number; title: string }[] = [
-      { width: 1.5, dotSize: 4, title: "Fine (1.5pt)" },
-      { width: 2.5, dotSize: 7, title: "Medium (2.5pt)" },
-      { width: 4.5, dotSize: 10, title: "Thick (4.5pt)" },
-      { width: 8.0, dotSize: 14, title: "Extra (8.0pt)" }
+      { width: 1.0, dotSize: 3, title: "Fine (1.0pt)" },
+      { width: 2.5, dotSize: 6, title: "Medium (2.5pt)" },
+      { width: 5.0, dotSize: 9, title: "Thick (5.0pt)" },
+      { width: 10.0, dotSize: 13, title: "Marker (10.0pt)" },
+      { width: 18.0, dotSize: 17, title: "Highlight (18.0pt)" }
     ];
 
     const currentActiveWidth = this.delegate.getActiveWidth();
@@ -404,6 +408,50 @@ export class NotePagesToolbar {
         this.delegate.onSelectWidth(preset.width);
       });
     }
+
+    const sliderWrapper = this.widthSelectorContainer.createDiv({
+      cls: "notepages-width-slider-wrapper"
+    });
+
+    this.widthSliderInput = sliderWrapper.createEl("input", {
+      cls: "notepages-width-slider",
+      type: "range"
+    });
+    this.widthSliderInput.min = "0.5";
+    this.widthSliderInput.max = "30";
+    this.widthSliderInput.step = "0.5";
+    this.widthSliderInput.value = String(currentActiveWidth);
+    this.widthSliderInput.setAttribute("title", "Adjust stroke width (0.5 - 30 pt)");
+
+    this.widthValueBadge = sliderWrapper.createSpan({
+      cls: "notepages-width-badge",
+      text: `${currentActiveWidth} pt`
+    });
+    this.widthValueBadge.setAttribute("title", "Current stroke width (scroll to adjust)");
+
+    const previewWrapper = sliderWrapper.createDiv({
+      cls: "notepages-width-preview-wrapper"
+    });
+    this.widthPreviewDot = previewWrapper.createDiv({
+      cls: "notepages-width-preview-dot"
+    });
+    const previewSize = Math.min(18, Math.max(2, currentActiveWidth));
+    this.widthPreviewDot.style.width = `${previewSize}px`;
+    this.widthPreviewDot.style.height = `${previewSize}px`;
+    this.widthPreviewDot.style.backgroundColor = this.delegate.getActiveColor();
+
+    this.delegate.registerDomEvent(this.widthSliderInput, "input", () => {
+      const val = Math.round(Number(this.widthSliderInput.value) * 10) / 10;
+      this.delegate.onSelectWidth(val);
+    });
+
+    this.delegate.registerDomEvent(sliderWrapper, "wheel", (e: WheelEvent) => {
+      e.preventDefault();
+      const current = Number(this.widthSliderInput.value) || 2.5;
+      const step = e.deltaY < 0 ? 0.5 : -0.5;
+      const next = Math.max(0.5, Math.min(30, Math.round((current + step) * 10) / 10));
+      this.delegate.onSelectWidth(next);
+    });
 
     this.eraserControlsContainer = leftGroup.createDiv({
       cls: "notepages-palette-group"
@@ -633,6 +681,9 @@ export class NotePagesToolbar {
     if (this.colorPickerInput) {
       this.colorPickerInput.value = color;
     }
+    if (this.widthPreviewDot) {
+      this.widthPreviewDot.style.backgroundColor = color;
+    }
   }
 
   setActiveWidth(width: number): void {
@@ -642,6 +693,17 @@ export class NotePagesToolbar {
       } else {
         btn.removeClass("is-active");
       }
+    }
+    if (this.widthSliderInput) {
+      this.widthSliderInput.value = String(width);
+    }
+    if (this.widthValueBadge) {
+      this.widthValueBadge.setText(`${width} pt`);
+    }
+    if (this.widthPreviewDot) {
+      const previewSize = Math.min(18, Math.max(2, width));
+      this.widthPreviewDot.style.width = `${previewSize}px`;
+      this.widthPreviewDot.style.height = `${previewSize}px`;
     }
   }
 

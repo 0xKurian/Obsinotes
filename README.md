@@ -14,6 +14,7 @@ Obsinotes is a modern, high-performance digital whiteboard and multi-page notebo
 
 ### 2. High-Performance Digital Inking Engine
 - **Stylus Inking Tools**: Ballpoint Pen, Pressure-Sensitive Pen, and Fountain Pen powered by `perfect-freehand`.
+- **Customizable Stroke Width**: Fine-tune stroke thickness from 0.5pt to 30.0pt using preset buttons, interactive slider, or mouse wheel, complete with a live size/color preview dot and per-tool memory (Pen vs. Highlighter).
 - **Authentic Highlighter**: Layered with canvas `multiply` composite blending to highlight text without obscuring underlying handwriting or PDF content.
 - **Smart Erasers**: Dual-mode Stroke Eraser (deletes entire intersecting strokes) and Precision Eraser (splits and trims stroke geometry).
 - **Stylus & Palm Suppression**: Differentiates pen and finger touches, preventing unintended ink when resting palm on the screen.
@@ -53,6 +54,7 @@ Obsinotes is a modern, high-performance digital whiteboard and multi-page notebo
 | **Zoom Workspace** | `Ctrl` / `Cmd` + Mouse Wheel or 2-finger Pinch |
 | **Add Page Below** | Press `A` |
 | **Undo / Redo** | `Ctrl/Cmd + Z` / `Ctrl/Cmd + Y` (or `Ctrl/Cmd + Shift + Z`) |
+| **Decrease / Increase Stroke Width** | `[` / `]` (or scroll wheel over width slider) |
 | **Hold-to-Snap Shape** | Draw shape and hold stylus still for ~350ms |
 | **Quick Text Box** | Double-click canvas or use Canvas Context Menu |
 | **Canvas Context Menu** | Right-click on empty canvas area |

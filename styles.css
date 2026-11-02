@@ -137,6 +137,52 @@
   background-color: var(--text-on-accent);
 }
 
+.notepages-width-slider-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+.notepages-width-slider {
+  width: 64px;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--interactive-accent);
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.notepages-width-badge {
+  font-size: 11px;
+  font-family: var(--font-monospace);
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: right;
+  user-select: none;
+}
+
+.notepages-width-preview-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--divider-color);
+  border-radius: var(--button-radius, 4px);
+  background-color: var(--background-primary);
+  margin-left: 2px;
+}
+
+.notepages-width-preview-dot {
+  border-radius: 50%;
+  background-color: var(--text-normal);
+  max-width: 18px;
+  max-height: 18px;
+  transition: width 0.1s ease, height 0.1s ease, background-color 0.1s ease;
+}
+
 .notepages-tool-button {
   display: inline-flex;
   align-items: center;

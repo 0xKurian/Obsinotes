@@ -125,6 +125,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   };
 
   zoomLevel: number = 1.0;
+  penWidth: number = 2.5;
+  highlighterWidth: number = 14.0;
   isSidebarCollapsed: boolean = false;
 
   dragOverlayEl!: HTMLElement;
@@ -742,6 +744,28 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
       e.preventDefault();
       this.toggleSidebar();
+      return false;
+    });
+
+    this.scope.register([], "[", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
+      e.preventDefault();
+      const current = this.inkingController.currentWidth;
+      const next = Math.max(0.5, Math.round((current - 0.5) * 10) / 10);
+      this.setActiveWidth(next);
+      return false;
+    });
+
+    this.scope.register([], "]", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
+      e.preventDefault();
+      const current = this.inkingController.currentWidth;
+      const next = Math.min(30, Math.round((current + 0.5) * 10) / 10);
+      this.setActiveWidth(next);
       return false;
     });
 
@@ -1582,6 +1606,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.inkingController.setTool(tool);
 
+    if (tool === "highlighter") {
+      this.inkingController.setWidth(this.highlighterWidth);
+      this.toolbar.setActiveWidth(this.highlighterWidth);
+    } else if (tool === "pen" || tool === "pressure" || tool === "fountain") {
+      this.inkingController.setWidth(this.penWidth);
+      this.toolbar.setActiveWidth(this.penWidth);
+    }
+
     if (this.document && this.pageManager) {
       this.document.pages.forEach((p) => {
         const frameEl = this.getPageFrame(p.pageNumber);
@@ -1631,6 +1663,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   private setActiveWidth(width: number): void {
+    if (this.inkingController.activeTool === "highlighter") {
+      this.highlighterWidth = width;
+    } else if (
+      this.inkingController.activeTool === "pen" ||
+      this.inkingController.activeTool === "pressure" ||
+      this.inkingController.activeTool === "fountain"
+    ) {
+      this.penWidth = width;
+    }
+
     this.inkingController.setWidth(width);
     this.toolbar.setActiveWidth(width);
 
