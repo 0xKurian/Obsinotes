@@ -1,0 +1,367 @@
+import {
+  PointSample,
+  StrokeObject,
+  ToolType,
+  EraserMode,
+  PageDimensions,
+  ShapeObject
+} from "../types";
+import { StrokeGeometry } from "./StrokeGeometry";
+import { EraserEngine } from "./EraserEngine";
+import { ShapeRecognizer } from "../shape/ShapeRecognizer";
+
+export interface InkingControllerCallbacks {
+  onStrokeCommitted: (pageId: string, stroke: StrokeObject) => void;
+  onShapeCommitted?: (pageId: string, shape: ShapeObject, rawStroke: StrokeObject) => void;
+  onStrokesErased: (pageId: string, remainingStrokes: StrokeObject[]) => void;
+}
+
+export class InkingController {
+  activeTool: ToolType = "pressure";
+  currentColor: string = "#1e293b";
+  currentWidth: number = 2.5;
+  currentOpacity: number = 1.0;
+  eraserMode: EraserMode = "stroke";
+  eraserRadius: number = 12;
+  shapeRecognitionEnabled: boolean = true;
+
+  private isDrawing: boolean = false;
+  private activePageId: string | null = null;
+  private activeCanvas: HTMLCanvasElement | null = null;
+  private committedCanvas: HTMLCanvasElement | null = null;
+  private currentPoints: PointSample[] = [];
+  private lastPenTimestamp: number = 0;
+  private lastMoveTimestamp: number = 0;
+  private callbacks: InkingControllerCallbacks;
+
+  constructor(callbacks: InkingControllerCallbacks) {
+    this.callbacks = callbacks;
+  }
+
+  setTool(tool: ToolType): void {
+    this.activeTool = tool;
+  }
+
+  setColor(color: string): void {
+    this.currentColor = color;
+  }
+
+  setWidth(width: number): void {
+    this.currentWidth = Math.max(0.5, Math.min(30, width));
+  }
+
+  setEraserMode(mode: EraserMode): void {
+    this.eraserMode = mode;
+  }
+
+  setEraserRadius(radius: number): void {
+    this.eraserRadius = Math.max(4, Math.min(50, radius));
+  }
+
+  setShapeRecognition(enabled: boolean): void {
+    this.shapeRecognitionEnabled = enabled;
+  }
+
+  handlePointerDown(
+    e: PointerEvent,
+    pageId: string,
+    activeCanvas: HTMLCanvasElement,
+    committedCanvas: HTMLCanvasElement,
+    pageCoords: { x: number; y: number },
+    existingStrokes: StrokeObject[]
+  ): void {
+    if (e.pointerType === "pen") {
+      this.lastPenTimestamp = Date.now();
+    } else if (e.pointerType === "touch") {
+      if (Date.now() - this.lastPenTimestamp < 350) {
+        return;
+      }
+    }
+
+    if (e.button !== 0 && e.pointerType === "mouse") {
+      return;
+    }
+
+    if (
+      this.activeTool === "select" ||
+      this.activeTool === "lasso" ||
+      this.activeTool === "shape" ||
+      this.activeTool === "connector" ||
+      this.activeTool === "sticky" ||
+      this.activeTool === "text" ||
+      this.activeTool === "image"
+    ) {
+      return;
+    }
+
+    this.activePageId = pageId;
+    this.activeCanvas = activeCanvas;
+    this.committedCanvas = committedCanvas;
+    this.lastMoveTimestamp = Date.now();
+
+    try {
+      activeCanvas.setPointerCapture(e.pointerId);
+    } catch {}
+
+    if (this.activeTool === "eraser") {
+      this.isDrawing = true;
+      this.executeEraser(pageId, pageCoords.x, pageCoords.y, existingStrokes);
+      return;
+    }
+
+    this.isDrawing = true;
+    this.currentPoints = [];
+
+    const pressure = e.pressure && e.pressure > 0 ? e.pressure : 0.5;
+    const startPoint: PointSample = {
+      x: pageCoords.x,
+      y: pageCoords.y,
+      pressure,
+      timestamp: e.timeStamp || Date.now(),
+      tiltX: e.tiltX,
+      tiltY: e.tiltY
+    };
+
+    this.currentPoints.push(startPoint);
+    this.renderActiveStroke();
+  }
+
+  handlePointerMove(
+    e: PointerEvent,
+    pageCoordsList: { x: number; y: number }[],
+    existingStrokes: StrokeObject[]
+  ): void {
+    if (!this.isDrawing || !this.activePageId) {
+      return;
+    }
+
+    this.lastMoveTimestamp = Date.now();
+
+    if (this.activeTool === "eraser") {
+      for (const pt of pageCoordsList) {
+        this.executeEraser(this.activePageId, pt.x, pt.y, existingStrokes);
+      }
+      return;
+    }
+
+    const basePressure = e.pressure && e.pressure > 0 ? e.pressure : 0.5;
+    const baseTime = e.timeStamp || Date.now();
+
+    for (let i = 0; i < pageCoordsList.length; i++) {
+      const pt = pageCoordsList[i];
+      const sample: PointSample = {
+        x: pt.x,
+        y: pt.y,
+        pressure: basePressure,
+        timestamp: baseTime + i,
+        tiltX: e.tiltX,
+        tiltY: e.tiltY
+      };
+      this.currentPoints.push(sample);
+    }
+
+    this.renderActiveStroke();
+  }
+
+  handlePointerUp(e: PointerEvent): void {
+    if (!this.isDrawing || !this.activePageId) {
+      return;
+    }
+
+    const holdDuration = Date.now() - this.lastMoveTimestamp;
+
+    if (this.activeCanvas) {
+      try {
+        this.activeCanvas.releasePointerCapture(e.pointerId);
+      } catch {}
+      this.clearCanvas(this.activeCanvas);
+    }
+
+    if (this.activeTool !== "eraser" && this.currentPoints.length > 0) {
+      const opacity = this.activeTool === "highlighter" ? 0.35 : this.currentOpacity;
+      const stroke: StrokeObject = {
+        id: `stroke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        elementType: "stroke",
+        tool: this.activeTool,
+        color: this.currentColor,
+        width: this.currentWidth,
+        opacity,
+        points: [...this.currentPoints],
+        bounds: StrokeGeometry.computeBoundingBox(this.currentPoints, Math.max(2, this.currentWidth)),
+        createdAt: Date.now()
+      };
+
+      const shouldCheckShape =
+        this.shapeRecognitionEnabled &&
+        (this.activeTool === "pen" ||
+          this.activeTool === "pressure" ||
+          this.activeTool === "fountain" ||
+          this.activeTool === "shape") &&
+        (holdDuration >= 350 || this.activeTool === "shape");
+
+      if (shouldCheckShape && this.callbacks.onShapeCommitted) {
+        const recognized = ShapeRecognizer.recognize(
+          this.currentPoints,
+          this.currentColor,
+          this.currentWidth
+        );
+
+        if (recognized) {
+          if (this.committedCanvas) {
+            const ctx = this.committedCanvas.getContext("2d");
+            if (ctx) {
+              const scale = this.committedCanvas.width / (Number(this.committedCanvas.dataset?.pageWidth) || this.committedCanvas.clientWidth || this.committedCanvas.width);
+              if (typeof ctx.setTransform === "function") {
+                ctx.setTransform(scale, 0, 0, scale, 0, 0);
+              }
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
+              ShapeRecognizer.renderShape(ctx, recognized.shape);
+            }
+          }
+          this.callbacks.onShapeCommitted(this.activePageId, recognized.shape, stroke);
+          this.finalizeStrokeDrawing();
+          return;
+        }
+      }
+
+      if (this.committedCanvas) {
+        const ctx = this.committedCanvas.getContext("2d");
+        if (ctx) {
+          const scale = this.committedCanvas.width / (Number(this.committedCanvas.dataset?.pageWidth) || this.committedCanvas.clientWidth || this.committedCanvas.width);
+          if (typeof ctx.setTransform === "function") {
+            ctx.setTransform(scale, 0, 0, scale, 0, 0);
+          }
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          StrokeGeometry.renderStroke(ctx, stroke);
+        }
+      }
+
+      this.callbacks.onStrokeCommitted(this.activePageId, stroke);
+    }
+
+    this.finalizeStrokeDrawing();
+  }
+
+  private finalizeStrokeDrawing(): void {
+    this.isDrawing = false;
+    this.activePageId = null;
+    this.activeCanvas = null;
+    this.committedCanvas = null;
+    this.currentPoints = [];
+  }
+
+  handlePointerCancel(e: PointerEvent): void {
+    if (this.activeCanvas) {
+      try {
+        this.activeCanvas.releasePointerCapture(e.pointerId);
+      } catch {}
+      this.clearCanvas(this.activeCanvas);
+    }
+
+    this.finalizeStrokeDrawing();
+  }
+
+  private renderActiveStroke(): void {
+    if (!this.activeCanvas || this.currentPoints.length === 0) {
+      return;
+    }
+
+    const ctx = this.activeCanvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    this.clearCanvas(this.activeCanvas);
+
+    const scale = this.activeCanvas.width / (Number(this.activeCanvas.dataset?.pageWidth) || this.activeCanvas.clientWidth || this.activeCanvas.width);
+    if (typeof ctx.setTransform === "function") {
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    const opacity = this.activeTool === "highlighter" ? 0.35 : this.currentOpacity;
+    const tempStroke: StrokeObject = {
+      id: "active",
+      elementType: "stroke",
+      tool: this.activeTool,
+      color: this.currentColor,
+      width: this.currentWidth,
+      opacity,
+      points: this.currentPoints,
+      bounds: StrokeGeometry.computeBoundingBox(this.currentPoints, this.currentWidth),
+      createdAt: 0
+    };
+
+    StrokeGeometry.renderStroke(ctx, tempStroke);
+  }
+
+  private executeEraser(
+    pageId: string,
+    x: number,
+    y: number,
+    existingStrokes: StrokeObject[]
+  ): void {
+    if (this.eraserMode === "stroke") {
+      const result = EraserEngine.eraseByStroke(existingStrokes, x, y, this.eraserRadius);
+      if (result.deletedIds.length > 0) {
+        this.callbacks.onStrokesErased(pageId, result.remaining);
+      }
+    } else {
+      const result = EraserEngine.erasePrecision(existingStrokes, x, y, this.eraserRadius);
+      if (result.changed) {
+        this.callbacks.onStrokesErased(pageId, result.updatedStrokes);
+      }
+    }
+  }
+
+  clearCanvas(canvas: HTMLCanvasElement): void {
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.save();
+      if (typeof ctx.setTransform === "function") {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+  }
+
+  redrawCommittedStrokes(
+    canvas: HTMLCanvasElement,
+    dimensions: PageDimensions,
+    strokes: StrokeObject[],
+    shapes: ShapeObject[] = []
+  ): void {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    const scale = canvas.width / dimensions.width;
+    if (typeof ctx.setTransform === "function") {
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+
+    for (const stroke of strokes) {
+      if (stroke.tool === "highlighter") {
+        StrokeGeometry.renderStroke(ctx, stroke);
+      }
+    }
+
+    for (const shape of shapes) {
+      ShapeRecognizer.renderShape(ctx, shape);
+    }
+
+    for (const stroke of strokes) {
+      if (stroke.tool !== "highlighter") {
+        StrokeGeometry.renderStroke(ctx, stroke);
+      }
+    }
+  }
+}

@@ -1,0 +1,644 @@
+import { PageData, ShapeObject, StrokeObject, TextObject, ImageObject } from "../types";
+
+export interface HistoryCommand {
+  id: string;
+  description: string;
+  execute: () => void;
+  undo: () => void;
+  redo: () => void;
+}
+
+export class AddStrokeCommand implements HistoryCommand {
+  id: string;
+  description: string = "Add stroke";
+  private page: PageData;
+  private stroke: StrokeObject;
+  private onMutate: () => void;
+
+  constructor(page: PageData, stroke: StrokeObject, onMutate: () => void) {
+    this.id = `cmd_add_${stroke.id}`;
+    this.page = page;
+    this.stroke = stroke;
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    if (!this.page.strokes.some((s) => s.id === this.stroke.id)) {
+      this.page.strokes.push(this.stroke);
+      this.onMutate();
+    }
+  }
+
+  undo(): void {
+    const idx = this.page.strokes.findIndex((s) => s.id === this.stroke.id);
+    if (idx !== -1) {
+      this.page.strokes.splice(idx, 1);
+      this.onMutate();
+    }
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class EraseStrokesCommand implements HistoryCommand {
+  id: string;
+  description: string = "Erase strokes";
+  private page: PageData;
+  private previousStrokes: StrokeObject[];
+  private nextStrokes: StrokeObject[];
+  private onMutate: () => void;
+
+  constructor(
+    page: PageData,
+    previousStrokes: StrokeObject[],
+    nextStrokes: StrokeObject[],
+    onMutate: () => void
+  ) {
+    this.id = `cmd_erase_${Date.now()}`;
+    this.page = page;
+    this.previousStrokes = [...previousStrokes];
+    this.nextStrokes = [...nextStrokes];
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    this.page.strokes = [...this.nextStrokes];
+    this.onMutate();
+  }
+
+  undo(): void {
+    this.page.strokes = [...this.previousStrokes];
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class ConvertShapeCommand implements HistoryCommand {
+  id: string;
+  description: string = "Convert stroke to shape";
+  private page: PageData;
+  private rawStroke: StrokeObject;
+  private shape: ShapeObject;
+  private onMutate: () => void;
+
+  constructor(
+    page: PageData,
+    rawStroke: StrokeObject,
+    shape: ShapeObject,
+    onMutate: () => void
+  ) {
+    this.id = `cmd_shape_${shape.id}`;
+    this.page = page;
+    this.rawStroke = rawStroke;
+    this.shape = shape;
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    this.page.strokes = this.page.strokes.filter((s) => s.id !== this.rawStroke.id);
+    if (!this.page.shapes.some((sh) => sh.id === this.shape.id)) {
+      this.page.shapes.push(this.shape);
+    }
+    this.onMutate();
+  }
+
+  undo(): void {
+    this.page.shapes = this.page.shapes.filter((sh) => sh.id !== this.shape.id);
+    if (!this.page.strokes.some((s) => s.id === this.rawStroke.id)) {
+      this.page.strokes.push(this.rawStroke);
+    }
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class AddShapeCommand implements HistoryCommand {
+  id: string;
+  description: string = "Add shape";
+  private page: PageData;
+  private shape: ShapeObject;
+  private onMutate: () => void;
+
+  constructor(page: PageData, shape: ShapeObject, onMutate: () => void) {
+    this.id = `cmd_add_shape_${shape.id}`;
+    this.page = page;
+    this.shape = shape;
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    if (!this.page.shapes.some((sh) => sh.id === this.shape.id)) {
+      this.page.shapes.push(this.shape);
+      this.onMutate();
+    }
+  }
+
+  undo(): void {
+    const idx = this.page.shapes.findIndex((sh) => sh.id === this.shape.id);
+    if (idx !== -1) {
+      this.page.shapes.splice(idx, 1);
+      this.onMutate();
+    }
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class TransformElementsCommand implements HistoryCommand {
+  id: string;
+  description: string = "Transform elements";
+  private page: PageData;
+  private prevStrokes: StrokeObject[];
+  private nextStrokes: StrokeObject[];
+  private prevShapes: ShapeObject[];
+  private nextShapes: ShapeObject[];
+  private prevImages: ImageObject[];
+  private nextImages: ImageObject[];
+  private onMutate: () => void;
+
+  constructor(
+    page: PageData,
+    prevStrokes: StrokeObject[],
+    nextStrokes: StrokeObject[],
+    prevShapes: ShapeObject[],
+    nextShapes: ShapeObject[],
+    onMutate: () => void,
+    prevImages: ImageObject[] = [],
+    nextImages: ImageObject[] = []
+  ) {
+    this.id = `cmd_transform_${Date.now()}`;
+    this.page = page;
+    this.prevStrokes = [...prevStrokes];
+    this.nextStrokes = [...nextStrokes];
+    this.prevShapes = [...prevShapes];
+    this.nextShapes = [...nextShapes];
+    this.prevImages = [...prevImages];
+    this.nextImages = [...nextImages];
+    this.onMutate = onMutate;
+  }
+
+  private applyState(strokes: StrokeObject[], shapes: ShapeObject[], images: ImageObject[]): void {
+    const strokeMap = new Map(strokes.map((s) => [s.id, s]));
+    this.page.strokes = this.page.strokes.map((s) =>
+      strokeMap.has(s.id) ? strokeMap.get(s.id)! : s
+    );
+
+    const shapeMap = new Map(shapes.map((sh) => [sh.id, sh]));
+    this.page.shapes = this.page.shapes.map((sh) =>
+      shapeMap.has(sh.id) ? shapeMap.get(sh.id)! : sh
+    );
+
+    if (images.length > 0) {
+      const imageMap = new Map(images.map((img) => [img.id, img]));
+      this.page.images = this.page.images.map((img) =>
+        imageMap.has(img.id) ? imageMap.get(img.id)! : img
+      );
+    }
+
+    this.onMutate();
+  }
+
+  execute(): void {
+    this.applyState(this.nextStrokes, this.nextShapes, this.nextImages);
+  }
+
+  undo(): void {
+    this.applyState(this.prevStrokes, this.prevShapes, this.prevImages);
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class DeleteElementsCommand implements HistoryCommand {
+  id: string;
+  description: string = "Delete elements";
+  private page: PageData;
+  private deletedStrokes: StrokeObject[];
+  private deletedShapes: ShapeObject[];
+  private deletedTexts: TextObject[];
+  private deletedImages: ImageObject[];
+  private onMutate: () => void;
+
+  constructor(
+    page: PageData,
+    strokes: StrokeObject[],
+    shapes: ShapeObject[],
+    onMutate: () => void,
+    texts: TextObject[] = [],
+    images: ImageObject[] = []
+  ) {
+    this.id = `cmd_del_${Date.now()}`;
+    this.page = page;
+    this.deletedStrokes = [...strokes];
+    this.deletedShapes = [...shapes];
+    this.deletedTexts = [...texts];
+    this.deletedImages = [...images];
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    const strokeIds = new Set(this.deletedStrokes.map((s) => s.id));
+    const shapeIds = new Set(this.deletedShapes.map((sh) => sh.id));
+    const textIds = new Set(this.deletedTexts.map((t) => t.id));
+    const imageIds = new Set(this.deletedImages.map((img) => img.id));
+
+    this.page.strokes = this.page.strokes.filter((s) => !strokeIds.has(s.id));
+    this.page.shapes = this.page.shapes.filter((sh) => !shapeIds.has(sh.id));
+    this.page.texts = this.page.texts.filter((t) => !textIds.has(t.id));
+    this.page.images = this.page.images.filter((img) => !imageIds.has(img.id));
+    this.onMutate();
+  }
+
+  undo(): void {
+    for (const s of this.deletedStrokes) {
+      if (!this.page.strokes.some((existing) => existing.id === s.id)) {
+        this.page.strokes.push(s);
+      }
+    }
+    for (const sh of this.deletedShapes) {
+      if (!this.page.shapes.some((existing) => existing.id === sh.id)) {
+        this.page.shapes.push(sh);
+      }
+    }
+    for (const t of this.deletedTexts) {
+      if (!this.page.texts.some((existing) => existing.id === t.id)) {
+        this.page.texts.push(t);
+      }
+    }
+    for (const img of this.deletedImages) {
+      if (!this.page.images.some((existing) => existing.id === img.id)) {
+        this.page.images.push(img);
+      }
+    }
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class AddTextCommand implements HistoryCommand {
+  id: string;
+  description: string = "Add text";
+  private page: PageData;
+  private text: TextObject;
+  private onMutate: () => void;
+
+  constructor(page: PageData, text: TextObject, onMutate: () => void) {
+    this.id = `cmd_add_text_${Date.now()}`;
+    this.page = page;
+    this.text = { ...text };
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    if (!this.page.texts.some(t => t.id === this.text.id)) {
+      this.page.texts.push({ ...this.text });
+    }
+    this.onMutate();
+  }
+
+  undo(): void {
+    this.page.texts = this.page.texts.filter(t => t.id !== this.text.id);
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class ModifyTextCommand implements HistoryCommand {
+  id: string;
+  description: string = "Modify text";
+  private page: PageData;
+  private prevText: TextObject;
+  private nextText: TextObject;
+  private onMutate: () => void;
+
+  constructor(page: PageData, prevText: TextObject, nextText: TextObject, onMutate: () => void) {
+    this.id = `cmd_mod_text_${Date.now()}`;
+    this.page = page;
+    this.prevText = { ...prevText };
+    this.nextText = { ...nextText };
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    this.page.texts = this.page.texts.map(t => (t.id === this.nextText.id ? { ...this.nextText } : t));
+    this.onMutate();
+  }
+
+  undo(): void {
+    this.page.texts = this.page.texts.map(t => (t.id === this.prevText.id ? { ...this.prevText } : t));
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class AddImageCommand implements HistoryCommand {
+  id: string;
+  description: string = "Add image";
+  private page: PageData;
+  private image: ImageObject;
+  private onMutate: () => void;
+
+  constructor(page: PageData, image: ImageObject, onMutate: () => void) {
+    this.id = `cmd_add_img_${Date.now()}`;
+    this.page = page;
+    this.image = { ...image };
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    if (!this.page.images.some(img => img.id === this.image.id)) {
+      this.page.images.push({ ...this.image });
+    }
+    this.onMutate();
+  }
+
+  undo(): void {
+    this.page.images = this.page.images.filter(img => img.id !== this.image.id);
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class ModifyImageCommand implements HistoryCommand {
+  id: string;
+  description: string = "Modify image";
+  private page: PageData;
+  private previousImage: ImageObject;
+  private nextImage: ImageObject;
+  private onMutate: () => void;
+
+  constructor(
+    page: PageData,
+    previousImage: ImageObject,
+    nextImage: ImageObject,
+    onMutate: () => void
+  ) {
+    this.id = `cmd_mod_img_${Date.now()}`;
+    this.page = page;
+    this.previousImage = { ...previousImage };
+    this.nextImage = { ...nextImage };
+    this.onMutate = onMutate;
+  }
+
+  private applyImage(img: ImageObject): void {
+    const idx = this.page.images.findIndex((existing) => existing.id === img.id);
+    if (idx !== -1) {
+      this.page.images[idx] = { ...img };
+    } else {
+      this.page.images.push({ ...img });
+    }
+    this.onMutate();
+  }
+
+  execute(): void {
+    this.applyImage(this.nextImage);
+  }
+
+  undo(): void {
+    this.applyImage(this.previousImage);
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class AddElementsCommand implements HistoryCommand {
+  id: string;
+  description: string = "Add elements";
+  private page: PageData;
+  private addedStrokes: StrokeObject[];
+  private addedShapes: ShapeObject[];
+  private onMutate: () => void;
+
+  constructor(
+    page: PageData,
+    strokes: StrokeObject[],
+    shapes: ShapeObject[],
+    onMutate: () => void
+  ) {
+    this.id = `cmd_add_elems_${Date.now()}`;
+    this.page = page;
+    this.addedStrokes = [...strokes];
+    this.addedShapes = [...shapes];
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    for (const s of this.addedStrokes) {
+      if (!this.page.strokes.some((existing) => existing.id === s.id)) {
+        this.page.strokes.push(s);
+      }
+    }
+    for (const sh of this.addedShapes) {
+      if (!this.page.shapes.some((existing) => existing.id === sh.id)) {
+        this.page.shapes.push(sh);
+      }
+    }
+    this.onMutate();
+  }
+
+  undo(): void {
+    const strokeIds = new Set(this.addedStrokes.map((s) => s.id));
+    const shapeIds = new Set(this.addedShapes.map((sh) => sh.id));
+    this.page.strokes = this.page.strokes.filter((s) => !strokeIds.has(s.id));
+    this.page.shapes = this.page.shapes.filter((sh) => !shapeIds.has(sh.id));
+    this.onMutate();
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class MoveElementsAcrossPagesCommand implements HistoryCommand {
+  id: string;
+  description: string = "Move elements across pages";
+  private sourcePage: PageData;
+  private targetPage: PageData;
+  private sourceStrokes: StrokeObject[];
+  private targetStrokes: StrokeObject[];
+  private sourceShapes: ShapeObject[];
+  private targetShapes: ShapeObject[];
+  private sourceImages: ImageObject[];
+  private targetImages: ImageObject[];
+  private onMutate: (sourcePage: PageData, targetPage: PageData) => void;
+
+  constructor(
+    sourcePage: PageData,
+    targetPage: PageData,
+    sourceStrokes: StrokeObject[],
+    targetStrokes: StrokeObject[],
+    sourceShapes: ShapeObject[],
+    targetShapes: ShapeObject[],
+    onMutate: (sourcePage: PageData, targetPage: PageData) => void,
+    sourceImages: ImageObject[] = [],
+    targetImages: ImageObject[] = []
+  ) {
+    this.id = `cmd_move_across_${Date.now()}`;
+    this.sourcePage = sourcePage;
+    this.targetPage = targetPage;
+    this.sourceStrokes = [...sourceStrokes];
+    this.targetStrokes = [...targetStrokes];
+    this.sourceShapes = [...sourceShapes];
+    this.targetShapes = [...targetShapes];
+    this.sourceImages = [...sourceImages];
+    this.targetImages = [...targetImages];
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    const srcStrokeIds = new Set(this.sourceStrokes.map((s) => s.id));
+    const srcShapeIds = new Set(this.sourceShapes.map((sh) => sh.id));
+    const srcImageIds = new Set(this.sourceImages.map((img) => img.id));
+    this.sourcePage.strokes = this.sourcePage.strokes.filter((s) => !srcStrokeIds.has(s.id));
+    this.sourcePage.shapes = this.sourcePage.shapes.filter((sh) => !srcShapeIds.has(sh.id));
+    this.sourcePage.images = this.sourcePage.images.filter((img) => !srcImageIds.has(img.id));
+
+    for (const s of this.targetStrokes) {
+      if (!this.targetPage.strokes.some((existing) => existing.id === s.id)) {
+        this.targetPage.strokes.push(s);
+      }
+    }
+    for (const sh of this.targetShapes) {
+      if (!this.targetPage.shapes.some((existing) => existing.id === sh.id)) {
+        this.targetPage.shapes.push(sh);
+      }
+    }
+    for (const img of this.targetImages) {
+      if (!this.targetPage.images.some((existing) => existing.id === img.id)) {
+        this.targetPage.images.push(img);
+      }
+    }
+    this.onMutate(this.sourcePage, this.targetPage);
+  }
+
+  undo(): void {
+    const tgtStrokeIds = new Set(this.targetStrokes.map((s) => s.id));
+    const tgtShapeIds = new Set(this.targetShapes.map((sh) => sh.id));
+    const tgtImageIds = new Set(this.targetImages.map((img) => img.id));
+    this.targetPage.strokes = this.targetPage.strokes.filter((s) => !tgtStrokeIds.has(s.id));
+    this.targetPage.shapes = this.targetPage.shapes.filter((sh) => !tgtShapeIds.has(sh.id));
+    this.targetPage.images = this.targetPage.images.filter((img) => !tgtImageIds.has(img.id));
+
+    for (const s of this.sourceStrokes) {
+      if (!this.sourcePage.strokes.some((existing) => existing.id === s.id)) {
+        this.sourcePage.strokes.push(s);
+      }
+    }
+    for (const sh of this.sourceShapes) {
+      if (!this.sourcePage.shapes.some((existing) => existing.id === sh.id)) {
+        this.sourcePage.shapes.push(sh);
+      }
+    }
+    for (const img of this.sourceImages) {
+      if (!this.sourcePage.images.some((existing) => existing.id === img.id)) {
+        this.sourcePage.images.push(img);
+      }
+    }
+    this.onMutate(this.sourcePage, this.targetPage);
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class HistoryManager {
+  private undoStack: HistoryCommand[] = [];
+  private redoStack: HistoryCommand[] = [];
+  private maxStackSize: number = 80;
+  private onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
+
+  constructor(
+    maxStackSize: number = 80,
+    onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void
+  ) {
+    this.maxStackSize = maxStackSize;
+    this.onHistoryChange = onHistoryChange;
+  }
+
+  setOnHistoryChange(cb: (canUndo: boolean, canRedo: boolean) => void): void {
+    this.onHistoryChange = cb;
+  }
+
+  execute(command: HistoryCommand): void {
+    command.execute();
+    this.undoStack.push(command);
+    this.redoStack = [];
+
+    if (this.undoStack.length > this.maxStackSize) {
+      this.undoStack.shift();
+    }
+
+    this.notifyChange();
+  }
+
+  undo(): boolean {
+    if (this.undoStack.length === 0) {
+      return false;
+    }
+
+    const command = this.undoStack.pop()!;
+    command.undo();
+    this.redoStack.push(command);
+    this.notifyChange();
+    return true;
+  }
+
+  redo(): boolean {
+    if (this.redoStack.length === 0) {
+      return false;
+    }
+
+    const command = this.redoStack.pop()!;
+    command.redo();
+    this.undoStack.push(command);
+    this.notifyChange();
+    return true;
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 0;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  clear(): void {
+    this.undoStack = [];
+    this.redoStack = [];
+    this.notifyChange();
+  }
+
+  private notifyChange(): void {
+    if (this.onHistoryChange) {
+      this.onHistoryChange(this.canUndo(), this.canRedo());
+    }
+  }
+}

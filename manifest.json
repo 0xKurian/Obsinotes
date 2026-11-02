@@ -1,0 +1,9 @@
+{
+  "id": "obsinotes",
+  "name": "Obsinotes",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Multi-page digital whiteboard and notebook with stylus inking, paper templates, sticky notes, LaTeX, and Goodnotes-like continuous scrolling for Obsidian.",
+  "author": "Vinh-Hung",
+  "isDesktopOnly": false
+}
