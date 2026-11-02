@@ -320,13 +320,34 @@ describe("Sticky Notes Feature", () => {
 
       committedText = null;
       textController.startEditing(page, mockFrame, undefined, 60, 60, 200, 40, {
-        isSticky: false
+        isSticky: false,
+        fontSize: 18,
+        color: "#3b82f6"
       });
       assert.strictEqual(textController.isEditing(), true);
+      const activeTextObj = textController.getActiveText();
+      assert.notStrictEqual(activeTextObj, null);
+      assert.strictEqual(activeTextObj!.isSticky, false);
+      assert.strictEqual(activeTextObj!.fontSize, 18);
+      assert.strictEqual(activeTextObj!.color, "#3b82f6");
+
+      textController.updateActiveFormatting({ fontWeight: "bold", italic: true });
+      assert.strictEqual(textController.getActiveText()!.fontWeight, "bold");
+      assert.strictEqual(textController.getActiveText()!.italic, true);
+
+      const activeTextarea = textController.getActiveEditorContainer() as unknown as MockNode;
+      assert.notStrictEqual(activeTextarea, null);
+      activeTextarea.value = "Hello Obsidian NotePages!";
+
       textController.commitActiveEdit();
       assert.strictEqual(textController.isEditing(), false);
-      assert.strictEqual(page.texts.length, 1);
-      assert.strictEqual(committedText, null);
+      assert.strictEqual(page.texts.length, 2);
+      assert.strictEqual(page.texts[1].content, "Hello Obsidian NotePages!");
+      assert.strictEqual(page.texts[1].isSticky, false);
+      assert.strictEqual(page.texts[1].fontWeight, "bold");
+      assert.strictEqual(page.texts[1].italic, true);
+      assert.notStrictEqual(committedText, null);
+      assert.strictEqual(committedText!.content, "Hello Obsidian NotePages!");
     } finally {
       (globalThis as unknown as { document?: unknown }).document = previousDoc;
       (globalThis as unknown as { window?: unknown }).window = previousWin;

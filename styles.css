@@ -418,6 +418,16 @@
   cursor: grab;
 }
 
+.notepages-view-container.is-tool-text canvas.notepages-page-layer,
+.notepages-view-container.is-tool-text .notepages-page-frame {
+  cursor: text;
+}
+
+.notepages-view-container.is-tool-sticky canvas.notepages-page-layer,
+.notepages-view-container.is-tool-sticky .notepages-page-frame {
+  cursor: crosshair;
+}
+
 .notepages-view-container.is-space-panning .notepages-scroller,
 .notepages-view-container.is-space-panning canvas.notepages-page-layer,
 .notepages-view-container.is-space-panning .notepages-page-frame {
@@ -666,6 +676,13 @@ textarea.notepages-inline-text-editor {
   display: block;
   min-width: 60px;
   min-height: 30px;
+  pointer-events: auto;
+  caret-color: var(--interactive-accent);
+}
+
+textarea.notepages-inline-text-editor::placeholder {
+  color: var(--text-faint);
+  opacity: 0.7;
 }
 
 textarea.notepages-inline-text-editor:not(.notepages-sticky-note) {

@@ -654,6 +654,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
 
     this.scope.register(["Mod"], "z", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       e.preventDefault();
       this.clearActiveSelectionCanvas();
       this.historyManager.undo();
@@ -661,6 +664,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register(["Mod", "Shift"], "z", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       e.preventDefault();
       this.clearActiveSelectionCanvas();
       this.historyManager.redo();
@@ -668,6 +674,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register(["Mod"], "y", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       e.preventDefault();
       this.clearActiveSelectionCanvas();
       this.historyManager.redo();
@@ -675,6 +684,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register(["Mod"], "d", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       if (this.selectionController.hasSelection()) {
         e.preventDefault();
         this.duplicateActiveSelection();
@@ -684,6 +696,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register(["Mod"], "c", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       if (this.selectionController.hasSelection()) {
         e.preventDefault();
         this.copySelection();
@@ -693,6 +708,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register(["Mod"], "v", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       if (this.clipboard) {
         e.preventDefault();
         this.pasteSelection();
@@ -702,6 +720,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register([], "Delete", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       if (this.selectionController.hasSelection()) {
         e.preventDefault();
         this.deleteActiveSelection();
@@ -868,6 +889,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.scope.register([], "Escape", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
       if (this.selectionController.hasSelection()) {
         e.preventDefault();
         this.clearActiveSelectionCanvas();
@@ -1314,6 +1338,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         return;
       }
       e.preventDefault();
+      const clientX = e.clientX;
+      const clientY = e.clientY;
       const menu = new Menu();
 
       const hasSelection = this.selectionController.hasSelection();
@@ -1342,7 +1368,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           .setTitle("Add text box")
           .setIcon("type")
           .onClick(() => {
-            this.insertTextBox();
+            this.insertTextBox(undefined, clientX, clientY);
           });
       });
 
@@ -1351,7 +1377,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           .setTitle("Add sticky note")
           .setIcon("sticky-note")
           .onClick(() => {
-            this.insertStickyNote();
+            this.insertStickyNote(undefined, clientX, clientY);
           });
       });
 
@@ -1665,6 +1691,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
 
     this.rootContainerEl.toggleClass("is-tool-select", tool === "select");
+    this.rootContainerEl.toggleClass("is-tool-text", tool === "text");
+    this.rootContainerEl.toggleClass("is-tool-sticky", tool === "sticky");
     this.toolbar.setActiveTool(tool, this.currentShapeType, this.selectionController.hasSelection());
     this.updateStatusDisplay();
   }
@@ -2700,8 +2728,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
       if (this.textController.isEditing()) {
         this.textController.commitActiveEdit();
-        e.stopPropagation();
-        return;
+        if (this.inkingController.activeTool !== "text" && this.inkingController.activeTool !== "sticky") {
+          e.stopPropagation();
+          return;
+        }
       }
 
       if (this.inkingController.activeTool === "text" || this.inkingController.activeTool === "sticky") {
@@ -2938,6 +2968,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         const fallbackW = isSticky ? 140 : 220;
         const fallbackH = isSticky ? 140 : 60;
 
+        const isDarkPaper = this.isDarkColor(page.template.backgroundColor);
+        const resolvedTextColor = this.currentTextOptions.color === "#1e293b" && isDarkPaper
+          ? "#f8fafc"
+          : this.currentTextOptions.color;
+
         const options: TextFormattingOptions = isSticky
           ? {
               isSticky: true,
@@ -2949,7 +2984,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
               underline: false,
               textAlign: "left"
             }
-          : this.currentTextOptions;
+          : {
+              ...this.currentTextOptions,
+              color: resolvedTextColor
+            };
 
         if (rawW > 20 || rawH > 20) {
           const initialWidth = Math.min(maxAvailableW, Math.max(60, Math.round(rawW)));
@@ -2962,6 +3000,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           const adjustedY = Math.max(margin, Math.min(y, page.dimensions.height - margin - defaultH));
           this.textController.startEditing(page, pageFrame, undefined, adjustedX, adjustedY, defaultW, defaultH, options);
         }
+        e.stopPropagation();
+        e.preventDefault();
         return;
       }
 
@@ -3231,6 +3271,29 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       );
       if (hit?.text) {
         this.textController.startEditing(page, pageFrame, hit.text);
+      } else {
+        const defaultW = 220;
+        const defaultH = 60;
+        const margin = 10;
+        const adjustedX = Math.max(margin, Math.min(pageX, page.dimensions.width - margin - defaultW));
+        const adjustedY = Math.max(margin, Math.min(pageY, page.dimensions.height - margin - defaultH));
+        const isDarkPaper = this.isDarkColor(page.template.backgroundColor);
+        const resolvedTextColor = this.currentTextOptions.color === "#1e293b" && isDarkPaper
+          ? "#f8fafc"
+          : this.currentTextOptions.color;
+        this.textController.startEditing(
+          page,
+          pageFrame,
+          undefined,
+          adjustedX,
+          adjustedY,
+          defaultW,
+          defaultH,
+          {
+            ...this.currentTextOptions,
+            color: resolvedTextColor
+          }
+        );
       }
     });
   }
@@ -3786,35 +3849,137 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     return this.importHandler.importPdfFile(pdfFile, destinationFolder, forceNewNotebook, targetPageNumber);
   }
 
-  insertTextBox(targetPageId?: string): void {
-    const targetPage = targetPageId
-      ? this.pageManager?.getPage(targetPageId)
-      : this.pageManager?.getPageByNumber(this.currentPageNumber);
+  insertTextBox(targetPageId?: string, clientX?: number, clientY?: number): void {
+    let targetPage = targetPageId ? this.pageManager?.getPage(targetPageId) : null;
+    let targetFrame = targetPage ? this.getPageFrame(targetPage.pageNumber) : null;
+    let insertX = 60;
+    let insertY = 100;
+
+    if (clientX !== undefined && clientY !== undefined) {
+      const targetInfo = this.getTargetPageForClientPoint(clientX, clientY);
+      if (targetInfo) {
+        targetPage = targetInfo.page;
+        targetFrame = this.getPageFrame(targetInfo.page.pageNumber);
+        insertX = targetInfo.pointOnPage.x;
+        insertY = targetInfo.pointOnPage.y;
+      }
+    }
+
+    if (!targetPage) {
+      targetPage = this.pageManager?.getPageByNumber(this.currentPageNumber);
+    }
     if (!targetPage) {
       return;
     }
-    this.setActiveTool("text");
-    const frameEl = this.getPageFrame(targetPage.pageNumber);
-    if (frameEl) {
-      this.textController.startEditing(targetPage, frameEl, undefined, 60, 100, undefined, undefined, this.currentTextOptions);
+    if (!targetFrame) {
+      targetFrame = this.getPageFrame(targetPage.pageNumber);
     }
+    if (!targetFrame) {
+      return;
+    }
+
+    if (clientX === undefined || clientY === undefined) {
+      const scrollerRect = this.scrollerEl.getBoundingClientRect();
+      const frameRect = targetFrame.getBoundingClientRect();
+      if (frameRect.bottom > scrollerRect.top && frameRect.top < scrollerRect.bottom) {
+        const visibleTop = Math.max(frameRect.top, scrollerRect.top);
+        const visibleBottom = Math.min(frameRect.bottom, scrollerRect.bottom);
+        const centerY = (visibleTop + visibleBottom) / 2;
+        const scaleY = targetPage.dimensions.height / frameRect.height;
+        insertY = Math.round((centerY - frameRect.top) * scaleY);
+      }
+    }
+
+    this.setActiveTool("text");
+
+    const defaultW = 220;
+    const defaultH = 60;
+    const margin = 10;
+    const adjustedX = Math.max(margin, Math.min(insertX, targetPage.dimensions.width - margin - defaultW));
+    const adjustedY = Math.max(margin, Math.min(insertY, targetPage.dimensions.height - margin - defaultH));
+
+    const isDarkPaper = this.isDarkColor(targetPage.template.backgroundColor);
+    const resolvedTextColor = this.currentTextOptions.color === "#1e293b" && isDarkPaper
+      ? "#f8fafc"
+      : this.currentTextOptions.color;
+
+    this.textController.startEditing(
+      targetPage,
+      targetFrame,
+      undefined,
+      adjustedX,
+      adjustedY,
+      defaultW,
+      defaultH,
+      {
+        ...this.currentTextOptions,
+        color: resolvedTextColor
+      }
+    );
   }
 
-  insertStickyNote(targetPageId?: string): void {
-    const targetPage = targetPageId
-      ? this.pageManager?.getPage(targetPageId)
-      : this.pageManager?.getPageByNumber(this.currentPageNumber);
+  insertStickyNote(targetPageId?: string, clientX?: number, clientY?: number): void {
+    let targetPage = targetPageId ? this.pageManager?.getPage(targetPageId) : null;
+    let targetFrame = targetPage ? this.getPageFrame(targetPage.pageNumber) : null;
+    let insertX = 60;
+    let insertY = 100;
+
+    if (clientX !== undefined && clientY !== undefined) {
+      const targetInfo = this.getTargetPageForClientPoint(clientX, clientY);
+      if (targetInfo) {
+        targetPage = targetInfo.page;
+        targetFrame = this.getPageFrame(targetInfo.page.pageNumber);
+        insertX = targetInfo.pointOnPage.x;
+        insertY = targetInfo.pointOnPage.y;
+      }
+    }
+
+    if (!targetPage) {
+      targetPage = this.pageManager?.getPageByNumber(this.currentPageNumber);
+    }
     if (!targetPage) {
       return;
     }
+    if (!targetFrame) {
+      targetFrame = this.getPageFrame(targetPage.pageNumber);
+    }
+    if (!targetFrame) {
+      return;
+    }
+
+    if (clientX === undefined || clientY === undefined) {
+      const scrollerRect = this.scrollerEl.getBoundingClientRect();
+      const frameRect = targetFrame.getBoundingClientRect();
+      if (frameRect.bottom > scrollerRect.top && frameRect.top < scrollerRect.bottom) {
+        const visibleTop = Math.max(frameRect.top, scrollerRect.top);
+        const visibleBottom = Math.min(frameRect.bottom, scrollerRect.bottom);
+        const centerY = (visibleTop + visibleBottom) / 2;
+        const scaleY = targetPage.dimensions.height / frameRect.height;
+        insertY = Math.round((centerY - frameRect.top) * scaleY);
+      }
+    }
+
     this.setActiveTool("sticky");
-    const frameEl = this.getPageFrame(targetPage.pageNumber);
-    if (frameEl) {
-      this.textController.startEditing(targetPage, frameEl, undefined, 60, 100, 140, 140, {
+
+    const defaultW = 140;
+    const defaultH = 140;
+    const margin = 10;
+    const adjustedX = Math.max(margin, Math.min(insertX, targetPage.dimensions.width - margin - defaultW));
+    const adjustedY = Math.max(margin, Math.min(insertY, targetPage.dimensions.height - margin - defaultH));
+
+    this.textController.startEditing(
+      targetPage,
+      targetFrame,
+      undefined,
+      adjustedX,
+      adjustedY,
+      defaultW,
+      defaultH,
+      {
         isSticky: true,
         backgroundColor: this.currentStickyColor
-      });
-    }
+      }
+    );
   }
 
   mountPageCanvases(pageNumber: number): void {

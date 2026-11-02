@@ -273,10 +273,23 @@ export class TextController {
       textDecoration: currentText.underline ? "underline" : "none",
       textAlign: currentText.textAlign,
       color: currentText.color,
+      caretColor: "var(--interactive-accent)",
       ...(currentText.isSticky && currentText.backgroundColor ? { backgroundColor: currentText.backgroundColor } : {})
     });
 
     textarea.addEventListener("pointerdown", (e: PointerEvent) => {
+      e.stopPropagation();
+    });
+    textarea.addEventListener("pointerup", (e: PointerEvent) => {
+      e.stopPropagation();
+    });
+    textarea.addEventListener("mousedown", (e: MouseEvent) => {
+      e.stopPropagation();
+    });
+    textarea.addEventListener("mouseup", (e: MouseEvent) => {
+      e.stopPropagation();
+    });
+    textarea.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
     });
 
@@ -369,6 +382,10 @@ export class TextController {
 
     this.callbacks.onEditingStarted?.();
     this.notifyFormattingChanged();
+
+    textarea.focus();
+    textarea.selectionStart = textarea.value.length;
+    textarea.selectionEnd = textarea.value.length;
 
     window.setTimeout(() => {
       textarea.focus();
