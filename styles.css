@@ -7,6 +7,7 @@
   background-color: var(--background-primary);
   color: var(--text-normal);
   font-family: var(--font-interface);
+  container-type: inline-size;
 }
 
 .notepages-toolbar {
@@ -14,22 +15,32 @@
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: 3px 6px;
   background-color: var(--background-secondary);
   border-bottom: 1px solid var(--divider-color);
-  height: 42px;
-  min-height: 42px;
-  max-height: 42px;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
   box-sizing: border-box;
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
-  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg) transparent;
+  gap: 4px;
 }
 
 .notepages-toolbar::-webkit-scrollbar {
-  display: none;
+  height: 3px;
+}
+
+.notepages-toolbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notepages-toolbar::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-bg);
+  border-radius: 3px;
 }
 
 .notepages-toolbar-left,
@@ -37,16 +48,16 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex-wrap: nowrap;
   flex-shrink: 0;
 }
 
 .notepages-toolbar-separator {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background-color: var(--divider-color);
-  margin: 0 3px;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
@@ -61,14 +72,14 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex-wrap: nowrap;
   flex-shrink: 0;
 }
 
 .notepages-color-chip {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   border: 1px solid rgba(0, 0, 0, 0.2);
   cursor: pointer;
@@ -83,7 +94,7 @@
 }
 
 .notepages-color-chip.is-active {
-  box-shadow: 0 0 0 2px var(--background-secondary), 0 0 0 4px var(--interactive-accent);
+  box-shadow: 0 0 0 1.5px var(--background-secondary), 0 0 0 3px var(--interactive-accent);
   transform: scale(1.1);
 }
 
@@ -95,8 +106,8 @@
 }
 
 .notepages-color-picker-input {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1px solid var(--divider-color);
   border-radius: var(--button-radius, 4px);
@@ -108,8 +119,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--button-radius, 4px);
   border: 1px solid var(--divider-color);
   background-color: var(--interactive-normal);
@@ -140,12 +151,12 @@
 .notepages-width-slider-wrapper {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-left: 2px;
 }
 
 .notepages-width-slider {
-  width: 64px;
+  width: 48px;
   height: 4px;
   cursor: pointer;
   accent-color: var(--interactive-accent);
@@ -158,7 +169,7 @@
   font-size: 11px;
   font-family: var(--font-monospace);
   color: var(--text-muted);
-  min-width: 38px;
+  min-width: 30px;
   text-align: right;
   user-select: none;
 }
@@ -167,19 +178,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: 1px solid var(--divider-color);
   border-radius: var(--button-radius, 4px);
   background-color: var(--background-primary);
-  margin-left: 2px;
+  margin-left: 1px;
 }
 
 .notepages-width-preview-dot {
   border-radius: 50%;
   background-color: var(--text-normal);
-  max-width: 18px;
-  max-height: 18px;
+  max-width: 16px;
+  max-height: 16px;
   transition: width 0.1s ease, height 0.1s ease, background-color 0.1s ease;
 }
 
@@ -187,9 +198,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
   padding: 0;
   border-radius: var(--button-radius, 4px);
   border: 1px solid var(--divider-color);
@@ -203,8 +214,8 @@
 }
 
 .notepages-tool-button svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 .notepages-tool-button:hover {
@@ -220,10 +231,22 @@
 
 .notepages-zoom-btn {
   width: auto;
-  min-width: 44px;
-  padding: 0 6px;
+  min-width: 34px;
+  padding: 0 4px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+@container (max-width: 980px) {
+  .notepages-width-badge {
+    display: none;
+  }
+}
+
+@container (max-width: 920px) {
+  .notepages-width-slider {
+    width: 36px;
+  }
 }
 
 .notepages-main-area {

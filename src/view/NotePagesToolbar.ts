@@ -178,7 +178,7 @@ export class NotePagesToolbar {
     this.textControlsContainer = leftGroup.createDiv({
       cls: "notepages-palette-group"
     });
-    this.textControlsContainer.style.display = currentActiveTool === "text" ? "flex" : "none";
+    this.textControlsContainer.toggle(currentActiveTool === "text");
 
     const textOpts = this.delegate.getTextOptions();
     this.textSizeSelect = this.textControlsContainer.createEl("select", {
@@ -256,7 +256,7 @@ export class NotePagesToolbar {
     this.shapeControlsContainer = leftGroup.createDiv({
       cls: "notepages-palette-group"
     });
-    this.shapeControlsContainer.style.display = currentActiveTool === "shape" ? "flex" : "none";
+    this.shapeControlsContainer.toggle(currentActiveTool === "shape");
 
     this.shapeButtons.clear();
     const shapeDefs: { type: ShapeType; icon: string; title: string }[] = [
@@ -297,7 +297,7 @@ export class NotePagesToolbar {
     this.stickyControlsContainer = leftGroup.createDiv({
       cls: "notepages-palette-group"
     });
-    this.stickyControlsContainer.style.display = currentActiveTool === "sticky" ? "flex" : "none";
+    this.stickyControlsContainer.toggle(currentActiveTool === "sticky");
 
     const pastelColors = [
       { color: "#fef08a", title: "Yellow" },
@@ -314,7 +314,7 @@ export class NotePagesToolbar {
       const chip = this.stickyControlsContainer.createEl("button", {
         cls: item.color === currentStickyColor ? "notepages-sticky-chip is-active" : "notepages-sticky-chip"
       });
-      chip.style.backgroundColor = item.color;
+      chip.setCssStyles({ backgroundColor: item.color });
       chip.setAttribute("title", `Sticky Note ${item.title}`);
       this.stickyChips.push(chip);
 
@@ -354,7 +354,7 @@ export class NotePagesToolbar {
       const chip = this.colorPaletteContainer.createEl("button", {
         cls: color === currentActiveColor ? "notepages-color-chip is-active" : "notepages-color-chip"
       });
-      chip.style.backgroundColor = color;
+      chip.setCssStyles({ backgroundColor: color });
       chip.setAttribute("title", `Select color ${color}`);
       this.colorChips.push(chip);
 
@@ -383,31 +383,8 @@ export class NotePagesToolbar {
       cls: "notepages-palette-group"
     });
 
-    const widthPresets: { width: number; dotSize: number; title: string }[] = [
-      { width: 1.0, dotSize: 3, title: "Fine (1.0pt)" },
-      { width: 2.5, dotSize: 6, title: "Medium (2.5pt)" },
-      { width: 5.0, dotSize: 9, title: "Thick (5.0pt)" },
-      { width: 10.0, dotSize: 13, title: "Marker (10.0pt)" },
-      { width: 18.0, dotSize: 17, title: "Highlight (18.0pt)" }
-    ];
-
     const currentActiveWidth = this.delegate.getActiveWidth();
     this.widthButtons = [];
-    for (const preset of widthPresets) {
-      const btn = this.widthSelectorContainer.createEl("button", {
-        cls: preset.width === currentActiveWidth ? "notepages-width-btn is-active" : "notepages-width-btn"
-      });
-      btn.setAttribute("title", preset.title);
-      const dot = btn.createDiv({ cls: "notepages-width-dot" });
-      dot.style.width = `${preset.dotSize}px`;
-      dot.style.height = `${preset.dotSize}px`;
-      btn.dataset.width = String(preset.width);
-      this.widthButtons.push(btn);
-
-      this.delegate.registerDomEvent(btn, "click", () => {
-        this.delegate.onSelectWidth(preset.width);
-      });
-    }
 
     const sliderWrapper = this.widthSelectorContainer.createDiv({
       cls: "notepages-width-slider-wrapper"
@@ -436,9 +413,11 @@ export class NotePagesToolbar {
       cls: "notepages-width-preview-dot"
     });
     const previewSize = Math.min(18, Math.max(2, currentActiveWidth));
-    this.widthPreviewDot.style.width = `${previewSize}px`;
-    this.widthPreviewDot.style.height = `${previewSize}px`;
-    this.widthPreviewDot.style.backgroundColor = this.delegate.getActiveColor();
+    this.widthPreviewDot.setCssStyles({
+      width: `${previewSize}px`,
+      height: `${previewSize}px`,
+      backgroundColor: this.delegate.getActiveColor()
+    });
 
     this.delegate.registerDomEvent(this.widthSliderInput, "input", () => {
       const val = Math.round(Number(this.widthSliderInput.value) * 10) / 10;
@@ -447,6 +426,7 @@ export class NotePagesToolbar {
 
     this.delegate.registerDomEvent(sliderWrapper, "wheel", (e: WheelEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const current = Number(this.widthSliderInput.value) || 2.5;
       const step = e.deltaY < 0 ? 0.5 : -0.5;
       const next = Math.max(0.5, Math.min(30, Math.round((current + step) * 10) / 10));
@@ -620,6 +600,13 @@ export class NotePagesToolbar {
     this.delegate.registerDomEvent(deletePageBtn, "click", () => {
       this.delegate.onDeleteCurrentPage();
     });
+
+    this.delegate.registerDomEvent(this.toolbarEl, "wheel", (e: WheelEvent) => {
+      if (e.deltaY !== 0 && !e.shiftKey && this.toolbarEl.scrollWidth > this.toolbarEl.clientWidth) {
+        this.toolbarEl.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    });
   }
 
   setActiveTool(tool: ToolType, currentShapeType: ShapeType, hasSelection: boolean): void {
@@ -643,22 +630,22 @@ export class NotePagesToolbar {
 
     const usesPenColors = isPen || tool === "shape" || tool === "connector" || tool === "highlighter" || tool === "text";
     if (this.colorPaletteContainer) {
-      this.colorPaletteContainer.style.display = usesPenColors ? "flex" : "none";
+      this.colorPaletteContainer.toggle(usesPenColors);
     }
     if (this.widthSelectorContainer) {
-      this.widthSelectorContainer.style.display = (isPen || tool === "shape" || tool === "connector" || tool === "highlighter") ? "flex" : "none";
+      this.widthSelectorContainer.toggle(isPen || tool === "shape" || tool === "connector" || tool === "highlighter");
     }
     if (this.eraserControlsContainer) {
-      this.eraserControlsContainer.style.display = tool === "eraser" ? "flex" : "none";
+      this.eraserControlsContainer.toggle(tool === "eraser");
     }
     if (this.selectionActionsContainer) {
-      this.selectionActionsContainer.style.display = (tool === "lasso" && hasSelection) ? "flex" : "none";
+      this.selectionActionsContainer.toggle(tool === "lasso" && hasSelection);
     }
     if (this.textControlsContainer) {
-      this.textControlsContainer.style.display = tool === "text" ? "flex" : "none";
+      this.textControlsContainer.toggle(tool === "text");
     }
     if (this.shapeControlsContainer) {
-      this.shapeControlsContainer.style.display = tool === "shape" ? "flex" : "none";
+      this.shapeControlsContainer.toggle(tool === "shape");
     }
     if (tool === "shape") {
       this.shapeButtons.forEach((b, t) => {
@@ -666,7 +653,7 @@ export class NotePagesToolbar {
       });
     }
     if (this.stickyControlsContainer) {
-      this.stickyControlsContainer.style.display = tool === "sticky" ? "flex" : "none";
+      this.stickyControlsContainer.toggle(tool === "sticky");
     }
   }
 
@@ -682,18 +669,11 @@ export class NotePagesToolbar {
       this.colorPickerInput.value = color;
     }
     if (this.widthPreviewDot) {
-      this.widthPreviewDot.style.backgroundColor = color;
+      this.widthPreviewDot.setCssStyles({ backgroundColor: color });
     }
   }
 
   setActiveWidth(width: number): void {
-    for (const btn of this.widthButtons) {
-      if (Number(btn.dataset.width) === width) {
-        btn.addClass("is-active");
-      } else {
-        btn.removeClass("is-active");
-      }
-    }
     if (this.widthSliderInput) {
       this.widthSliderInput.value = String(width);
     }
@@ -702,8 +682,10 @@ export class NotePagesToolbar {
     }
     if (this.widthPreviewDot) {
       const previewSize = Math.min(18, Math.max(2, width));
-      this.widthPreviewDot.style.width = `${previewSize}px`;
-      this.widthPreviewDot.style.height = `${previewSize}px`;
+      this.widthPreviewDot.setCssStyles({
+        width: `${previewSize}px`,
+        height: `${previewSize}px`
+      });
     }
   }
 
