@@ -33,16 +33,16 @@ export class ExportModal extends Modal {
     contentEl.empty();
     contentEl.addClass("notepages-export-modal");
 
-    contentEl.createEl("h3", { text: "Export Notebook" });
+    contentEl.createEl("h3", { text: "Export notebook" });
 
     new Setting(contentEl)
       .setName("Export format")
       .setDesc("Choose the output format for your notebook.")
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("pdf", "PDF Document (.pdf)")
-          .addOption("png", "PNG Image (.png)")
-          .addOption("svg", "SVG Vector (.svg)")
+          .addOption("pdf", "PDF document (.PDF)")
+          .addOption("png", "PNG image (.PNG)")
+          .addOption("svg", "SVG vector (.SVG)")
           .setValue(this.options.format)
           .onChange((value) => {
             this.options.format = value as ExportFormat;
@@ -64,8 +64,7 @@ export class ExportModal extends Modal {
           .onChange((value) => {
             this.options.pageRange = value as ExportPageRange;
             if (customRangeSetting) {
-              customRangeSetting.settingEl.style.display =
-                this.options.pageRange === "custom" ? "flex" : "none";
+              customRangeSetting.settingEl.toggle(this.options.pageRange === "custom");
             }
           });
       });
@@ -81,17 +80,16 @@ export class ExportModal extends Modal {
             this.options.customPageRange = value;
           });
       });
-    customRangeSetting.settingEl.style.display =
-      this.options.pageRange === "custom" ? "flex" : "none";
+    customRangeSetting.settingEl.toggle(this.options.pageRange === "custom");
 
     const resolutionSetting = new Setting(contentEl)
       .setName("Export resolution")
       .setDesc("Image resolution for rasterized content.")
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("1", "Standard (72 DPI - 1x)")
-          .addOption("2", "High Quality (144 DPI - 2x)")
-          .addOption("4.167", "Print Quality (300 DPI - 4x)")
+          .addOption("1", "Standard (72 dpi - 1x)")
+          .addOption("2", "High quality (144 dpi - 2x)")
+          .addOption("4.167", "Print quality (300 dpi - 4x)")
           .setValue(String(this.options.resolution))
           .onChange((value) => {
             this.options.resolution = parseFloat(value);
@@ -100,7 +98,7 @@ export class ExportModal extends Modal {
 
     new Setting(contentEl)
       .setName("Include paper template")
-      .setDesc("Include background pattern (ruled lines, grid, dots, or Cornell).")
+      .setDesc("Include background pattern (ruled lines, grid, dots, or cornell).")
       .addToggle((toggle) => {
         toggle
           .setValue(this.options.includeBackgroundTemplate)
@@ -125,8 +123,8 @@ export class ExportModal extends Modal {
       .setDesc("Save to Obsidian vault or download to computer.")
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("vault", "Save to Obsidian Vault")
-          .addOption("download", "Download to Computer")
+          .addOption("vault", "Save to Obsidian vault")
+          .addOption("download", "Download to computer")
           .setValue(this.options.destination)
           .onChange((value) => {
             this.options.destination = value as ExportDestination;
@@ -134,10 +132,6 @@ export class ExportModal extends Modal {
       });
 
     const buttonRow = contentEl.createDiv({ cls: "notepages-export-actions" });
-    buttonRow.style.display = "flex";
-    buttonRow.style.justifyContent = "flex-end";
-    buttonRow.style.gap = "10px";
-    buttonRow.style.marginTop = "24px";
 
     const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
     cancelBtn.addEventListener("click", () => {
@@ -148,19 +142,21 @@ export class ExportModal extends Modal {
       cls: "mod-cta",
       text: "Export"
     });
-    exportBtn.addEventListener("click", async () => {
+    exportBtn.addEventListener("click", () => {
       exportBtn.disabled = true;
       exportBtn.setText("Exporting...");
-      try {
-        await this.onExport(this.options);
-      } finally {
-        this.close();
-      }
+      void (async () => {
+        try {
+          await this.onExport(this.options);
+        } finally {
+          this.close();
+        }
+      })();
     });
 
     this.updateVisibility = () => {
       const isSvg = this.options.format === "svg";
-      resolutionSetting.settingEl.style.display = isSvg ? "none" : "flex";
+      resolutionSetting.settingEl.toggle(!isSvg);
     };
     this.updateVisibility();
   }

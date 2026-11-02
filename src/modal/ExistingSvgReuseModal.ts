@@ -28,49 +28,30 @@ export class ExistingSvgReuseModal extends Modal {
     contentEl.empty();
     contentEl.addClass("notepages-existing-svg-modal");
 
-    const titleEl = contentEl.createEl("h3", { text: "Existing SVG Assets Found" });
-    titleEl.style.marginBottom = "14px";
+    contentEl.createEl("h3", { text: "Existing SVG assets found" });
 
     const noticeBox = contentEl.createDiv({ cls: "notepages-svg-found-box" });
-    noticeBox.style.padding = "12px 14px";
-    noticeBox.style.backgroundColor = "var(--background-secondary)";
-    noticeBox.style.borderRadius = "8px";
-    noticeBox.style.marginBottom = "16px";
-    noticeBox.style.border = "1px solid var(--background-modifier-border)";
 
-    const pathLine = noticeBox.createDiv();
-    pathLine.style.display = "flex";
-    pathLine.style.alignItems = "center";
-    pathLine.style.gap = "8px";
+    const pathLine = noticeBox.createDiv({ cls: "notepages-svg-path-line" });
     const folderIcon = pathLine.createSpan();
     setIcon(folderIcon, "folder");
     pathLine.createEl("strong", { text: this.folderPath });
 
-    const countLine = noticeBox.createDiv({
+    noticeBox.createDiv({
+      cls: "notepages-svg-count-line",
       text: `Contains ${this.svgCount} converted SVG page assets previously generated for "${this.baseName}".`
     });
-    countLine.style.color = "var(--text-muted)";
-    countLine.style.fontSize = "0.9em";
-    countLine.style.marginTop = "4px";
 
-    const questionEl = contentEl.createEl("p", {
+    contentEl.createEl("p", {
       text: "Would you like to reuse these existing SVG pages or re-convert the entire document from PDF?"
     });
-    questionEl.style.marginBottom = "20px";
-    questionEl.style.color = "var(--text-normal)";
 
-    const btnContainer = contentEl.createDiv();
-    btnContainer.style.display = "flex";
-    btnContainer.style.flexDirection = "column";
-    btnContainer.style.gap = "10px";
+    const btnContainer = contentEl.createDiv({ cls: "notepages-svg-reuse-actions" });
 
     const reuseBtn = btnContainer.createEl("button", {
       cls: "mod-cta",
-      text: `Reuse Existing SVG (${this.svgCount} pages) - Recommended`
+      text: `Reuse existing SVG (${this.svgCount} pages) (recommended)`
     });
-    reuseBtn.style.padding = "10px 16px";
-    reuseBtn.style.textAlign = "center";
-    reuseBtn.style.fontWeight = "bold";
     reuseBtn.addEventListener("click", () => {
       this.close();
       this.onReuseExisting();
@@ -80,8 +61,6 @@ export class ExistingSvgReuseModal extends Modal {
       cls: "mod-primary",
       text: "Re-convert from PDF"
     });
-    reconvertBtn.style.padding = "10px 16px";
-    reconvertBtn.style.textAlign = "center";
     reconvertBtn.addEventListener("click", () => {
       this.close();
       this.onReconvertPdf();

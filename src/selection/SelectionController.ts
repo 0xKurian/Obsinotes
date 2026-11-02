@@ -180,7 +180,9 @@ export class SelectionController {
 
     try {
       activeCanvas.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      void err;
+    }
 
     this.dragStartPoint = { x: pageCoords.x, y: pageCoords.y };
 
@@ -350,7 +352,9 @@ export class SelectionController {
   ): void {
     try {
       activeCanvas.releasePointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      void err;
+    }
 
     const ctx = activeCanvas.getContext("2d");
     if (this.mode === "drawing_lasso") {

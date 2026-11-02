@@ -5,6 +5,8 @@ import {
   Notice,
   Scope,
   Menu,
+  Modal,
+  App,
   renderMath,
   finishRenderMath,
   loadMathJax
@@ -61,6 +63,38 @@ import { ExportModal } from "../modal/ExportModal";
 import { ExportEngine } from "../export/ExportEngine";
 import { PerformanceMonitor } from "../performance/PerformanceMonitor";
 import { PageVirtualizer } from "../performance/PageVirtualizer";
+
+class ConfirmResetModal extends Modal {
+  private message: string;
+  private onConfirm: () => void;
+
+  constructor(app: App, message: string, onConfirm: () => void) {
+    super(app);
+    this.message = message;
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("p", { text: this.message });
+    const footer = contentEl.createDiv({ cls: "notepages-folder-picker-footer" });
+    const cancelBtn = footer.createEl("button", { text: "Cancel" });
+    cancelBtn.addEventListener("click", () => {
+      this.close();
+    });
+    const confirmBtn = footer.createEl("button", { cls: "mod-warning", text: "Confirm" });
+    confirmBtn.addEventListener("click", () => {
+      this.close();
+      this.onConfirm();
+    });
+  }
+
+  onClose(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
 
 export class NotePagesView extends TextFileView implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate {
   plugin: NotePagesPlugin;
@@ -235,7 +269,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           }
         },
         onWikilinkClick: (linkTarget, event) => {
-          this.app.workspace.openLinkText(
+          void this.app.workspace.openLinkText(
             linkTarget,
             this.file?.path || "",
             event.ctrlKey || event.metaKey
@@ -570,8 +604,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       if (this.pagesContainerEl) {
         this.pagesContainerEl.empty();
       }
-      setTimeout(() => {
-        this.leaf.setViewState({
+      window.setTimeout(() => {
+        void this.leaf.setViewState({
           type: "markdown",
           state: { file: file.path }
         });
@@ -588,7 +622,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.document?.metadata?.title) {
       return this.document.metadata.title;
     }
-    return "NotePages Notebook";
+    return "Notepages notebook";
   }
 
   getIcon(): string {
@@ -598,7 +632,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   async onOpen(): Promise<void> {
     try {
       await loadMathJax();
-    } catch {}
+    } catch (err) {
+      void err;
+    }
 
     this.contentEl.empty();
 
@@ -913,8 +949,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       if (this.pagesContainerEl) {
         this.pagesContainerEl.empty();
       }
-      setTimeout(() => {
-        this.leaf.setViewState({
+      window.setTimeout(() => {
+        void this.leaf.setViewState({
           type: "markdown",
           state: { file: this.file?.path }
         });
@@ -967,7 +1003,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pagesContainerEl.empty();
     this.sidebar.clear();
     if (this.statusSaveInfoEl) {
-      this.statusSaveInfoEl.setText("Protected (Read-only)");
+      this.statusSaveInfoEl.setText("Protected (read-only)");
       this.statusSaveInfoEl.addClass("notepages-status-error");
     }
 
@@ -976,7 +1012,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     banner.createEl("h3", {
-      text: "NotePages Safe Mode: Data Protection Activated"
+      text: "Notepages safe mode: data protection activated"
     });
 
     banner.createEl("p", {
@@ -994,7 +1030,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     const rawBtn = actions.createEl("button", {
-      text: "Open as Raw Markdown",
+      text: "Open as raw Markdown",
       cls: "mod-cta"
     });
     this.registerDomEvent(rawBtn, "click", async () => {
@@ -1007,7 +1043,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     const emergencyBackupBtn = actions.createEl("button", {
-      text: "Create Emergency Backup Copy"
+      text: "Create emergency backup copy"
     });
     this.registerDomEvent(emergencyBackupBtn, "click", async () => {
       if (this.file) {
@@ -1017,23 +1053,27 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     const overwriteBtn = actions.createEl("button", {
-      text: "Discard and Reset to New Notebook",
+      text: "Discard and reset to new notebook",
       cls: "mod-warning"
     });
     this.registerDomEvent(overwriteBtn, "click", () => {
-      if (confirm("Are you sure you want to discard the corrupted document and reset? This cannot be undone.")) {
-        this.isCorrupted = false;
-        if (this.file) {
-          this.storageManager.clearCorrupted(this.file.path);
+      new ConfirmResetModal(
+        this.app,
+        "Are you sure you want to discard the corrupted document and reset? This cannot be undone.",
+        () => {
+          this.isCorrupted = false;
+          if (this.file) {
+            this.storageManager.clearCorrupted(this.file.path);
+          }
+          if (this.statusSaveInfoEl) {
+            this.statusSaveInfoEl.removeClass("notepages-status-error");
+          }
+          this.document = this.createDefaultDocument();
+          this.pageManager = new PageManager(this.document);
+          this.renderDocument();
+          this.requestSave();
         }
-        if (this.statusSaveInfoEl) {
-          this.statusSaveInfoEl.removeClass("notepages-status-error");
-        }
-        this.document = this.createDefaultDocument();
-        this.pageManager = new PageManager(this.document);
-        this.renderDocument();
-        this.requestSave();
-      }
+      ).open();
     });
   }
 
@@ -1197,7 +1237,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getNotebookTemplate(): { type: PaperTemplateType } {
-    return this.pageManager ? this.pageManager.getNotebookTemplate() : { type: "ruled" as PaperTemplateType };
+    return this.pageManager ? this.pageManager.getNotebookTemplate() : { type: "ruled" };
   }
 
   getNotebookOrientation(): PageOrientation {
@@ -1422,12 +1462,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
             if (!page || !page.pdfSource || Boolean(page.pdfSource.svgPath)) {
               continue;
             }
-            const frameEl = target.querySelector(".notepages-page-frame") as HTMLElement | null;
+            const frameEl = target.querySelector<HTMLElement>(".notepages-page-frame");
             if (!frameEl) {
               continue;
             }
             if (entry.isIntersecting) {
-              this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
+              void this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
                 this.updateThumbnailStrokes(page);
               });
             } else {
@@ -1838,7 +1878,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.dragOverlayEl = this.pagesContainerEl.createDiv({
         cls: "notepages-drag-overlay"
       });
-      this.dragOverlayEl.style.display = "none";
+      this.dragOverlayEl.toggle(false);
       this.dragOverlayCanvas = this.dragOverlayEl.createEl("canvas", {
         cls: "notepages-drag-canvas"
       });
@@ -1873,8 +1913,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.dragOverlayCanvas.width = canvasWidth;
     this.dragOverlayCanvas.height = canvasHeight;
-    this.dragOverlayCanvas.style.width = `${canvasWidth}px`;
-    this.dragOverlayCanvas.style.height = `${canvasHeight}px`;
+    this.dragOverlayCanvas.setCssStyles({
+      width: `${canvasWidth}px`,
+      height: `${canvasHeight}px`
+    });
 
     const ctx = this.dragOverlayCanvas.getContext("2d");
     if (ctx) {
@@ -1896,8 +1938,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const initialOverlayX = pageLeft + bounds.minX - padding;
     const initialOverlayY = pageTop + bounds.minY - padding;
 
-    this.dragOverlayEl.style.transform = `translate3d(${initialOverlayX}px, ${initialOverlayY}px, 0)`;
-    this.dragOverlayEl.style.display = "block";
+    this.dragOverlayEl.setCssStyles({
+      transform: `translate3d(${initialOverlayX}px, ${initialOverlayY}px, 0)`
+    });
+    this.dragOverlayEl.toggle(true);
 
     const sourceCanvas = this.activeCanvasMap.get(sourcePageId);
     if (sourceCanvas) {
@@ -1921,7 +1965,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const dy = (clientY - this.dragStartClientY) / this.zoomLevel;
     const currentX = this.dragInitialOverlayX + dx;
     const currentY = this.dragInitialOverlayY + dy;
-    this.dragOverlayEl.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+    this.dragOverlayEl.setCssStyles({
+      transform: `translate3d(${currentX}px, ${currentY}px, 0)`
+    });
   }
 
   private finishSelectionDrag(clientX: number, clientY: number): void {
@@ -1929,7 +1975,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return;
     }
     this.isDraggingSelection = false;
-    this.dragOverlayEl.style.display = "none";
+    this.dragOverlayEl.toggle(false);
 
     const dx = (clientX - this.dragStartClientX) / this.zoomLevel;
     const dy = (clientY - this.dragStartClientY) / this.zoomLevel;
@@ -1975,7 +2021,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return;
     }
     this.isDraggingSelection = false;
-    this.dragOverlayEl.style.display = "none";
+    this.dragOverlayEl.toggle(false);
     const activePageId = this.selectionController.getActivePageId();
     if (activePageId) {
       const canvas = this.activeCanvasMap.get(activePageId);
@@ -2294,18 +2340,23 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   private applyZoom(): void {
     if (this.pagesContainerEl) {
-      this.pagesContainerEl.style.transform = `scale(${this.zoomLevel})`;
-      this.pagesContainerEl.style.transformOrigin = "top center";
       if (this.zoomLevel > 1) {
         const extraHeight = Math.ceil(this.pagesContainerEl.offsetHeight * (this.zoomLevel - 1));
-        this.pagesContainerEl.style.marginBottom = `${extraHeight + 80}px`;
         const extraWidth = Math.ceil(this.pagesContainerEl.offsetWidth * (this.zoomLevel - 1));
-        this.pagesContainerEl.style.marginRight = `${Math.ceil(extraWidth / 2) + 60}px`;
-        this.pagesContainerEl.style.marginLeft = `${Math.ceil(extraWidth / 2) + 60}px`;
+        const marginX = `${Math.ceil(extraWidth / 2) + 60}px`;
+        this.pagesContainerEl.setCssStyles({
+          transform: `scale(${this.zoomLevel})`,
+          marginBottom: `${extraHeight + 80}px`,
+          marginRight: marginX,
+          marginLeft: marginX
+        });
       } else {
-        this.pagesContainerEl.style.marginBottom = "0px";
-        this.pagesContainerEl.style.marginRight = "0px";
-        this.pagesContainerEl.style.marginLeft = "0px";
+        this.pagesContainerEl.setCssStyles({
+          transform: `scale(${this.zoomLevel})`,
+          marginBottom: "0px",
+          marginRight: "0px",
+          marginLeft: "0px"
+        });
       }
     }
     this.updateCanvasResolutions();
@@ -2337,7 +2388,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (target && pointerId !== undefined) {
       try {
         target.setPointerCapture(pointerId);
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     }
   }
 
@@ -2401,7 +2454,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (!pageWrapper) {
       return null;
     }
-    return (pageWrapper.querySelector(".notepages-page-frame") as HTMLElement | null) ?? pageWrapper;
+    return pageWrapper.querySelector<HTMLElement>(".notepages-page-frame") ?? pageWrapper;
   }
 
   renderDocument(): void {
@@ -2514,7 +2567,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     activeCanvas.dataset.pageHeight = String(page.dimensions.height);
     activeCanvas.width = initialW;
     activeCanvas.height = initialH;
-    activeCanvas.style.touchAction = "none";
     this.activeCanvasMap.set(page.id, activeCanvas);
 
     this.pageVirtualizer.observePage(page.pageNumber, pageWrapper);
@@ -2540,7 +2592,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         if (this.pageIntersectionObserver) {
           this.pageIntersectionObserver.observe(pageWrapper);
         } else {
-          this.pdfBackgroundManager.renderPdfBackground(page, pageFrame, () => {
+          void this.pdfBackgroundManager.renderPdfBackground(page, pageFrame, () => {
             this.updateThumbnailStrokes(page);
           });
         }
@@ -2684,7 +2736,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.dragTextCurrentY = clampedY;
         try {
           activeCanvas.setPointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         e.stopPropagation();
         return;
       }
@@ -2702,7 +2756,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.dragShapeCurrentY = clampedY;
         try {
           activeCanvas.setPointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         e.stopPropagation();
         return;
       }
@@ -2720,7 +2776,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.dragConnectorCurrentY = clampedY;
         try {
           activeCanvas.setPointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         e.stopPropagation();
         return;
       }
@@ -2846,7 +2904,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.isDraggingTextRect = false;
         try {
           activeCanvas.releasePointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
 
         const ctx = activeCanvas.getContext("2d");
         if (ctx) {
@@ -2909,7 +2969,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.isDraggingShape = false;
         try {
           activeCanvas.releasePointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
 
         const ctx = activeCanvas.getContext("2d");
         if (ctx) {
@@ -3010,7 +3072,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.isDraggingConnector = false;
         try {
           activeCanvas.releasePointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
 
         const ctx = activeCanvas.getContext("2d");
         if (ctx) {
@@ -3098,7 +3162,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.isDraggingTextRect = false;
         try {
           activeCanvas.releasePointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         this.dragTextPage = null;
         this.dragTextPageFrame = null;
         this.dragTextCanvas = null;
@@ -3113,7 +3179,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.isDraggingShape = false;
         try {
           activeCanvas.releasePointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         this.dragShapePage = null;
         this.dragShapeCanvas = null;
         const ctx = activeCanvas.getContext("2d");
@@ -3127,7 +3195,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.isDraggingConnector = false;
         try {
           activeCanvas.releasePointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
         this.dragConnectorPage = null;
         this.dragConnectorCanvas = null;
         const ctx = activeCanvas.getContext("2d");
@@ -3530,7 +3600,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.imageController.deselectImage();
     this.clearActiveSelectionCanvas();
 
-    const pageWrapper = this.pagesContainerEl.querySelector(`[data-page-id="${pageId}"]`) as HTMLElement | null;
+    const pageWrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${pageId}"]`);
 
     this.pageVirtualizer.unobservePage(deletedPageNumber);
 
@@ -3577,7 +3647,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     for (let index = 0; index < pages.length; index++) {
       const p = pages[index];
-      const wrapper = this.pagesContainerEl.querySelector(`[data-page-id="${p.id}"]`) as HTMLElement | null;
+      const wrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${p.id}"]`);
       if (wrapper) {
         wrapper.dataset.pageNumber = String(p.pageNumber);
         const watermark = wrapper.querySelector(".notepages-page-number-watermark");
@@ -3779,9 +3849,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const pageEl = this.pageElements.get(pageNumber);
     if (pageEl && page.pdfSource && !page.pdfSource.svgPath) {
-      const frameEl = pageEl.querySelector(".notepages-page-frame") as HTMLElement | null;
+      const frameEl = pageEl.querySelector<HTMLElement>(".notepages-page-frame");
       if (frameEl) {
-        this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
+        void this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
           this.updateThumbnailStrokes(page);
         });
       }
@@ -3822,7 +3892,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const pageEl = this.pageElements.get(pageNumber);
     if (pageEl && page.pdfSource && !page.pdfSource.svgPath) {
-      const frameEl = pageEl.querySelector(".notepages-page-frame") as HTMLElement | null;
+      const frameEl = pageEl.querySelector<HTMLElement>(".notepages-page-frame");
       if (frameEl) {
         this.pdfBackgroundManager.unrenderPdfBackground(page, frameEl);
       }

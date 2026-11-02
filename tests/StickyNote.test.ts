@@ -210,6 +210,13 @@ describe("Sticky Notes Feature", () => {
       parentElement: { removeChild: (child: unknown) => void } | null;
       appendChild: (child: unknown) => unknown;
       removeChild: (child: unknown) => unknown;
+      createEl: (tag: string, opts?: { cls?: string }) => MockNode;
+      createDiv: (opts?: { cls?: string }) => MockNode;
+      createSpan: (opts?: { cls?: string }) => MockNode;
+      setCssStyles: (styles: Record<string, string>) => void;
+      addClass: (cls: string) => void;
+      removeClass: (cls: string) => void;
+      empty: () => void;
       addEventListener: (type: string, fn: unknown) => void;
       focus: () => void;
       offsetWidth: number;
@@ -233,6 +240,27 @@ describe("Sticky Notes Feature", () => {
         parentElement: null,
         appendChild: (c: unknown) => c,
         removeChild: (c: unknown) => c,
+        createEl: (_tag: string, opts?: { cls?: string }) => {
+          const child = createMockNode();
+          if (opts?.cls) child.classList.add(opts.cls);
+          return child;
+        },
+        createDiv: (opts?: { cls?: string }) => {
+          const child = createMockNode();
+          if (opts?.cls) child.classList.add(opts.cls);
+          return child;
+        },
+        createSpan: (opts?: { cls?: string }) => {
+          const child = createMockNode();
+          if (opts?.cls) child.classList.add(opts.cls);
+          return child;
+        },
+        setCssStyles: (styles: Record<string, string>) => {
+          Object.assign(node.style, styles);
+        },
+        addClass: (cls: string) => classes.add(cls),
+        removeClass: (cls: string) => classes.delete(cls),
+        empty: () => {},
         addEventListener: () => {},
         focus: () => {},
         offsetWidth: 140,
@@ -247,10 +275,12 @@ describe("Sticky Notes Feature", () => {
     };
 
     const previousDoc = (globalThis as unknown as { document?: unknown }).document;
+    const previousWin = (globalThis as unknown as { window?: unknown }).window;
     (globalThis as unknown as { document: unknown }).document = {
       createElement: () => createMockNode(),
       querySelector: () => null
     };
+    (globalThis as unknown as { window: unknown }).window = globalThis;
 
     try {
       let committedText: TextObject | null = null;
@@ -299,6 +329,7 @@ describe("Sticky Notes Feature", () => {
       assert.strictEqual(committedText, null);
     } finally {
       (globalThis as unknown as { document?: unknown }).document = previousDoc;
+      (globalThis as unknown as { window?: unknown }).window = previousWin;
     }
   });
 });

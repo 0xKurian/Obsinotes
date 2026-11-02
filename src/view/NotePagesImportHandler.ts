@@ -59,22 +59,62 @@ export class NotePagesImportHandler {
     }
 
     const chooseFromComputer = (): void => {
-      const input = document.createElement("input");
-      input.type = "file";
+      const input = createEl("input", {
+        type: "file",
+        cls: "notepages-hidden-file-input"
+      });
       input.accept = "image/*";
-      input.style.display = "none";
-      input.addEventListener("change", async () => {
-        if (input.files && input.files.length > 0) {
-          const file = input.files[0];
-          const baseName = file.name.replace(/\.[^/.]+$/, "");
-          const activeFile = this.delegate.getFile();
-          const imageController = this.delegate.getImageController();
-          const savedPath = await imageController.saveBlobToVault(
-            file,
-            baseName,
-            activeFile?.path || ""
-          );
-          const resourceUrl = this.delegate.resolveResourcePath(savedPath);
+      input.addEventListener("change", () => {
+        void (async () => {
+          if (input.files && input.files.length > 0) {
+            const file = input.files[0];
+            const baseName = file.name.replace(/\.[^/.]+$/, "");
+            const activeFile = this.delegate.getFile();
+            const imageController = this.delegate.getImageController();
+            const savedPath = await imageController.saveBlobToVault(
+              file,
+              baseName,
+              activeFile?.path || ""
+            );
+            const resourceUrl = this.delegate.resolveResourcePath(savedPath);
+            const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
+            const fittedDims = ImageController.calculateFittedDimensions(
+              naturalDims.width,
+              naturalDims.height,
+              Math.min(450, targetPage.dimensions.width - 60),
+              Math.min(450, targetPage.dimensions.height - 60)
+            );
+            const posX = Math.max(20, Math.round((targetPage.dimensions.width - fittedDims.width) / 2));
+            const posY = Math.max(50, Math.round((targetPage.dimensions.height - fittedDims.height) / 2));
+            const imgObj = imageController.createImageObject(
+              savedPath,
+              posX,
+              posY,
+              fittedDims.width,
+              fittedDims.height
+            );
+            this.delegate.getHistoryManager().execute(
+              new AddImageCommand(targetPage, imgObj, () => {
+                this.delegate.handleMutation(targetPage);
+                const frameEl = this.delegate.getPageFrame(targetPage.pageNumber);
+                if (frameEl) {
+                  imageController.renderPageImages(targetPage, frameEl, (p) => this.delegate.resolveResourcePath(p));
+                }
+              })
+            );
+            new Notice(`Inserted image: ${file.name}`);
+          }
+          input.remove();
+        })();
+      });
+      document.body.appendChild(input);
+      input.click();
+    };
+
+    const chooseFromVault = (): void => {
+      const modal = new ImagePickerModal(this.delegate.app, (file: TFile) => {
+        void (async () => {
+          const resourceUrl = this.delegate.resolveResourcePath(file.path);
           const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
           const fittedDims = ImageController.calculateFittedDimensions(
             naturalDims.width,
@@ -84,8 +124,9 @@ export class NotePagesImportHandler {
           );
           const posX = Math.max(20, Math.round((targetPage.dimensions.width - fittedDims.width) / 2));
           const posY = Math.max(50, Math.round((targetPage.dimensions.height - fittedDims.height) / 2));
+          const imageController = this.delegate.getImageController();
           const imgObj = imageController.createImageObject(
-            savedPath,
+            file.path,
             posX,
             posY,
             fittedDims.width,
@@ -101,43 +142,7 @@ export class NotePagesImportHandler {
             })
           );
           new Notice(`Inserted image: ${file.name}`);
-        }
-        input.remove();
-      });
-      document.body.appendChild(input);
-      input.click();
-    };
-
-    const chooseFromVault = (): void => {
-      const modal = new ImagePickerModal(this.delegate.app, async (file: TFile) => {
-        const resourceUrl = this.delegate.resolveResourcePath(file.path);
-        const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
-        const fittedDims = ImageController.calculateFittedDimensions(
-          naturalDims.width,
-          naturalDims.height,
-          Math.min(450, targetPage.dimensions.width - 60),
-          Math.min(450, targetPage.dimensions.height - 60)
-        );
-        const posX = Math.max(20, Math.round((targetPage.dimensions.width - fittedDims.width) / 2));
-        const posY = Math.max(50, Math.round((targetPage.dimensions.height - fittedDims.height) / 2));
-        const imageController = this.delegate.getImageController();
-        const imgObj = imageController.createImageObject(
-          file.path,
-          posX,
-          posY,
-          fittedDims.width,
-          fittedDims.height
-        );
-        this.delegate.getHistoryManager().execute(
-          new AddImageCommand(targetPage, imgObj, () => {
-            this.delegate.handleMutation(targetPage);
-            const frameEl = this.delegate.getPageFrame(targetPage.pageNumber);
-            if (frameEl) {
-              imageController.renderPageImages(targetPage, frameEl, (p) => this.delegate.resolveResourcePath(p));
-            }
-          })
-        );
-        new Notice(`Inserted image: ${file.name}`);
+        })();
       });
       modal.open();
     };
@@ -152,23 +157,26 @@ export class NotePagesImportHandler {
 
   openPdfPicker(forceNewNotebook: boolean = false, targetPageNumber?: number): void {
     const choosePdfFromVault = (): void => {
-      const modal = new PdfPickerModal(this.delegate.app, async (pdfFile: TFile) => {
-        await this.promptAndImportVaultPdf(pdfFile, forceNewNotebook, targetPageNumber);
+      const modal = new PdfPickerModal(this.delegate.app, (pdfFile: TFile) => {
+        void this.promptAndImportVaultPdf(pdfFile, forceNewNotebook, targetPageNumber);
       });
       modal.open();
     };
 
     const choosePdfFromComputer = (): void => {
-      const input = document.createElement("input");
-      input.type = "file";
+      const input = createEl("input", {
+        type: "file",
+        cls: "notepages-hidden-file-input"
+      });
       input.accept = "application/pdf,.pdf";
-      input.style.display = "none";
-      input.addEventListener("change", async () => {
-        if (input.files && input.files.length > 0) {
-          const file = input.files[0];
-          await this.promptAndImportLocalPdf(file, forceNewNotebook, targetPageNumber);
-        }
-        input.remove();
+      input.addEventListener("change", () => {
+        void (async () => {
+          if (input.files && input.files.length > 0) {
+            const file = input.files[0];
+            await this.promptAndImportLocalPdf(file, forceNewNotebook, targetPageNumber);
+          }
+          input.remove();
+        })();
       });
       document.body.appendChild(input);
       input.click();
@@ -179,23 +187,25 @@ export class NotePagesImportHandler {
       const folderModal = new FolderPickerModal(
         this.delegate.app,
         currentFolder,
-        async (selectedFolder: TFolder) => {
-          const svgFiles = selectedFolder.children.filter(
-            (f): f is TFile => f instanceof TFile && f.extension.toLowerCase() === "svg"
-          );
-          if (svgFiles.length === 0) {
-            new Notice(`No SVG files found in folder "${selectedFolder.name}".`);
-            return;
-          }
-          await this.importFromExistingSvgFolder(
-            selectedFolder,
-            svgFiles,
-            "",
-            selectedFolder.name,
-            selectedFolder.parent?.path,
-            forceNewNotebook,
-            targetPageNumber
-          );
+        (selectedFolder: TFolder) => {
+          void (async () => {
+            const svgFiles = selectedFolder.children.filter(
+              (f): f is TFile => f instanceof TFile && f.extension.toLowerCase() === "svg"
+            );
+            if (svgFiles.length === 0) {
+              new Notice(`No SVG files found in folder "${selectedFolder.name}".`);
+              return;
+            }
+            await this.importFromExistingSvgFolder(
+              selectedFolder,
+              svgFiles,
+              "",
+              selectedFolder.name,
+              selectedFolder.parent?.path,
+              forceNewNotebook,
+              targetPageNumber
+            );
+          })();
         },
         "Select an SVG folder in vault to import as notebook pages..."
       );
@@ -254,37 +264,39 @@ export class NotePagesImportHandler {
     const folderModal = new FolderPickerModal(
       this.delegate.app,
       defaultFolder,
-      async (selectedFolder: TFolder) => {
-        const destFolder = selectedFolder.isRoot() ? "" : selectedFolder.path;
-        const existingInfo = this.findExistingSvgFolder(pdfFile.basename, destFolder);
-        if (existingInfo && existingInfo.svgFiles.length > 0) {
-          const reuseModal = new ExistingSvgReuseModal(
-            this.delegate.app,
-            pdfFile.basename,
-            existingInfo.folder.path,
-            existingInfo.svgFiles.length,
-            async () => {
-              await this.importFromExistingSvgFolder(
-                existingInfo.folder,
-                existingInfo.svgFiles,
-                pdfFile.path,
-                pdfFile.basename,
-                destFolder,
-                forceNewNotebook,
-                targetPageNumber
-              );
-            },
-            async () => {
-              new Notice("Importing PDF: Converting pages to vector SVG format...");
-              await this.importPdfFile(pdfFile, destFolder, forceNewNotebook, targetPageNumber);
-            }
-          );
-          reuseModal.open();
-          return;
-        }
+      (selectedFolder: TFolder) => {
+        void (async () => {
+          const destFolder = selectedFolder.isRoot() ? "" : selectedFolder.path;
+          const existingInfo = this.findExistingSvgFolder(pdfFile.basename, destFolder);
+          if (existingInfo && existingInfo.svgFiles.length > 0) {
+            const reuseModal = new ExistingSvgReuseModal(
+              this.delegate.app,
+              pdfFile.basename,
+              existingInfo.folder.path,
+              existingInfo.svgFiles.length,
+              () => {
+                void this.importFromExistingSvgFolder(
+                  existingInfo.folder,
+                  existingInfo.svgFiles,
+                  pdfFile.path,
+                  pdfFile.basename,
+                  destFolder,
+                  forceNewNotebook,
+                  targetPageNumber
+                );
+              },
+              () => {
+                new Notice("Importing PDF: Converting pages to vector SVG format...");
+                void this.importPdfFile(pdfFile, destFolder, forceNewNotebook, targetPageNumber);
+              }
+            );
+            reuseModal.open();
+            return;
+          }
 
-        new Notice("Importing PDF: Converting pages to vector SVG format...");
-        await this.importPdfFile(pdfFile, destFolder, forceNewNotebook, targetPageNumber);
+          new Notice("Importing PDF: Converting pages to vector SVG format...");
+          await this.importPdfFile(pdfFile, destFolder, forceNewNotebook, targetPageNumber);
+        })();
       },
       "Select folder in vault to store the page assets folder..."
     );
@@ -300,39 +312,43 @@ export class NotePagesImportHandler {
     const folderModal = new FolderPickerModal(
       this.delegate.app,
       currentFolder,
-      async (selectedFolder: TFolder) => {
-        const destFolder = selectedFolder.isRoot() ? "" : selectedFolder.path;
-        const baseName = file.name.replace(/\.[^/.]+$/, "");
-        const existingInfo = this.findExistingSvgFolder(baseName, destFolder);
-        if (existingInfo && existingInfo.svgFiles.length > 0) {
-          const reuseModal = new ExistingSvgReuseModal(
-            this.delegate.app,
-            baseName,
-            existingInfo.folder.path,
-            existingInfo.svgFiles.length,
-            async () => {
-              const savedPdf = await this.saveLocalPdfBinary(file, destFolder);
-              await this.importFromExistingSvgFolder(
-                existingInfo.folder,
-                existingInfo.svgFiles,
-                savedPdf.path,
-                baseName,
-                destFolder,
-                forceNewNotebook,
-                targetPageNumber
-              );
-            },
-            async () => {
-              new Notice("Importing PDF: Converting pages to vector SVG format...");
-              await this.importLocalPdfFile(file, destFolder, forceNewNotebook, targetPageNumber);
-            }
-          );
-          reuseModal.open();
-          return;
-        }
+      (selectedFolder: TFolder) => {
+        void (async () => {
+          const destFolder = selectedFolder.isRoot() ? "" : selectedFolder.path;
+          const baseName = file.name.replace(/\.[^/.]+$/, "");
+          const existingInfo = this.findExistingSvgFolder(baseName, destFolder);
+          if (existingInfo && existingInfo.svgFiles.length > 0) {
+            const reuseModal = new ExistingSvgReuseModal(
+              this.delegate.app,
+              baseName,
+              existingInfo.folder.path,
+              existingInfo.svgFiles.length,
+              () => {
+                void (async () => {
+                  const savedPdf = await this.saveLocalPdfBinary(file, destFolder);
+                  await this.importFromExistingSvgFolder(
+                    existingInfo.folder,
+                    existingInfo.svgFiles,
+                    savedPdf.path,
+                    baseName,
+                    destFolder,
+                    forceNewNotebook,
+                    targetPageNumber
+                  );
+                })();
+              },
+              () => {
+                new Notice("Importing PDF: Converting pages to vector SVG format...");
+                void this.importLocalPdfFile(file, destFolder, forceNewNotebook, targetPageNumber);
+              }
+            );
+            reuseModal.open();
+            return;
+          }
 
-        new Notice("Importing PDF: Converting pages to vector SVG format...");
-        await this.importLocalPdfFile(file, destFolder, forceNewNotebook, targetPageNumber);
+          new Notice("Importing PDF: Converting pages to vector SVG format...");
+          await this.importLocalPdfFile(file, destFolder, forceNewNotebook, targetPageNumber);
+        })();
       },
       "Select folder in vault to store the raw PDF and page assets folder..."
     );

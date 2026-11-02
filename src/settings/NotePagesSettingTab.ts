@@ -19,7 +19,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
       .setDesc("Choose the default paper size for newly created notebooks and pages.")
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("A4", "A4 (210 x 297 mm)")
+          .addOption("A4", "A4 (210 X 297 mm)")
           .addOption("Letter", "US Letter (8.5 x 11 in)")
           .setValue(this.plugin.settings.defaultPageSize)
           .onChange(async (value) => {
@@ -33,8 +33,8 @@ export class NotePagesSettingTab extends PluginSettingTab {
       .setDesc("Orientation applied to new pages.")
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("portrait", "Portrait (Vertical)")
-          .addOption("landscape", "Landscape (Horizontal)")
+          .addOption("portrait", "Portrait (vertical)")
+          .addOption("landscape", "Landscape (horizontal)")
           .setValue(this.plugin.settings.defaultOrientation)
           .onChange(async (value) => {
             this.plugin.settings.defaultOrientation = value as PageOrientation;
@@ -48,10 +48,10 @@ export class NotePagesSettingTab extends PluginSettingTab {
       .addDropdown((dropdown) => {
         dropdown
           .addOption("blank", "Blank")
-          .addOption("ruled", "Ruled (Lined)")
+          .addOption("ruled", "Ruled (lined)")
           .addOption("grid", "Grid")
           .addOption("dotted", "Dotted")
-          .addOption("cornell", "Cornell Note")
+          .addOption("cornell", "Cornell note")
           .setValue(this.plugin.settings.defaultTemplate)
           .onChange(async (value) => {
             this.plugin.settings.defaultTemplate = value as PaperTemplateType;

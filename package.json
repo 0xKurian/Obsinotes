@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
+    "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "postinstall": "node -e \"const fs=require('fs'); const p='node_modules/obsidian/'; if(fs.existsSync(p)){ const pkg=JSON.parse(fs.readFileSync(p+'package.json','utf8')); pkg.main='index.js'; fs.writeFileSync(p+'package.json',JSON.stringify(pkg,null,2)); if(!fs.existsSync(p+'index.js')){ fs.writeFileSync(p+'index.js','class Notice{}; class TFile{}; class TFolder{}; class Modal{constructor(app){this.app=app;this.contentEl={empty(){},createEl(){return{}},createDiv(){return{}},createSpan(){return{}},addClass(){}};}open(){}close(){}}; function loadPdfJs(){return Promise.resolve(null);}; function normalizePath(p){return p;}; function setIcon(){}; module.exports={Notice,TFile,TFolder,Modal,loadPdfJs,normalizePath,setIcon};'); } }\""
   },
   "keywords": [
     "obsidian",
@@ -21,8 +23,9 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.12.7",
-    "builtin-modules": "^3.3.0",
     "esbuild": "^0.21.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "obsidian": "latest",
     "tslib": "^2.6.2",
     "tsx": "^4.23.15",

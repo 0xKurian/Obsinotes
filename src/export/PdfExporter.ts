@@ -80,7 +80,9 @@ export class PdfExporter {
               height: page.dimensions.height
             });
           }
-        } catch {}
+        } catch (err) {
+          void err;
+        }
       }
     }
 

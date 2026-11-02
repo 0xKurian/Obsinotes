@@ -20,7 +20,7 @@ export class PngExporter {
     const width = page.dimensions.width;
     const height = page.dimensions.height;
 
-    const canvas = document.createElement("canvas");
+    const canvas = createEl("canvas");
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
 

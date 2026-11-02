@@ -69,18 +69,9 @@ export class ImageController {
     pageEl: HTMLElement,
     getResourcePath: (vaultPath: string) => string
   ): void {
-    let layer = pageEl.querySelector(".notepages-image-layer") as HTMLElement | null;
+    let layer = pageEl.querySelector<HTMLElement>(".notepages-image-layer");
     if (!layer) {
-      layer = document.createElement("div");
-      layer.className = "notepages-image-layer";
-      layer.style.position = "absolute";
-      layer.style.top = "0";
-      layer.style.left = "0";
-      layer.style.width = "100%";
-      layer.style.height = "100%";
-      layer.style.pointerEvents = "none";
-      layer.style.zIndex = "3";
-      pageEl.appendChild(layer);
+      layer = pageEl.createDiv({ cls: "notepages-image-layer" });
     } else {
       if (typeof (layer as { empty?: () => void }).empty === "function") {
         (layer as { empty: () => void }).empty();
@@ -105,49 +96,38 @@ export class ImageController {
 
     page.images.forEach((img) => {
       const isSelected = this.selectedImageId === img.id;
-      const frame = document.createElement("div");
-      frame.className = isSelected
-        ? "notepages-image-frame is-selected"
-        : "notepages-image-frame";
+      const frame = createDiv({
+        cls: isSelected ? "notepages-image-frame is-selected" : "notepages-image-frame"
+      });
       frame.dataset.imageId = img.id;
-      frame.style.position = "absolute";
-      frame.style.left = `${img.x}px`;
-      frame.style.top = `${img.y}px`;
-      frame.style.width = `${img.width}px`;
-      frame.style.height = `${img.height}px`;
-      frame.style.pointerEvents = isDrawingTool ? "none" : "auto";
-      frame.style.userSelect = "none";
-      if (img.rotation) {
-        frame.style.transform = `rotate(${img.rotation}deg)`;
-      }
-      if (typeof img.opacity === "number") {
-        frame.style.opacity = String(img.opacity);
-      }
+      frame.setCssStyles({
+        left: `${img.x}px`,
+        top: `${img.y}px`,
+        width: `${img.width}px`,
+        height: `${img.height}px`,
+        pointerEvents: isDrawingTool ? "none" : "auto",
+        transform: img.rotation ? `rotate(${img.rotation}deg)` : undefined,
+        opacity: typeof img.opacity === "number" ? String(img.opacity) : undefined
+      });
 
-      const imgEl = document.createElement("img");
-      imgEl.className = "notepages-image-content";
-      imgEl.style.width = "100%";
-      imgEl.style.height = "100%";
-      imgEl.style.objectFit = "contain";
-      imgEl.style.pointerEvents = "none";
+      const imgEl = frame.createEl("img", { cls: "notepages-image-content" });
       imgEl.draggable = false;
       imgEl.src = getResourcePath(img.vaultPath);
-
-      frame.appendChild(imgEl);
 
       if (isSelected && !isDrawingTool) {
         const handles: ("nw" | "ne" | "se" | "sw")[] = ["nw", "ne", "se", "sw"];
         handles.forEach((pos) => {
-          const handle = document.createElement("div");
-          handle.className = `notepages-image-handle notepages-image-handle-${pos}`;
+          const handle = frame.createDiv({
+            cls: `notepages-image-handle notepages-image-handle-${pos}`
+          });
           handle.dataset.handle = pos;
-          frame.appendChild(handle);
         });
 
-        const delBtn = document.createElement("button");
-        delBtn.className = "notepages-image-delete-btn";
-        delBtn.textContent = "✕";
-        delBtn.setAttribute("title", "Delete image");
+        const delBtn = frame.createEl("button", {
+          cls: "notepages-image-delete-btn",
+          text: "✕",
+          title: "Delete image"
+        });
         delBtn.addEventListener("pointerdown", (e: PointerEvent) => {
           e.stopPropagation();
         });
@@ -171,7 +151,9 @@ export class ImageController {
           e.stopPropagation();
           try {
             target.setPointerCapture(e.pointerId);
-          } catch {}
+          } catch (err) {
+            void err;
+          }
 
           const startClientX = e.clientX;
           const startClientY = e.clientY;
@@ -269,7 +251,9 @@ export class ImageController {
           const onPointerUp = (upEv: PointerEvent) => {
             try {
               target.releasePointerCapture(upEv.pointerId);
-            } catch {}
+            } catch (err) {
+              void err;
+            }
             window.removeEventListener("pointermove", onPointerMove);
             window.removeEventListener("pointerup", onPointerUp);
 
@@ -309,7 +293,9 @@ export class ImageController {
 
         try {
           frame.setPointerCapture(e.pointerId);
-        } catch {}
+        } catch (err) {
+          void err;
+        }
 
         const startClientX = e.clientX;
         const startClientY = e.clientY;
@@ -335,7 +321,9 @@ export class ImageController {
         const onDragUp = (upEv: PointerEvent) => {
           try {
             frame.releasePointerCapture(upEv.pointerId);
-          } catch {}
+          } catch (err) {
+            void err;
+          }
           window.removeEventListener("pointermove", onDragMove);
           window.removeEventListener("pointerup", onDragUp);
 
@@ -357,7 +345,9 @@ export class ImageController {
         window.addEventListener("pointerup", onDragUp);
       });
 
-      layer!.appendChild(frame);
+      if (layer) {
+        layer.appendChild(frame);
+      }
     });
   }
 
@@ -400,7 +390,9 @@ export class ImageController {
         );
         await this.app.vault.createBinary(availablePath, buffer);
         return availablePath;
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     }
 
     const adapter = this.app.vault.adapter;

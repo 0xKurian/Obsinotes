@@ -1,4 +1,4 @@
-import type { App, TFile } from "obsidian";
+import { App, TFile, loadPdfJs } from "obsidian";
 import { normalizeVaultPath } from "../storage/StorageManager";
 import { CURRENT_SCHEMA_VERSION, NotebookDocument, PageData, PageDimensions, PageOrientation } from "../types";
 
@@ -83,10 +83,6 @@ export function extractPdfInfo(buffer: ArrayBuffer): PdfInfo {
   return { pageCount, dimensions };
 }
 
-function isTFile(file: unknown): file is TFile {
-  return Boolean(file && typeof file === "object" && "extension" in file && "stat" in file);
-}
-
 export function extractSvgDimensions(svgContent: string): { width: number; height: number } {
   const viewBoxMatch = svgContent.match(/viewBox=["']([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)["']/i);
   if (viewBoxMatch) {
@@ -143,13 +139,14 @@ export class PdfBackgroundManager {
       return this.pdfJsLib;
     }
     try {
-      const obs = typeof require === "function" ? (require("obsidian") as { loadPdfJs?: () => Promise<PdfJsLib> }) : null;
-      if (obs && typeof obs.loadPdfJs === "function") {
-        const lib = await obs.loadPdfJs();
-        this.pdfJsLib = lib || (typeof window !== "undefined" ? window.pdfjsLib : undefined) || null;
+      const lib = (await loadPdfJs()) as unknown as PdfJsLib;
+      if (lib && typeof lib.getDocument === "function") {
+        this.pdfJsLib = lib;
         return this.pdfJsLib;
       }
-    } catch {}
+    } catch (err) {
+      void err;
+    }
     if (typeof window !== "undefined" && window.pdfjsLib) {
       this.pdfJsLib = window.pdfjsLib;
       return this.pdfJsLib;
@@ -166,7 +163,7 @@ export class PdfBackgroundManager {
           resolve();
         }
       });
-      this.processRenderQueue();
+      void this.processRenderQueue();
     });
   }
 
@@ -180,7 +177,9 @@ export class PdfBackgroundManager {
       if (task) {
         try {
           await task();
-        } catch {}
+        } catch (err) {
+          void err;
+        }
       }
     }
     this.isProcessingQueue = false;
@@ -191,7 +190,7 @@ export class PdfBackgroundManager {
       return this.docCache.get(pdfPath) || null;
     }
     const file = this.app.vault.getAbstractFileByPath(pdfPath);
-    if (!file || !("extension" in file)) {
+    if (!(file instanceof TFile)) {
       return null;
     }
     const pdfjs = await this.getPdfJsLib();
@@ -199,12 +198,13 @@ export class PdfBackgroundManager {
       return null;
     }
     try {
-      const buffer = await this.app.vault.readBinary(file as TFile);
+      const buffer = await this.app.vault.readBinary(file);
       const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
       const doc = await loadingTask.promise;
       this.docCache.set(pdfPath, doc);
       return doc;
-    } catch {
+    } catch (err) {
+      void err;
       return null;
     }
   }
@@ -222,12 +222,14 @@ export class PdfBackgroundManager {
         const svgGfx = new SVGGraphicsClass((pdfPage as unknown as { commonObjs: unknown }).commonObjs, (pdfPage as unknown as { objs: unknown }).objs);
         const svgElement = await svgGfx.getSVG(opList, viewport);
         svgString = new XMLSerializer().serializeToString(svgElement);
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     }
 
     if (!svgString && typeof document !== "undefined") {
       const scale = 2.0;
-      const canvas = document.createElement("canvas");
+      const canvas = createEl("canvas");
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
       const ctx = canvas.getContext("2d");
@@ -282,7 +284,7 @@ export class PdfBackgroundManager {
     }
 
     const existingFile = this.app.vault.getAbstractFileByPath(targetSvgPath);
-    if (isTFile(existingFile)) {
+    if (existingFile instanceof TFile) {
       await this.app.vault.modify(existingFile, svgString);
       return existingFile.path;
     }
@@ -318,7 +320,9 @@ export class PdfBackgroundManager {
           if (typeof pdfPage.cleanup === "function") {
             pdfPage.cleanup();
           }
-        } catch {}
+        } catch (err) {
+          void err;
+        }
 
         let svgPath: string | undefined = undefined;
         try {
@@ -326,7 +330,9 @@ export class PdfBackgroundManager {
           if (svgContent) {
             svgPath = await this.savePageSvg(pdfFile, i, svgContent, destinationFolder);
           }
-        } catch {}
+        } catch (err) {
+          void err;
+        }
 
         pages.push({
           id: `pdf_page_${i + 1}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -358,8 +364,10 @@ export class PdfBackgroundManager {
 
       if (typeof pdfDoc.destroy === "function") {
         try {
-          await pdfDoc.destroy();
-        } catch {}
+          void pdfDoc.destroy();
+        } catch (err) {
+          void err;
+        }
       }
       this.docCache.delete(pdfFile.path);
 
@@ -419,7 +427,9 @@ export class PdfBackgroundManager {
         const dims = extractSvgDimensions(content);
         width = dims.width;
         height = dims.height;
-      } catch {}
+      } catch (err) {
+        void err;
+      }
 
       const orientation: PageOrientation = width > height ? "landscape" : "portrait";
       pages.push({
@@ -482,39 +492,19 @@ export class PdfBackgroundManager {
       return;
     }
 
-    let layer = pageEl.querySelector(".notepages-pdf-background-layer") as HTMLElement | null;
+    let layer = pageEl.querySelector<HTMLElement>(".notepages-pdf-background-layer");
     if (!layer) {
-      layer = document.createElement("div");
-      layer.className = "notepages-pdf-background-layer";
-      layer.style.position = "absolute";
-      layer.style.top = "0";
-      layer.style.left = "0";
-      layer.style.width = "100%";
-      layer.style.height = "100%";
-      layer.style.pointerEvents = "none";
-      layer.style.zIndex = "1";
-      layer.style.overflow = "hidden";
-
+      layer = pageEl.createDiv({ cls: "notepages-pdf-background-layer" });
       const firstChild = pageEl.firstChild;
-      if (firstChild) {
+      if (firstChild && firstChild !== layer) {
         pageEl.insertBefore(layer, firstChild);
-      } else {
-        pageEl.appendChild(layer);
       }
     }
 
-    let canvas = layer.querySelector("canvas.notepages-pdf-canvas") as HTMLCanvasElement | null;
+    let canvas = layer.querySelector<HTMLCanvasElement>("canvas.notepages-pdf-canvas");
     if (!canvas) {
       layer.empty();
-      canvas = document.createElement("canvas");
-      canvas.className = "notepages-pdf-canvas";
-      canvas.style.position = "absolute";
-      canvas.style.top = "0";
-      canvas.style.left = "0";
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
-      canvas.style.pointerEvents = "none";
-      layer.appendChild(canvas);
+      canvas = layer.createEl("canvas", { cls: "notepages-pdf-canvas" });
     }
 
     const dpr = typeof window !== "undefined" ? (window.devicePixelRatio || 1) : 1;
@@ -533,11 +523,11 @@ export class PdfBackgroundManager {
 
       const pdfDoc = await this.getPdfDocument(page.pdfSource.pdfPath);
       if (!pdfDoc) {
-        const missingNotice = document.createElement("div");
-        missingNotice.className = "notepages-pdf-missing-notice";
-        missingNotice.textContent = `PDF source not found: ${page.pdfSource.pdfPath}`;
         layer.empty();
-        layer.appendChild(missingNotice);
+        layer.createDiv({
+          cls: "notepages-pdf-missing-notice",
+          text: `PDF source not found: ${page.pdfSource.pdfPath}`
+        });
         return;
       }
 
@@ -567,7 +557,9 @@ export class PdfBackgroundManager {
             onRenderComplete();
           }
         }
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     });
   }
 
@@ -575,7 +567,7 @@ export class PdfBackgroundManager {
     if (!page.pdfSource) {
       return;
     }
-    const canvas = pageEl.querySelector("canvas.notepages-pdf-canvas") as HTMLCanvasElement | null;
+    const canvas = pageEl.querySelector<HTMLCanvasElement>("canvas.notepages-pdf-canvas");
     if (canvas && canvas.dataset.rendered === "true") {
       canvas.width = 1;
       canvas.height = 1;
@@ -616,7 +608,9 @@ export class PdfBackgroundManager {
           }
           success = true;
         }
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     });
     return success;
   }
@@ -627,8 +621,10 @@ export class PdfBackgroundManager {
     for (const doc of this.docCache.values()) {
       if (doc && typeof doc.destroy === "function") {
         try {
-          doc.destroy();
-        } catch {}
+          void doc.destroy();
+        } catch (err) {
+          void err;
+        }
       }
     }
     this.docCache.clear();

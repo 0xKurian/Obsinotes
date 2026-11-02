@@ -111,7 +111,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(sidebarToggleBtn, "panel-left");
-    sidebarToggleBtn.setAttribute("title", "Toggle Pages Sidebar (B)");
+    sidebarToggleBtn.setAttribute("title", "Toggle pages sidebar (b)");
     this.delegate.registerDomEvent(sidebarToggleBtn, "click", () => {
       this.delegate.onToggleSidebar();
     });
@@ -287,7 +287,7 @@ export class NotePagesToolbar {
     this.shapeFillBtn = this.shapeControlsContainer.createEl("button", {
       cls: this.delegate.isShapeFillEnabled() ? "notepages-tool-button is-active" : "notepages-tool-button"
     });
-    this.shapeFillBtn.setAttribute("title", "Toggle Shape Fill");
+    this.shapeFillBtn.setAttribute("title", "Toggle shape fill");
     setIcon(this.shapeFillBtn, "paint-bucket");
     this.delegate.registerDomEvent(this.shapeFillBtn, "click", () => {
       const filled = this.delegate.onToggleShapeFill();
@@ -456,19 +456,19 @@ export class NotePagesToolbar {
     this.eraserControlsContainer = leftGroup.createDiv({
       cls: "notepages-palette-group"
     });
-    this.eraserControlsContainer.style.display = "none";
+    this.eraserControlsContainer.toggle(false);
 
     this.strokeEraserBtn = this.eraserControlsContainer.createEl("button", {
       cls: "notepages-tool-button is-active"
     });
     setIcon(this.strokeEraserBtn, "eraser");
-    this.strokeEraserBtn.setAttribute("title", "Stroke Eraser (Erase whole stroke upon contact)");
+    this.strokeEraserBtn.setAttribute("title", "Stroke eraser (erase whole stroke upon contact)");
 
     this.precisionEraserBtn = this.eraserControlsContainer.createEl("button", {
       cls: "notepages-tool-button"
     });
     setIcon(this.precisionEraserBtn, "scissors");
-    this.precisionEraserBtn.setAttribute("title", "Precision Eraser (Trim exact contact points)");
+    this.precisionEraserBtn.setAttribute("title", "Precision eraser (trim exact contact points)");
 
     this.delegate.registerDomEvent(this.strokeEraserBtn, "click", () => {
       this.delegate.onSelectEraserMode("stroke");
@@ -481,13 +481,13 @@ export class NotePagesToolbar {
     this.selectionActionsContainer = leftGroup.createDiv({
       cls: "notepages-palette-group"
     });
-    this.selectionActionsContainer.style.display = "none";
+    this.selectionActionsContainer.toggle(false);
 
     this.duplicateSelectionBtn = this.selectionActionsContainer.createEl("button", {
       cls: "notepages-tool-button"
     });
     setIcon(this.duplicateSelectionBtn, "copy");
-    this.duplicateSelectionBtn.setAttribute("title", "Duplicate Selection (Ctrl+D)");
+    this.duplicateSelectionBtn.setAttribute("title", "Duplicate selection (Ctrl+D)");
     this.delegate.registerDomEvent(this.duplicateSelectionBtn, "click", () => {
       this.delegate.onDuplicateSelection();
     });
@@ -496,7 +496,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(this.deleteSelectionBtn, "trash-2");
-    this.deleteSelectionBtn.setAttribute("title", "Delete Selection (Del)");
+    this.deleteSelectionBtn.setAttribute("title", "Delete selection (del)");
     this.delegate.registerDomEvent(this.deleteSelectionBtn, "click", () => {
       this.delegate.onDeleteSelection();
     });
@@ -553,7 +553,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(zoomOutBtn, "zoom-out");
-    zoomOutBtn.setAttribute("title", "Zoom Out (-)");
+    zoomOutBtn.setAttribute("title", "Zoom out (-)");
     this.delegate.registerDomEvent(zoomOutBtn, "click", () => {
       this.delegate.onChangeZoom(-0.1);
     });
@@ -562,7 +562,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button notepages-zoom-btn"
     });
     this.zoomResetBtn.setText(`${Math.round(this.delegate.getZoomLevel() * 100)}%`);
-    this.zoomResetBtn.setAttribute("title", "Reset Zoom to 100% (0)");
+    this.zoomResetBtn.setAttribute("title", "Reset zoom to 100% (0)");
     this.delegate.registerDomEvent(this.zoomResetBtn, "click", () => {
       this.delegate.onResetZoom();
     });
@@ -571,7 +571,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(zoomInBtn, "zoom-in");
-    zoomInBtn.setAttribute("title", "Zoom In (+)");
+    zoomInBtn.setAttribute("title", "Zoom in (+)");
     this.delegate.registerDomEvent(zoomInBtn, "click", () => {
       this.delegate.onChangeZoom(0.1);
     });
@@ -580,7 +580,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(importPdfBtn, "file-up");
-    importPdfBtn.setAttribute("title", "Import Document (PDF / SVG)");
+    importPdfBtn.setAttribute("title", "Import document (PDF / SVG)");
     this.delegate.registerDomEvent(importPdfBtn, "click", () => {
       this.delegate.onOpenPdfPicker();
     });
@@ -589,7 +589,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(exportBtn, "file-down");
-    exportBtn.setAttribute("title", "Export Notebook (PDF / PNG / SVG)");
+    exportBtn.setAttribute("title", "Export notebook (PDF / PNG / SVG)");
     this.delegate.registerDomEvent(exportBtn, "click", () => {
       this.delegate.onExportNotebook();
     });
@@ -598,7 +598,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(addPageBtn, "file-plus");
-    addPageBtn.setAttribute("title", "Add New Page (A)");
+    addPageBtn.setAttribute("title", "Add new page (a)");
     this.delegate.registerDomEvent(addPageBtn, "click", () => {
       this.delegate.onAddNewPage();
     });
@@ -607,7 +607,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(duplicatePageBtn, "copy");
-    duplicatePageBtn.setAttribute("title", "Duplicate Current Page");
+    duplicatePageBtn.setAttribute("title", "Duplicate current page");
     this.delegate.registerDomEvent(duplicatePageBtn, "click", () => {
       this.delegate.onDuplicateCurrentPage();
     });
@@ -616,7 +616,7 @@ export class NotePagesToolbar {
       cls: "notepages-tool-button"
     });
     setIcon(deletePageBtn, "trash-2");
-    deletePageBtn.setAttribute("title", "Delete Current Page");
+    deletePageBtn.setAttribute("title", "Delete current page");
     this.delegate.registerDomEvent(deletePageBtn, "click", () => {
       this.delegate.onDeleteCurrentPage();
     });
@@ -815,7 +815,7 @@ export class NotePagesToolbar {
   }
 
   private normalizeColor(c: string): string {
-    const ctx = document.createElement("canvas").getContext("2d");
+    const ctx = createEl("canvas").getContext("2d");
     if (!ctx) return c;
     ctx.fillStyle = c;
     return ctx.fillStyle;

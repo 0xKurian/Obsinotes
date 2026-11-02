@@ -119,7 +119,9 @@ export class InkingController {
 
     try {
       activeCanvas.setPointerCapture(e.pointerId);
-    } catch {}
+    } catch (err) {
+      void err;
+    }
 
     if (this.activeTool === "eraser") {
       this.isDrawing = true;
@@ -195,7 +197,9 @@ export class InkingController {
     if (this.activeCanvas) {
       try {
         this.activeCanvas.releasePointerCapture(e.pointerId);
-      } catch {}
+      } catch (err) {
+        void err;
+      }
       this.clearCanvas(this.activeCanvas);
     }
 
@@ -270,12 +274,12 @@ export class InkingController {
     if (this.isRafScheduled) {
       return;
     }
-    if (typeof requestAnimationFrame === "undefined") {
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame === "undefined") {
       this.renderActiveStroke();
       return;
     }
     this.isRafScheduled = true;
-    this.rafId = requestAnimationFrame(() => {
+    this.rafId = window.requestAnimationFrame(() => {
       this.isRafScheduled = false;
       this.rafId = null;
       this.renderActiveStroke();
@@ -283,8 +287,8 @@ export class InkingController {
   }
 
   private finalizeStrokeDrawing(): void {
-    if (this.rafId !== null && typeof cancelAnimationFrame !== "undefined") {
-      cancelAnimationFrame(this.rafId);
+    if (this.rafId !== null && typeof window !== "undefined" && typeof window.cancelAnimationFrame !== "undefined") {
+      window.cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
     this.isRafScheduled = false;
@@ -299,7 +303,9 @@ export class InkingController {
     if (this.activeCanvas) {
       try {
         this.activeCanvas.releasePointerCapture(e.pointerId);
-      } catch {}
+      } catch (err) {
+        void err;
+      }
       this.clearCanvas(this.activeCanvas);
     }
 

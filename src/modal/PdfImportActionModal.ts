@@ -22,49 +22,36 @@ export class PdfImportActionModal extends Modal {
     contentEl.empty();
     contentEl.addClass("notepages-pdf-action-modal");
 
-    const titleEl = contentEl.createEl("h3", { text: "Document Import Options" });
-    titleEl.style.marginBottom = "12px";
+    contentEl.createEl("h3", { text: "Document import options" });
 
-    const descEl = contentEl.createEl("p", {
+    contentEl.createEl("p", {
       text: `This notebook already contains imported document pages. Choose how to handle "${this.pdfName}":`
     });
-    descEl.style.color = "var(--text-normal)";
-    descEl.style.marginBottom = "20px";
 
-    const btnContainer = contentEl.createDiv();
-    btnContainer.style.display = "flex";
-    btnContainer.style.flexDirection = "column";
-    btnContainer.style.gap = "12px";
+    const btnContainer = contentEl.createDiv({ cls: "notepages-pdf-action-buttons" });
 
     const replaceBtn = btnContainer.createEl("button", {
-      cls: "mod-warning",
+      cls: "mod-warning notepages-pdf-action-btn",
       text: "Replace all existing content"
     });
-    replaceBtn.style.padding = "10px 16px";
-    replaceBtn.style.textAlign = "center";
-    replaceBtn.style.fontWeight = "bold";
     replaceBtn.addEventListener("click", () => {
       this.close();
       this.onReplaceAll();
     });
 
     const appendBtn = btnContainer.createEl("button", {
-      cls: "mod-cta",
+      cls: "mod-cta notepages-pdf-action-btn",
       text: "Append to the end"
     });
-    appendBtn.style.padding = "10px 16px";
-    appendBtn.style.textAlign = "center";
-    appendBtn.style.fontWeight = "bold";
     appendBtn.addEventListener("click", () => {
       this.close();
       this.onAppendToEnd();
     });
 
     const cancelBtn = btnContainer.createEl("button", {
+      cls: "notepages-pdf-cancel-btn",
       text: "Cancel"
     });
-    cancelBtn.style.padding = "8px 16px";
-    cancelBtn.style.marginTop = "8px";
     cancelBtn.addEventListener("click", () => {
       this.close();
     });

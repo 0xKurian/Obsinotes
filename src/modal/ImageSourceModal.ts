@@ -19,23 +19,17 @@ export class ImageSourceModal extends Modal {
     contentEl.empty();
     contentEl.addClass("notepages-image-source-modal");
 
-    const titleEl = contentEl.createEl("h3", { text: "Insert Image" });
-    titleEl.style.marginBottom = "16px";
+    contentEl.createEl("h3", { text: "Insert image" });
 
-    const descEl = contentEl.createEl("p", {
+    contentEl.createEl("p", {
       text: "Choose the image source to insert into your notebook:"
     });
-    descEl.style.color = "var(--text-muted)";
-    descEl.style.marginBottom = "20px";
 
-    const btnContainer = contentEl.createDiv();
-    btnContainer.style.display = "flex";
-    btnContainer.style.gap = "12px";
-    btnContainer.style.justifyContent = "flex-end";
+    const btnContainer = contentEl.createDiv({ cls: "notepages-modal-actions" });
 
     const vaultBtn = btnContainer.createEl("button", {
       cls: "mod-cta",
-      text: "Choose from Vault"
+      text: "Choose from vault"
     });
     vaultBtn.addEventListener("click", () => {
       this.close();
@@ -44,7 +38,7 @@ export class ImageSourceModal extends Modal {
 
     const computerBtn = btnContainer.createEl("button", {
       cls: "mod-primary",
-      text: "Upload from Computer"
+      text: "Upload from computer"
     });
     computerBtn.addEventListener("click", () => {
       this.close();

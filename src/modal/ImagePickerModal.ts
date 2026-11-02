@@ -7,7 +7,7 @@ export class ImagePickerModal extends FuzzySuggestModal<TFile> {
   constructor(app: App, onSelect: (file: TFile) => void) {
     super(app);
     this.onSelect = onSelect;
-    this.setPlaceholder("Select an image from Vault to insert...");
+    this.setPlaceholder("Select an image from vault to insert...");
   }
 
   getItems(): TFile[] {

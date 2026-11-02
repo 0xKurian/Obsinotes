@@ -68,34 +68,36 @@ export class TextController {
     if (!this.activeText || !this.activeTextarea) {
       return;
     }
+    const styles: Partial<CSSStyleDeclaration> = {};
     if (options.fontSize !== undefined) {
       this.activeText.fontSize = options.fontSize;
-      this.activeTextarea.style.fontSize = `${options.fontSize}px`;
+      styles.fontSize = `${options.fontSize}px`;
     }
     if (options.fontWeight !== undefined) {
       this.activeText.fontWeight = options.fontWeight;
-      this.activeTextarea.style.fontWeight = options.fontWeight;
+      styles.fontWeight = options.fontWeight;
     }
     if (options.italic !== undefined) {
       this.activeText.italic = options.italic;
-      this.activeTextarea.style.fontStyle = options.italic ? "italic" : "normal";
+      styles.fontStyle = options.italic ? "italic" : "normal";
     }
     if (options.underline !== undefined) {
       this.activeText.underline = options.underline;
-      this.activeTextarea.style.textDecoration = options.underline ? "underline" : "none";
+      styles.textDecoration = options.underline ? "underline" : "none";
     }
     if (options.textAlign !== undefined) {
       this.activeText.textAlign = options.textAlign;
-      this.activeTextarea.style.textAlign = options.textAlign;
+      styles.textAlign = options.textAlign;
     }
     if (options.color !== undefined) {
       this.activeText.color = options.color;
-      this.activeTextarea.style.color = options.color;
+      styles.color = options.color;
     }
     if (options.backgroundColor !== undefined) {
       this.activeText.backgroundColor = options.backgroundColor;
-      this.activeTextarea.style.backgroundColor = options.backgroundColor;
+      styles.backgroundColor = options.backgroundColor;
     }
+    this.activeTextarea.setCssStyles(styles);
   }
 
   private notifyFormattingChanged(): void {
@@ -173,7 +175,7 @@ export class TextController {
       this.activeEditorContainer.parentElement.removeChild(this.activeEditorContainer);
     }
     if (this.hiddenTextElement) {
-      this.hiddenTextElement.style.visibility = "visible";
+      this.hiddenTextElement.removeClass("is-hidden");
       this.hiddenTextElement = null;
     }
     this.activeEditorContainer = null;
@@ -200,9 +202,9 @@ export class TextController {
     if (textObj) {
       this.activeText = { ...textObj };
       this.isNewText = false;
-      const existingBox = pageEl.querySelector(`.notepages-text-box[data-text-id="${textObj.id}"]`) as HTMLElement | null;
+      const existingBox = pageEl.querySelector<HTMLElement>(`.notepages-text-box[data-text-id="${textObj.id}"]`);
       if (existingBox) {
-        existingBox.style.visibility = "hidden";
+        existingBox.addClass("is-hidden");
         this.hiddenTextElement = existingBox;
       }
     } else {
@@ -250,37 +252,29 @@ export class TextController {
     const maxAllowedW = Math.max(60, page.dimensions.width - margin - currentText.x);
     const maxAllowedH = Math.max(30, page.dimensions.height - margin - currentText.y);
 
-    const textarea = document.createElement("textarea");
-    textarea.className = "notepages-inline-text-editor";
+    const textarea = pageEl.createEl("textarea", { cls: "notepages-inline-text-editor" });
     if (currentText.isSticky) {
-      textarea.classList.add("notepages-sticky-note");
-      if (currentText.backgroundColor) {
-        textarea.style.backgroundColor = currentText.backgroundColor;
-      }
-    } else {
-      textarea.style.backgroundColor = "transparent";
-      textarea.style.background = "transparent";
+      textarea.addClass("notepages-sticky-note");
     }
     textarea.value = currentText.content;
     textarea.placeholder = currentText.isSticky ? "Sticky note..." : "Type text, $LaTeX$, [[wikilinks]]...";
-    textarea.style.position = "absolute";
-    textarea.style.left = `${currentText.x}px`;
-    textarea.style.top = `${currentText.y}px`;
-    textarea.style.width = `${currentText.width}px`;
-    textarea.style.height = `${currentText.height}px`;
-    textarea.style.minWidth = "60px";
-    textarea.style.minHeight = "30px";
-    textarea.style.maxWidth = `${maxAllowedW}px`;
-    textarea.style.maxHeight = `${maxAllowedH}px`;
-    textarea.style.zIndex = "100";
-    textarea.style.fontSize = `${currentText.fontSize}px`;
-    textarea.style.fontFamily = currentText.fontFamily;
-    textarea.style.fontWeight = currentText.fontWeight;
-    textarea.style.fontStyle = currentText.italic ? "italic" : "normal";
-    textarea.style.textDecoration = currentText.underline ? "underline" : "none";
-    textarea.style.textAlign = currentText.textAlign;
-    textarea.style.color = currentText.color;
-    textarea.style.boxSizing = "border-box";
+
+    textarea.setCssStyles({
+      left: `${currentText.x}px`,
+      top: `${currentText.y}px`,
+      width: `${currentText.width}px`,
+      height: `${currentText.height}px`,
+      maxWidth: `${maxAllowedW}px`,
+      maxHeight: `${maxAllowedH}px`,
+      fontSize: `${currentText.fontSize}px`,
+      fontFamily: currentText.fontFamily,
+      fontWeight: currentText.fontWeight,
+      fontStyle: currentText.italic ? "italic" : "normal",
+      textDecoration: currentText.underline ? "underline" : "none",
+      textAlign: currentText.textAlign,
+      color: currentText.color,
+      ...(currentText.isSticky && currentText.backgroundColor ? { backgroundColor: currentText.backgroundColor } : {})
+    });
 
     textarea.addEventListener("pointerdown", (e: PointerEvent) => {
       e.stopPropagation();
@@ -328,7 +322,7 @@ export class TextController {
       if (textarea.scrollHeight > textarea.clientHeight) {
         const maxH = Math.max(30, page.dimensions.height - margin - currentText.y);
         const nextH = Math.min(maxH, Math.max(currentText.height, textarea.scrollHeight));
-        textarea.style.height = `${nextH}px`;
+        textarea.setCssStyles({ height: `${nextH}px` });
         currentText.height = nextH;
         currentText.bounds = {
           minX: currentText.x,
@@ -349,10 +343,10 @@ export class TextController {
             const w = Math.min(maxW, target.offsetWidth);
             const h = Math.min(maxH, target.offsetHeight);
             if (target.offsetWidth > maxW) {
-              target.style.width = `${maxW}px`;
+              target.setCssStyles({ width: `${maxW}px` });
             }
             if (target.offsetHeight > maxH) {
-              target.style.height = `${maxH}px`;
+              target.setCssStyles({ height: `${maxH}px` });
             }
             if (w > 0 && h > 0) {
               currentText.width = w;
@@ -370,15 +364,13 @@ export class TextController {
       this.textareaResizeObserver.observe(textarea);
     }
 
-    pageEl.appendChild(textarea);
-
     this.activeEditorContainer = textarea;
     this.activeTextarea = textarea;
 
     this.callbacks.onEditingStarted?.();
     this.notifyFormattingChanged();
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       textarea.focus();
       textarea.selectionStart = textarea.value.length;
       textarea.selectionEnd = textarea.value.length;
@@ -386,26 +378,11 @@ export class TextController {
   }
 
   renderPageTexts(page: PageData, pageEl: HTMLElement): void {
-    let layer = pageEl.querySelector(".notepages-text-layer") as HTMLElement | null;
+    let layer = pageEl.querySelector<HTMLElement>(".notepages-text-layer");
     if (!layer) {
-      layer = document.createElement("div");
-      layer.className = "notepages-text-layer";
-      layer.style.position = "absolute";
-      layer.style.top = "0";
-      layer.style.left = "0";
-      layer.style.width = "100%";
-      layer.style.height = "100%";
-      layer.style.pointerEvents = "none";
-      layer.style.zIndex = "4";
-      pageEl.appendChild(layer);
+      layer = pageEl.createDiv({ cls: "notepages-text-layer" });
     } else {
-      if (typeof (layer as { empty?: () => void }).empty === "function") {
-        (layer as { empty: () => void }).empty();
-      } else {
-        while (layer.firstChild) {
-          layer.removeChild(layer.firstChild);
-        }
-      }
+      layer.empty();
     }
 
     if (!Array.isArray(page.texts)) {
@@ -425,36 +402,31 @@ export class TextController {
 
     const margin = 10;
     page.texts.forEach(t => {
-      const box = document.createElement("div");
-      box.className = "notepages-text-box";
+      const box = layer.createDiv({ cls: "notepages-text-box" });
       box.dataset.textId = t.id;
-      box.style.position = "absolute";
-      box.style.left = `${t.x}px`;
-      box.style.top = `${t.y}px`;
-      box.style.width = `${t.width}px`;
-      box.style.minHeight = `${t.height}px`;
-      box.style.maxWidth = `${Math.max(60, page.dimensions.width - margin - t.x)}px`;
-      box.style.maxHeight = `${Math.max(30, page.dimensions.height - margin - t.y)}px`;
-      box.style.overflow = "hidden";
-      box.style.boxSizing = "border-box";
-      box.style.fontSize = `${t.fontSize}px`;
-      box.style.fontFamily = t.fontFamily;
-      box.style.fontWeight = t.fontWeight;
-      box.style.fontStyle = t.italic ? "italic" : "normal";
-      box.style.textDecoration = t.underline ? "underline" : "none";
-      box.style.color = t.color;
-      box.style.textAlign = t.textAlign;
-      box.style.pointerEvents = isDrawingTool ? "none" : "auto";
-      box.style.userSelect = "text";
       if (t.isSticky) {
-        box.classList.add("notepages-sticky-note");
-        if (t.backgroundColor) {
-          box.style.backgroundColor = t.backgroundColor;
-        }
-      } else {
-        box.style.backgroundColor = "transparent";
-        box.style.background = "transparent";
+        box.addClass("notepages-sticky-note");
       }
+      if (isDrawingTool) {
+        box.addClass("is-drawing");
+      }
+
+      box.setCssStyles({
+        left: `${t.x}px`,
+        top: `${t.y}px`,
+        width: `${t.width}px`,
+        minHeight: `${t.height}px`,
+        maxWidth: `${Math.max(60, page.dimensions.width - margin - t.x)}px`,
+        maxHeight: `${Math.max(30, page.dimensions.height - margin - t.y)}px`,
+        fontSize: `${t.fontSize}px`,
+        fontFamily: t.fontFamily,
+        fontWeight: t.fontWeight,
+        fontStyle: t.italic ? "italic" : "normal",
+        textDecoration: t.underline ? "underline" : "none",
+        color: t.color,
+        textAlign: t.textAlign,
+        ...(t.isSticky && t.backgroundColor ? { backgroundColor: t.backgroundColor } : {})
+      });
 
       this.renderFormattedContent(t.content, box);
 
@@ -470,12 +442,10 @@ export class TextController {
           this.startEditing(page, pageEl, t);
         }
       });
-
-      layer!.appendChild(box);
     });
 
     if (this.mathFlusher) {
-      this.mathFlusher().catch(() => {});
+      void this.mathFlusher().catch((err: unknown) => { void err; });
     }
   }
 
@@ -486,16 +456,14 @@ export class TextController {
         const lines = tok.value.split("\n");
         lines.forEach((line, idx) => {
           if (idx > 0) {
-            container.appendChild(document.createElement("br"));
+            container.createEl("br");
           }
           if (line.length > 0) {
             container.appendChild(document.createTextNode(line));
           }
         });
       } else if (tok.type === "wikilink") {
-        const linkEl = document.createElement("a");
-        linkEl.className = "notepages-wikilink";
-        linkEl.textContent = tok.value;
+        const linkEl = container.createEl("a", { cls: "notepages-wikilink", text: tok.value });
         linkEl.dataset.target = tok.target || tok.value;
         linkEl.addEventListener("click", (e: MouseEvent) => {
           e.preventDefault();
@@ -505,23 +473,17 @@ export class TextController {
         linkEl.addEventListener("mouseover", (e: MouseEvent) => {
           this.callbacks.onWikilinkHover?.(tok.target || tok.value, linkEl, e);
         });
-        container.appendChild(linkEl);
       } else if (tok.type === "math-inline" || tok.type === "math-display") {
         if (this.mathRenderer) {
           try {
             const mathEl = this.mathRenderer(tok.value, tok.type === "math-display");
             container.appendChild(mathEl);
-          } catch {
-            const fallback = document.createElement("span");
-            fallback.className = "notepages-math-fallback";
-            fallback.textContent = tok.raw;
-            container.appendChild(fallback);
+          } catch (err) {
+            void err;
+            container.createSpan({ cls: "notepages-math-fallback", text: tok.raw });
           }
         } else {
-          const fallback = document.createElement("span");
-          fallback.className = "notepages-math-fallback";
-          fallback.textContent = tok.raw;
-          container.appendChild(fallback);
+          container.createSpan({ cls: "notepages-math-fallback", text: tok.raw });
         }
       }
     });

@@ -281,7 +281,7 @@ export class NotePagesSidebar {
       ctx.drawImage(pdfCanvas, 0, 0, previewWidth, previewHeight);
       this.drawThumbnailStrokesOnly(ctx, page, previewWidth, previewHeight);
     } else if (page.pdfSource) {
-      this.delegate.getPdfBackgroundManager().renderPdfToCanvas(
+      void this.delegate.getPdfBackgroundManager().renderPdfToCanvas(
         page.pdfSource.pdfPath,
         page.pdfSource.pageIndex,
         previewCanvas,
@@ -293,11 +293,11 @@ export class NotePagesSidebar {
         }
       });
     } else {
-      const templateCanvas = pageFrame?.querySelector("canvas.notepages-template-layer") as HTMLCanvasElement | null;
+      const templateCanvas = pageFrame?.querySelector<HTMLCanvasElement>("canvas.notepages-template-layer");
       if (templateCanvas && templateCanvas.width > 0 && templateCanvas.height > 0) {
         ctx.drawImage(templateCanvas, 0, 0, previewWidth, previewHeight);
       } else {
-        const offscreen = document.createElement("canvas");
+        const offscreen = createEl("canvas");
         offscreen.width = page.dimensions.width;
         offscreen.height = page.dimensions.height;
         TemplateRenderer.renderTemplate(offscreen, page.dimensions, page.template);
@@ -346,7 +346,7 @@ export class NotePagesSidebar {
   }
 
   removeThumbnail(pageId: string): void {
-    const thumbCard = this.sidebarListEl?.querySelector(`[data-page-id="${pageId}"]`) as HTMLElement | null;
+    const thumbCard = this.sidebarListEl?.querySelector<HTMLElement>(`[data-page-id="${pageId}"]`);
     if (thumbCard && this.thumbnailIntersectionObserver) {
       this.thumbnailIntersectionObserver.unobserve(thumbCard);
     }
@@ -370,7 +370,7 @@ export class NotePagesSidebar {
     this.thumbnailElements.clear();
     for (let index = 0; index < pages.length; index++) {
       const p = pages[index];
-      const card = this.sidebarListEl?.querySelector(`[data-page-id="${p.id}"]`) as HTMLElement | null;
+      const card = this.sidebarListEl?.querySelector<HTMLElement>(`[data-page-id="${p.id}"]`);
       if (card) {
         card.dataset.pageIndex = String(index);
         const label = card.querySelector(".notepages-thumbnail-label");

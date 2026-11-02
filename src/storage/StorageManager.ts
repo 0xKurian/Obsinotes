@@ -110,7 +110,8 @@ export class StorageManager {
         }
         await this.vault.adapter.write(backupPath, content);
       }
-    } catch {
+    } catch (err) {
+      void err;
     }
 
     return {

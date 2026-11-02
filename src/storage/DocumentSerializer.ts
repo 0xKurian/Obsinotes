@@ -177,12 +177,19 @@ export class DocumentSerializer {
     if (typeof s.opacity !== "number" || s.opacity < 0 || s.opacity > 1) {
       errors.push(`${prefix}.opacity must be a number between 0 and 1`);
     }
-    if (!Array.isArray(s.points)) {
+    const points = s.points;
+    if (!Array.isArray(points)) {
       errors.push(`${prefix}.points must be an array`);
     } else {
-      for (let i = 0; i < s.points.length; i++) {
-        const pt = s.points[i];
-        if (!pt || typeof pt !== "object" || typeof pt.x !== "number" || typeof pt.y !== "number") {
+      const rawPoints: unknown[] = points;
+      for (let i = 0; i < rawPoints.length; i++) {
+        const pt = rawPoints[i];
+        if (
+          !pt ||
+          typeof pt !== "object" ||
+          typeof (pt as Record<string, unknown>).x !== "number" ||
+          typeof (pt as Record<string, unknown>).y !== "number"
+        ) {
           errors.push(`${prefix}.points[${i}] must have valid numeric x and y coordinates`);
           break;
         }
@@ -333,15 +340,15 @@ export class DocumentSerializer {
 
   static migrateDocument(rawObj: Record<string, unknown>): NotebookDocument {
     const now = Date.now();
-    const existingMeta = (rawObj.metadata && typeof rawObj.metadata === "object"
+    const existingMeta: Record<string, unknown> = (rawObj.metadata && typeof rawObj.metadata === "object")
       ? (rawObj.metadata as Record<string, unknown>)
-      : {}) as Record<string, unknown>;
+      : {};
 
     const metadata: NotebookMetadata = {
       title: typeof existingMeta.title === "string"
         ? existingMeta.title
         : typeof rawObj.title === "string"
-        ? (rawObj.title as string)
+        ? rawObj.title
         : "Untitled Notebook",
       createdAt: typeof existingMeta.createdAt === "number" ? existingMeta.createdAt : now,
       updatedAt: typeof existingMeta.updatedAt === "number" ? existingMeta.updatedAt : now,

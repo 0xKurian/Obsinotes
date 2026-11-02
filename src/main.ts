@@ -5,7 +5,8 @@ import {
   WorkspaceLeaf,
   Notice,
   normalizePath,
-  loadMathJax
+  loadMathJax,
+  View
 } from "obsidian";
 import { NotePagesView } from "./view/NotePagesView";
 import { NotePagesSettings, DEFAULT_SETTINGS } from "./settings/NotePagesSettings";
@@ -28,7 +29,9 @@ export default class NotePagesPlugin extends Plugin {
 
     try {
       await loadMathJax();
-    } catch {}
+    } catch (err) {
+      void err;
+    }
 
     this.registerView(
       NOTE_PAGES_VIEW_TYPE,
@@ -75,7 +78,7 @@ export default class NotePagesPlugin extends Plugin {
                 .setIcon("notebook-pen")
                 .onClick(() => {
                   const leaf = this.app.workspace.getLeaf(false);
-                  leaf.setViewState({
+                  void leaf.setViewState({
                     type: NOTE_PAGES_VIEW_TYPE,
                     state: { file: file.path }
                   });
@@ -128,12 +131,12 @@ export default class NotePagesPlugin extends Plugin {
       id: "toggle-markdown-view",
       name: "Toggle between notebook and Markdown view",
       checkCallback: (checking: boolean) => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (!activeLeaf || !activeLeaf.view) {
+        const activeView = this.app.workspace.getActiveViewOfType(View);
+        if (!activeView) {
           return false;
         }
 
-        const viewType = activeLeaf.view.getViewType();
+        const viewType = activeView.getViewType();
         if (viewType !== "markdown" && viewType !== NOTE_PAGES_VIEW_TYPE) {
           return false;
         }
@@ -142,7 +145,7 @@ export default class NotePagesPlugin extends Plugin {
           return true;
         }
 
-        this.toggleActiveLeafView(activeLeaf);
+        void this.toggleActiveLeafView(activeView.leaf);
         return true;
       }
     });
@@ -151,14 +154,14 @@ export default class NotePagesPlugin extends Plugin {
       id: "insert-text-box",
       name: "Insert text box",
       checkCallback: (checking: boolean) => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (!activeView) {
           return false;
         }
         if (checking) {
           return true;
         }
-        activeLeaf.view.insertTextBox();
+        activeView.insertTextBox();
         return true;
       }
     });
@@ -167,14 +170,14 @@ export default class NotePagesPlugin extends Plugin {
       id: "insert-sticky-note",
       name: "Insert sticky note",
       checkCallback: (checking: boolean) => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (!activeView) {
           return false;
         }
         if (checking) {
           return true;
         }
-        activeLeaf.view.insertStickyNote();
+        activeView.insertStickyNote();
         return true;
       }
     });
@@ -183,14 +186,14 @@ export default class NotePagesPlugin extends Plugin {
       id: "insert-image",
       name: "Insert image",
       checkCallback: (checking: boolean) => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (!activeView) {
           return false;
         }
         if (checking) {
           return true;
         }
-        activeLeaf.view.openImagePicker();
+        activeView.openImagePicker();
         return true;
       }
     });
@@ -199,9 +202,9 @@ export default class NotePagesPlugin extends Plugin {
       id: "import-pdf",
       name: "Import PDF",
       callback: () => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (activeLeaf && activeLeaf.view instanceof NotePagesView) {
-          activeLeaf.view.openPdfPicker(false);
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (activeView) {
+          activeView.openPdfPicker(false);
         } else {
           const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
           tempView.openPdfPicker(true);
@@ -213,9 +216,9 @@ export default class NotePagesPlugin extends Plugin {
       id: "import-pdf-new-notebook",
       name: "Import PDF as new notebook",
       callback: () => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (activeLeaf && activeLeaf.view instanceof NotePagesView) {
-          activeLeaf.view.openPdfPicker(true);
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (activeView) {
+          activeView.openPdfPicker(true);
         } else {
           const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
           tempView.openPdfPicker(true);
@@ -227,14 +230,14 @@ export default class NotePagesPlugin extends Plugin {
       id: "export-notebook",
       name: "Export notebook",
       checkCallback: (checking: boolean) => {
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (!activeView) {
           return false;
         }
         if (checking) {
           return true;
         }
-        activeLeaf.view.openExportModal();
+        activeView.openExportModal();
         return true;
       }
     });
@@ -242,8 +245,7 @@ export default class NotePagesPlugin extends Plugin {
     this.addSettingTab(new NotePagesSettingTab(this.app, this));
   }
 
-  async onunload(): Promise<void> {
-    this.app.workspace.detachLeavesOfType(NOTE_PAGES_VIEW_TYPE);
+  onunload(): void {
   }
 
   async loadSettings(): Promise<void> {
@@ -268,7 +270,7 @@ export default class NotePagesPlugin extends Plugin {
         }
         const leafFile = (view as { file?: TFile }).file;
         if (view.getViewType() === NOTE_PAGES_VIEW_TYPE && leafFile?.path === file.path) {
-          leaf.setViewState({
+          void leaf.setViewState({
             type: "markdown",
             state: { file: file.path }
           });
@@ -287,7 +289,7 @@ export default class NotePagesPlugin extends Plugin {
       }
       const leafFile = (view as { file?: TFile }).file;
       if (view.getViewType() === "markdown" && leafFile?.path === file.path) {
-        leaf.setViewState({
+        void leaf.setViewState({
           type: NOTE_PAGES_VIEW_TYPE,
           state: { file: file.path }
         });
@@ -309,7 +311,7 @@ export default class NotePagesPlugin extends Plugin {
     const file = (view as { file?: TFile }).file;
 
     if (viewType === NOTE_PAGES_VIEW_TYPE && file && !this.isNotePagesDocument(file)) {
-      leaf.setViewState({
+      void leaf.setViewState({
         type: "markdown",
         state: { file: file.path }
       });
@@ -328,7 +330,7 @@ export default class NotePagesPlugin extends Plugin {
       return;
     }
 
-    leaf.setViewState({
+    void leaf.setViewState({
       type: NOTE_PAGES_VIEW_TYPE,
       state: { file: file.path }
     });

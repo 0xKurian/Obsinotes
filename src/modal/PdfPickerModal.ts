@@ -6,7 +6,7 @@ export class PdfPickerModal extends FuzzySuggestModal<TFile> {
   constructor(app: App, onSelect: (file: TFile) => void) {
     super(app);
     this.onSelect = onSelect;
-    this.setPlaceholder("Select a PDF file from Vault to import...");
+    this.setPlaceholder("Select a PDF file from vault to import...");
   }
 
   getItems(): TFile[] {

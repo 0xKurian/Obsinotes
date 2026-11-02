@@ -1,4 +1,4 @@
-import type { App, TFile } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
 import { NotebookDocument } from "../types";
 import { ExportOptions, parsePageRange } from "./ExportTypes";
 import { PdfExporter } from "./PdfExporter";
@@ -14,17 +14,11 @@ export interface ExportResult {
 }
 
 function isTFile(file: unknown): file is TFile {
-  return Boolean(file && typeof file === "object" && "extension" in file && "stat" in file);
+  return file instanceof TFile;
 }
 
 function notify(message: string): void {
-  try {
-    const req = typeof require !== "undefined" ? require : null;
-    const obsidianModule = req ? req("obsidian") : null;
-    if (obsidianModule?.Notice) {
-      new obsidianModule.Notice(message);
-    }
-  } catch {}
+  new Notice(message);
 }
 
 export function toArrayBuffer(uint8Array: Uint8Array): ArrayBuffer {
@@ -38,13 +32,13 @@ export function downloadBlob(blob: Blob, filename: string): void {
     return;
   }
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = createEl("a");
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 export class ExportEngine {
