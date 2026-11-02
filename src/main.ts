@@ -58,7 +58,7 @@ export default class NotePagesPlugin extends Plugin {
         if (file instanceof TFolder) {
           menu.addItem((item) => {
             item
-              .setTitle("New Obsinotes notebook")
+              .setTitle("New notebook")
               .setIcon("notebook-pen")
               .onClick(async () => {
                 await this.createNewNotebook(file.path);
@@ -71,7 +71,7 @@ export default class NotePagesPlugin extends Plugin {
           if (this.isNotePagesDocument(file)) {
             menu.addItem((item) => {
               item
-                .setTitle("Open in Obsinotes")
+                .setTitle("Open as notebook")
                 .setIcon("notebook-pen")
                 .onClick(() => {
                   const leaf = this.app.workspace.getLeaf(false);
@@ -84,7 +84,7 @@ export default class NotePagesPlugin extends Plugin {
 
             menu.addItem((item) => {
               item
-                .setTitle("Export Obsinotes notebook...")
+                .setTitle("Export notebook...")
                 .setIcon("file-down")
                 .onClick(async () => {
                   const leaf = this.app.workspace.getLeaf(false);
@@ -100,7 +100,7 @@ export default class NotePagesPlugin extends Plugin {
           } else if (file.extension.toLowerCase() === "pdf") {
             menu.addItem((item) => {
               item
-                .setTitle("Import PDF as Obsinotes notebook")
+                .setTitle("Import PDF as notebook")
                 .setIcon("notebook-pen")
                 .onClick(async () => {
                   const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
@@ -112,21 +112,21 @@ export default class NotePagesPlugin extends Plugin {
       })
     );
 
-    this.addRibbonIcon("notebook-pen", "New Obsinotes notebook", async () => {
+    this.addRibbonIcon("notebook-pen", "New notebook", async () => {
       await this.createNewNotebook();
     });
 
     this.addCommand({
-      id: "create-new-notepages-notebook",
-      name: "Create new Obsinotes notebook",
+      id: "create-new-notebook",
+      name: "Create new notebook",
       callback: async () => {
         await this.createNewNotebook();
       }
     });
 
     this.addCommand({
-      id: "toggle-notepages-markdown-view",
-      name: "Toggle between Obsinotes and Markdown view",
+      id: "toggle-markdown-view",
+      name: "Toggle between notebook and Markdown view",
       checkCallback: (checking: boolean) => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (!activeLeaf || !activeLeaf.view) {
@@ -148,8 +148,8 @@ export default class NotePagesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "notepages-insert-text-box",
-      name: "Obsinotes: Insert text box",
+      id: "insert-text-box",
+      name: "Insert text box",
       checkCallback: (checking: boolean) => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
@@ -164,8 +164,24 @@ export default class NotePagesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "notepages-insert-image",
-      name: "Obsinotes: Insert image",
+      id: "insert-sticky-note",
+      name: "Insert sticky note",
+      checkCallback: (checking: boolean) => {
+        const activeLeaf = this.app.workspace.activeLeaf;
+        if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
+          return false;
+        }
+        if (checking) {
+          return true;
+        }
+        activeLeaf.view.insertStickyNote();
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: "insert-image",
+      name: "Insert image",
       checkCallback: (checking: boolean) => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
@@ -180,8 +196,8 @@ export default class NotePagesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "notepages-import-pdf",
-      name: "Obsinotes: Import PDF",
+      id: "import-pdf",
+      name: "Import PDF",
       callback: () => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (activeLeaf && activeLeaf.view instanceof NotePagesView) {
@@ -194,8 +210,8 @@ export default class NotePagesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "notepages-import-pdf-new-notebook",
-      name: "Obsinotes: Import PDF as new notebook",
+      id: "import-pdf-new-notebook",
+      name: "Import PDF as new notebook",
       callback: () => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (activeLeaf && activeLeaf.view instanceof NotePagesView) {
@@ -208,8 +224,8 @@ export default class NotePagesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "notepages-export-notebook",
-      name: "Obsinotes: Export notebook",
+      id: "export-notebook",
+      name: "Export notebook",
       checkCallback: (checking: boolean) => {
         const activeLeaf = this.app.workspace.activeLeaf;
         if (!activeLeaf || !(activeLeaf.view instanceof NotePagesView)) {
@@ -388,7 +404,7 @@ export default class NotePagesPlugin extends Plugin {
       });
       new Notice(`Created notebook: ${createdFile.name}`);
     } catch {
-      new Notice("Error creating NotePages notebook. Check Obsidian console.");
+      new Notice("Error creating notebook. Check console.");
     }
   }
 

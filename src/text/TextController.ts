@@ -399,7 +399,13 @@ export class TextController {
       layer.style.zIndex = "4";
       pageEl.appendChild(layer);
     } else {
-      layer.innerHTML = "";
+      if (typeof (layer as { empty?: () => void }).empty === "function") {
+        (layer as { empty: () => void }).empty();
+      } else {
+        while (layer.firstChild) {
+          layer.removeChild(layer.firstChild);
+        }
+      }
     }
 
     if (!Array.isArray(page.texts)) {

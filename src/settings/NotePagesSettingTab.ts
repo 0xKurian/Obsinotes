@@ -14,8 +14,6 @@ export class NotePagesSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Obsinotes Settings" });
-
     new Setting(containerEl)
       .setName("Default page size")
       .setDesc("Choose the default paper size for newly created notebooks and pages.")

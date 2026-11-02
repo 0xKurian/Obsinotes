@@ -82,7 +82,13 @@ export class ImageController {
       layer.style.zIndex = "3";
       pageEl.appendChild(layer);
     } else {
-      layer.innerHTML = "";
+      if (typeof (layer as { empty?: () => void }).empty === "function") {
+        (layer as { empty: () => void }).empty();
+      } else {
+        while (layer.firstChild) {
+          layer.removeChild(layer.firstChild);
+        }
+      }
     }
 
     if (!Array.isArray(page.images)) {

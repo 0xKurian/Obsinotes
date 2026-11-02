@@ -1,7 +1,7 @@
 {
   "name": "obsinotes",
   "version": "1.0.0",
-  "description": "Multi-page digital whiteboard and notebook with stylus inking, paper templates, sticky notes, LaTeX, and Goodnotes-like continuous scrolling for Obsidian.",
+  "description": "Create multi-page digital notebooks and whiteboards with stylus inking, paper templates, sticky notes, LaTeX math, and continuous scrolling.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
