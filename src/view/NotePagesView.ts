@@ -58,6 +58,8 @@ import { NotePagesSidebar, NotePagesSidebarDelegate } from "./NotePagesSidebar";
 import { NotePagesToolbar, NotePagesToolbarDelegate } from "./NotePagesToolbar";
 import { ExportModal } from "../modal/ExportModal";
 import { ExportEngine } from "../export/ExportEngine";
+import { PerformanceMonitor } from "../performance/PerformanceMonitor";
+import { PageVirtualizer } from "../performance/PageVirtualizer";
 
 export class NotePagesView extends TextFileView implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate {
   plugin: NotePagesPlugin;
@@ -94,6 +96,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   activeCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   templateCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   pageIntersectionObserver: IntersectionObserver | null = null;
+  performanceMonitor: PerformanceMonitor = new PerformanceMonitor();
+  pageVirtualizer!: PageVirtualizer;
 
   clipboard: { strokes: StrokeObject[]; shapes: ShapeObject[] } | null = null;
 
@@ -497,6 +501,22 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.importHandler = new NotePagesImportHandler(this);
     this.sidebar = new NotePagesSidebar(this);
     this.toolbar = new NotePagesToolbar(this);
+
+    this.pageVirtualizer = new PageVirtualizer({
+      getTotalPages: () => this.pageManager?.getPages().length ?? 0,
+      mountPageCanvases: (pageNumber: number) => {
+        this.mountPageCanvases(pageNumber);
+      },
+      unmountPageCanvases: (pageNumber: number) => {
+        this.unmountPageCanvases(pageNumber);
+      },
+      isPageDrawing: (pageNumber: number) => {
+        const page = this.pageManager?.getPageByNumber(pageNumber);
+        return page ? this.inkingController.isCurrentlyDrawing(page.id) : false;
+      }
+    });
+
+    this.inkingController.setPerformanceMonitor(this.performanceMonitor);
   }
 
   getFile(): TFile | null {
@@ -810,6 +830,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
     this.pageIntersectionObserver?.disconnect();
     this.pageIntersectionObserver = null;
+    this.pageVirtualizer.destroy();
     this.sidebar.destroy();
     this.pdfBackgroundManager.destroy();
     this.document = null;
@@ -822,6 +843,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   clear(): void {
     this.pageIntersectionObserver?.disconnect();
+    this.pageVirtualizer.destroy();
     this.sidebar.clear();
     this.pdfBackgroundManager.destroy();
     this.document = null;
@@ -1350,6 +1372,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pagesContainerEl = this.scrollerEl.createDiv({
       cls: "notepages-pages-container"
     });
+
+    this.pageVirtualizer.initialize(this.scrollerEl);
 
     if (typeof IntersectionObserver !== "undefined") {
       this.pageIntersectionObserver = new IntersectionObserver(
@@ -2350,6 +2374,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.committedCanvasMap.clear();
     this.activeCanvasMap.clear();
     this.templateCanvasMap.clear();
+    this.pageVirtualizer.clear();
     this.pageIntersectionObserver?.disconnect();
 
     const pages = this.pageManager.getPages();
@@ -2395,16 +2420,23 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const targetW = Math.round(page.dimensions.width * scale);
     const targetH = Math.round(page.dimensions.height * scale);
 
+    const totalPages = this.pageManager ? this.pageManager.getPages().length : 1;
+    const shouldInitialMount = totalPages <= 4 || page.pageNumber <= 3;
+    const initialW = shouldInitialMount ? targetW : 1;
+    const initialH = shouldInitialMount ? targetH : 1;
+
     if (!page.pdfSource) {
       const templateCanvas = pageFrame.createEl("canvas", {
         cls: "notepages-page-layer notepages-template-layer"
       });
       templateCanvas.dataset.pageWidth = String(page.dimensions.width);
       templateCanvas.dataset.pageHeight = String(page.dimensions.height);
-      templateCanvas.width = targetW;
-      templateCanvas.height = targetH;
+      templateCanvas.width = initialW;
+      templateCanvas.height = initialH;
       this.templateCanvasMap.set(page.id, templateCanvas);
-      TemplateRenderer.renderTemplate(templateCanvas, page.dimensions, page.template);
+      if (shouldInitialMount) {
+        TemplateRenderer.renderTemplate(templateCanvas, page.dimensions, page.template);
+      }
     }
 
     const committedCanvas = pageFrame.createEl("canvas", {
@@ -2412,20 +2444,24 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
     committedCanvas.dataset.pageWidth = String(page.dimensions.width);
     committedCanvas.dataset.pageHeight = String(page.dimensions.height);
-    committedCanvas.width = targetW;
-    committedCanvas.height = targetH;
+    committedCanvas.width = initialW;
+    committedCanvas.height = initialH;
     this.committedCanvasMap.set(page.id, committedCanvas);
-    this.redrawCommittedCanvas(page.id);
+    if (shouldInitialMount) {
+      this.redrawCommittedCanvas(page.id);
+    }
 
     const activeCanvas = pageFrame.createEl("canvas", {
       cls: "notepages-page-layer notepages-active-layer is-interactive"
     });
     activeCanvas.dataset.pageWidth = String(page.dimensions.width);
     activeCanvas.dataset.pageHeight = String(page.dimensions.height);
-    activeCanvas.width = targetW;
-    activeCanvas.height = targetH;
+    activeCanvas.width = initialW;
+    activeCanvas.height = initialH;
     activeCanvas.style.touchAction = "none";
     this.activeCanvasMap.set(page.id, activeCanvas);
+
+    this.pageVirtualizer.observePage(page.pageNumber, pageWrapper);
 
     const pageNumberWatermark = pageFrame.createDiv({
       cls: "notepages-page-number-watermark",
@@ -3402,6 +3438,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const pageWrapper = this.pagesContainerEl.querySelector(`[data-page-id="${pageId}"]`) as HTMLElement | null;
 
+    this.pageVirtualizer.unobservePage(deletedPageNumber);
+
     if (pageWrapper && this.pageIntersectionObserver) {
       this.pageIntersectionObserver.unobserve(pageWrapper);
     }
@@ -3613,5 +3651,100 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         backgroundColor: this.currentStickyColor
       });
     }
+  }
+
+  mountPageCanvases(pageNumber: number): void {
+    const page = this.pageManager?.getPageByNumber(pageNumber);
+    if (!page) {
+      return;
+    }
+
+    const scale = this.getCanvasScale();
+    const targetW = Math.round(page.dimensions.width * scale);
+    const targetH = Math.round(page.dimensions.height * scale);
+
+    const committedCanvas = this.committedCanvasMap.get(page.id);
+    if (committedCanvas && committedCanvas.width <= 1) {
+      committedCanvas.width = targetW;
+      committedCanvas.height = targetH;
+      this.redrawCommittedCanvas(page.id);
+    }
+
+    const templateCanvas = this.templateCanvasMap.get(page.id);
+    if (templateCanvas && templateCanvas.width <= 1) {
+      templateCanvas.width = targetW;
+      templateCanvas.height = targetH;
+      TemplateRenderer.renderTemplate(templateCanvas, page.dimensions, page.template);
+    }
+
+    const activeCanvas = this.activeCanvasMap.get(page.id);
+    if (activeCanvas && activeCanvas.width <= 1) {
+      activeCanvas.width = targetW;
+      activeCanvas.height = targetH;
+    }
+
+    const pageEl = this.pageElements.get(pageNumber);
+    if (pageEl && page.pdfSource && !page.pdfSource.svgPath) {
+      const frameEl = pageEl.querySelector(".notepages-page-frame") as HTMLElement | null;
+      if (frameEl) {
+        this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
+          this.updateThumbnailStrokes(page);
+        });
+      }
+    }
+
+    this.performanceMonitor.updatePageCounts(
+      this.pageVirtualizer.getMountedPages().length,
+      this.pageVirtualizer.getCulledPages().length
+    );
+  }
+
+  unmountPageCanvases(pageNumber: number): void {
+    const page = this.pageManager?.getPageByNumber(pageNumber);
+    if (!page) {
+      return;
+    }
+    if (this.inkingController.isCurrentlyDrawing(page.id)) {
+      return;
+    }
+
+    const committedCanvas = this.committedCanvasMap.get(page.id);
+    if (committedCanvas && committedCanvas.width > 1) {
+      committedCanvas.width = 1;
+      committedCanvas.height = 1;
+    }
+
+    const templateCanvas = this.templateCanvasMap.get(page.id);
+    if (templateCanvas && templateCanvas.width > 1) {
+      templateCanvas.width = 1;
+      templateCanvas.height = 1;
+    }
+
+    const activeCanvas = this.activeCanvasMap.get(page.id);
+    if (activeCanvas && activeCanvas.width > 1) {
+      activeCanvas.width = 1;
+      activeCanvas.height = 1;
+    }
+
+    const pageEl = this.pageElements.get(pageNumber);
+    if (pageEl && page.pdfSource && !page.pdfSource.svgPath) {
+      const frameEl = pageEl.querySelector(".notepages-page-frame") as HTMLElement | null;
+      if (frameEl) {
+        this.pdfBackgroundManager.unrenderPdfBackground(page, frameEl);
+      }
+    }
+
+    this.performanceMonitor.updatePageCounts(
+      this.pageVirtualizer.getMountedPages().length,
+      this.pageVirtualizer.getCulledPages().length
+    );
+  }
+
+  getPerformanceMonitor(): PerformanceMonitor {
+    return this.performanceMonitor;
+  }
+
+  getPageVirtualizer(): PageVirtualizer {
+    return this.pageVirtualizer;
   }
 }

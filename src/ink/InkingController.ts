@@ -9,6 +9,7 @@ import {
 import { StrokeGeometry } from "./StrokeGeometry";
 import { EraserEngine } from "./EraserEngine";
 import { ShapeRecognizer } from "../shape/ShapeRecognizer";
+import { PerformanceMonitor } from "../performance/PerformanceMonitor";
 
 export interface InkingControllerCallbacks {
   onStrokeCommitted: (pageId: string, stroke: StrokeObject) => void;
@@ -33,6 +34,9 @@ export class InkingController {
   private lastPenTimestamp: number = 0;
   private lastMoveTimestamp: number = 0;
   private callbacks: InkingControllerCallbacks;
+  private rafId: number | null = null;
+  private isRafScheduled: boolean = false;
+  private performanceMonitor?: PerformanceMonitor;
 
   constructor(callbacks: InkingControllerCallbacks) {
     this.callbacks = callbacks;
@@ -60,6 +64,20 @@ export class InkingController {
 
   setShapeRecognition(enabled: boolean): void {
     this.shapeRecognitionEnabled = enabled;
+  }
+
+  setPerformanceMonitor(monitor?: PerformanceMonitor): void {
+    this.performanceMonitor = monitor;
+  }
+
+  isCurrentlyDrawing(pageId?: string): boolean {
+    if (!this.isDrawing) {
+      return false;
+    }
+    if (pageId && this.activePageId !== pageId) {
+      return false;
+    }
+    return true;
   }
 
   handlePointerDown(
@@ -160,7 +178,11 @@ export class InkingController {
       this.currentPoints.push(sample);
     }
 
-    this.renderActiveStroke();
+    if (this.performanceMonitor) {
+      this.performanceMonitor.recordPointerEvent(e.timeStamp || Date.now(), pageCoordsList.length);
+    }
+
+    this.scheduleActiveStrokeRender();
   }
 
   handlePointerUp(e: PointerEvent): void {
@@ -244,7 +266,28 @@ export class InkingController {
     this.finalizeStrokeDrawing();
   }
 
+  private scheduleActiveStrokeRender(): void {
+    if (this.isRafScheduled) {
+      return;
+    }
+    if (typeof requestAnimationFrame === "undefined") {
+      this.renderActiveStroke();
+      return;
+    }
+    this.isRafScheduled = true;
+    this.rafId = requestAnimationFrame(() => {
+      this.isRafScheduled = false;
+      this.rafId = null;
+      this.renderActiveStroke();
+    });
+  }
+
   private finalizeStrokeDrawing(): void {
+    if (this.rafId !== null && typeof cancelAnimationFrame !== "undefined") {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.isRafScheduled = false;
     this.isDrawing = false;
     this.activePageId = null;
     this.activeCanvas = null;
