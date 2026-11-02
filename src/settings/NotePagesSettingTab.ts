@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
+import type { SettingDefinitionItem } from "obsidian";
 import type NotePagesPlugin from "../main";
 import { PageSizePreset, PageOrientation, PaperTemplateType } from "../types";
 
@@ -8,6 +9,94 @@ export class NotePagesSettingTab extends PluginSettingTab {
   constructor(app: App, plugin: NotePagesPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  override getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        name: "Default page size",
+        desc: "Choose the default paper size for newly created notebooks and pages.",
+        control: {
+          type: "dropdown",
+          key: "defaultPageSize",
+          options: {
+            A4: "A4 (210 X 297 mm)",
+            Letter: "US Letter (8.5 x 11 in)",
+          },
+        },
+      },
+      {
+        name: "Default page orientation",
+        desc: "Orientation applied to new pages.",
+        control: {
+          type: "dropdown",
+          key: "defaultOrientation",
+          options: {
+            portrait: "Portrait (vertical)",
+            landscape: "Landscape (horizontal)",
+          },
+        },
+      },
+      {
+        name: "Default paper template",
+        desc: "Template pattern rendered on new pages.",
+        control: {
+          type: "dropdown",
+          key: "defaultTemplate",
+          options: {
+            blank: "Blank",
+            ruled: "Ruled (lined)",
+            grid: "Grid",
+            dotted: "Dotted",
+            cornell: "Cornell note",
+          },
+        },
+      },
+      {
+        name: "Default line color",
+        desc: "Color applied to paper template rule lines and grids.",
+        control: {
+          type: "color",
+          key: "defaultLineColor",
+        },
+      },
+      {
+        name: "Draw with finger",
+        desc: "Allow drawing with finger touch on touchscreens instead of only panning and zooming.",
+        control: {
+          type: "toggle",
+          key: "drawWithFinger",
+        },
+      },
+      {
+        name: "Autosave interval (ms)",
+        desc: "Debounce delay in milliseconds before saving changes to disk.",
+        control: {
+          type: "number",
+          key: "autosaveIntervalMs",
+          min: 300,
+        },
+      },
+    ];
+  }
+
+  override getControlValue(key: string): unknown {
+    const settings = this.plugin.settings as unknown as Record<string, unknown>;
+    return settings[key];
+  }
+
+  override async setControlValue(key: string, value: unknown): Promise<void> {
+    const settings = this.plugin.settings as unknown as Record<string, unknown>;
+    if (key === "autosaveIntervalMs") {
+      const parsed = typeof value === "number" ? value : parseInt(String(value), 10);
+      if (!isNaN(parsed) && parsed >= 300) {
+        settings[key] = parsed;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
+    settings[key] = value;
+    await this.plugin.saveSettings();
   }
 
   display(): void {

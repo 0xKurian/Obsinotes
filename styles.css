@@ -25,8 +25,6 @@
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-bg) transparent;
   gap: 4px;
 }
 
@@ -428,17 +426,17 @@
   cursor: crosshair;
 }
 
-.notepages-view-container.is-space-panning .notepages-scroller,
-.notepages-view-container.is-space-panning canvas.notepages-page-layer,
-.notepages-view-container.is-space-panning .notepages-page-frame {
-  cursor: grab !important;
+body .notepages-view-container.is-space-panning .notepages-scroller,
+body .notepages-view-container.is-space-panning canvas.notepages-page-layer,
+body .notepages-view-container.is-space-panning .notepages-page-frame {
+  cursor: grab;
 }
 
-.notepages-view-container.is-panning .notepages-scroller,
-.notepages-view-container.is-panning canvas.notepages-page-layer,
-.notepages-view-container.is-panning .notepages-page-frame,
-.notepages-scroller.is-panning {
-  cursor: grabbing !important;
+body .notepages-view-container.is-panning .notepages-scroller,
+body .notepages-view-container.is-panning canvas.notepages-page-layer,
+body .notepages-view-container.is-panning .notepages-page-frame,
+body .notepages-view-container .notepages-scroller.is-panning {
+  cursor: grabbing;
   user-select: none;
 }
 
@@ -685,10 +683,10 @@ textarea.notepages-inline-text-editor::placeholder {
   opacity: 0.7;
 }
 
-textarea.notepages-inline-text-editor:not(.notepages-sticky-note) {
-  background: transparent !important;
-  background-color: transparent !important;
-  box-shadow: none !important;
+body .notepages-view-container textarea.notepages-inline-text-editor:not(.notepages-sticky-note) {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
 }
 
 .notepages-sticky-note {
@@ -910,12 +908,14 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
 }
 
 .notepages-text-box .math,
-.notepages-text-box mjx-container {
+.notepages-text-box .MathJax,
+.notepages-text-box [jax="CHTML"] {
   display: inline-block;
   vertical-align: middle;
 }
 
-.notepages-text-box mjx-container[jax="CHTML"][display="true"] {
+.notepages-text-box .MathJax[display="true"],
+.notepages-text-box [jax="CHTML"][display="true"] {
   display: block;
   margin: 0.5em 0;
 }
