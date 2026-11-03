@@ -626,7 +626,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getIcon(): string {
-    return "notebook-pen";
+    return "book-open";
   }
 
   async onOpen(): Promise<void> {

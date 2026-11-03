@@ -62,7 +62,7 @@ export default class NotePagesPlugin extends Plugin {
           menu.addItem((item) => {
             item
               .setTitle("New notebook")
-              .setIcon("notebook-pen")
+              .setIcon("book-open")
               .onClick(async () => {
                 await this.createNewNotebook(file.path);
               });
@@ -75,7 +75,7 @@ export default class NotePagesPlugin extends Plugin {
             menu.addItem((item) => {
               item
                 .setTitle("Open as notebook")
-                .setIcon("notebook-pen")
+                .setIcon("book-open")
                 .onClick(() => {
                   const leaf = this.app.workspace.getLeaf(false);
                   void leaf.setViewState({
@@ -104,7 +104,7 @@ export default class NotePagesPlugin extends Plugin {
             menu.addItem((item) => {
               item
                 .setTitle("Import PDF as notebook")
-                .setIcon("notebook-pen")
+                .setIcon("book-open")
                 .onClick(async () => {
                   const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
                   await tempView.promptAndImportVaultPdf(file, true);
@@ -115,7 +115,7 @@ export default class NotePagesPlugin extends Plugin {
       })
     );
 
-    this.addRibbonIcon("notebook-pen", "New notebook", async () => {
+    this.addRibbonIcon("book-open", "NotePages: New notebook", async () => {
       await this.createNewNotebook();
     });
 
