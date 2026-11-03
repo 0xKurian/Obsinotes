@@ -17,11 +17,11 @@ export class StrokeGeometry {
           streamline: 0.55,
           simulatePressure: false,
           start: {
-            taper: Math.max(1, width * 1.8),
+            taper: 0,
             cap: true
           },
           end: {
-            taper: Math.max(1, width * 1.8),
+            taper: 0,
             cap: true
           }
         };
@@ -80,26 +80,82 @@ export class StrokeGeometry {
     }
   }
 
+  static getToolSize(tool: ToolType, width: number): number {
+    switch (tool) {
+      case "pressure":
+        return Math.max(1, width * 1.5);
+      case "fountain":
+        return Math.max(1, width * 1.3);
+      case "highlighter":
+        return Math.max(6, width * 4.5);
+      case "pen":
+      default:
+        return Math.max(1, width);
+    }
+  }
+
+  static isDot(points: PointSample[], width: number): boolean {
+    if (points.length <= 1) {
+      return true;
+    }
+    const p0 = points[0];
+    const threshold = Math.max(3.0, width * 0.7);
+    for (let i = 1; i < points.length; i++) {
+      const dist = Math.hypot(points[i].x - p0.x, points[i].y - p0.y);
+      if (dist > threshold) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static generateDotOutline(points: PointSample[], tool: ToolType, width: number): number[][] {
+    if (points.length === 0) {
+      return [];
+    }
+    let sumX = 0;
+    let sumY = 0;
+    let maxPressure = 0.5;
+    for (const p of points) {
+      sumX += p.x;
+      sumY += p.y;
+      if (p.pressure && p.pressure > maxPressure) {
+        maxPressure = p.pressure;
+      }
+    }
+    const cx = sumX / points.length;
+    const cy = sumY / points.length;
+
+    const baseSize = this.getToolSize(tool, width);
+    const pressureClamped = Math.max(0.15, Math.min(1.0, maxPressure));
+    const pressureScale = tool === "pressure" ? (0.7 + pressureClamped * 0.3) : 1.0;
+    const radius = Math.max(1.2, (baseSize * pressureScale) / 2);
+
+    const circle: number[][] = [];
+    const segments = 16;
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      circle.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
+    }
+    return circle;
+  }
+
   static generateOutline(points: PointSample[], tool: ToolType, width: number): number[][] {
     if (points.length === 0) {
       return [];
     }
 
-    if (points.length === 1) {
-      const p = points[0];
-      const radius = Math.max(1, width / 2);
-      const circle: number[][] = [];
-      const segments = 12;
-      for (let i = 0; i < segments; i++) {
-        const angle = (i / segments) * Math.PI * 2;
-        circle.push([p.x + Math.cos(angle) * radius, p.y + Math.sin(angle) * radius]);
-      }
-      return circle;
+    if (this.isDot(points, width)) {
+      return this.generateDotOutline(points, tool, width);
     }
 
     const rawInput = points.map((p) => [p.x, p.y, Math.max(0.05, Math.min(1.0, p.pressure))]);
     const options = this.getStrokeOptions(tool, width);
-    return getStroke(rawInput, options);
+    const outline = getStroke(rawInput, options);
+    if (outline.length < 2) {
+      return this.generateDotOutline(points, tool, width);
+    }
+    return outline;
   }
 
   static computeBoundingBox(points: PointSample[], padding: number = 4): StrokeBoundingBox {

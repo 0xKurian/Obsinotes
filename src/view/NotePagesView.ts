@@ -2819,6 +2819,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           y: pageY
         });
       } else {
+        e.preventDefault();
         this.inkingController.handlePointerDown(
           e,
           page.id,

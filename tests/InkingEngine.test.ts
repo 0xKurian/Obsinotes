@@ -47,6 +47,64 @@ describe("InkingEngine & StrokeGeometry", () => {
     assert.strictEqual(bounds.maxX, 105);
     assert.strictEqual(bounds.maxY, 155);
   });
+
+  test("isDot detects single point and micro-movement clusters", () => {
+    // 1 point
+    assert.strictEqual(StrokeGeometry.isDot([{ x: 100, y: 100, pressure: 0.5, timestamp: 0 }], 2.5), true);
+
+    // 2 close points (typical stylus tap with slight wobble)
+    const closePoints: PointSample[] = [
+      { x: 100, y: 100, pressure: 0.4, timestamp: 0 },
+      { x: 100.4, y: 100.2, pressure: 0.4, timestamp: 10 }
+    ];
+    assert.strictEqual(StrokeGeometry.isDot(closePoints, 2.5), true);
+
+    // Normal stroke with movement > threshold
+    const linePoints: PointSample[] = [
+      { x: 100, y: 100, pressure: 0.5, timestamp: 0 },
+      { x: 110, y: 100, pressure: 0.5, timestamp: 10 }
+    ];
+    assert.strictEqual(StrokeGeometry.isDot(linePoints, 2.5), false);
+  });
+
+  test("generateOutline renders visible dot for pressure tool with 1, 2, or 3 close points", () => {
+    // 1 point with pressure tool
+    const singlePt: PointSample[] = [{ x: 50, y: 50, pressure: 0.5, timestamp: 0 }];
+    const outline1 = StrokeGeometry.generateOutline(singlePt, "pressure", 2.5);
+    assert.ok(outline1.length >= 12, "Single point must produce a multi-vertex circle outline");
+
+    let minX1 = Infinity, maxX1 = -Infinity, minY1 = Infinity, maxY1 = -Infinity;
+    for (const p of outline1) {
+      if (p[0] < minX1) minX1 = p[0];
+      if (p[0] > maxX1) maxX1 = p[0];
+      if (p[1] < minY1) minY1 = p[1];
+      if (p[1] > maxY1) maxY1 = p[1];
+    }
+    const w1 = maxX1 - minX1;
+    const h1 = maxY1 - minY1;
+    assert.ok(w1 >= 2.5, `Single point dot width (${w1}) must be at least 2.5px`);
+    assert.ok(h1 >= 2.5, `Single point dot height (${h1}) must be at least 2.5px`);
+
+    // 2 close points with pressure tool (must NOT collapse to 0.02px)
+    const twoClosePts: PointSample[] = [
+      { x: 100, y: 100, pressure: 0.2, timestamp: 0 },
+      { x: 100.5, y: 100.3, pressure: 0.2, timestamp: 10 }
+    ];
+    const outline2 = StrokeGeometry.generateOutline(twoClosePts, "pressure", 2.5);
+    assert.ok(outline2.length >= 12, "Two close points must produce a visible dot outline");
+
+    let minX2 = Infinity, maxX2 = -Infinity, minY2 = Infinity, maxY2 = -Infinity;
+    for (const p of outline2) {
+      if (p[0] < minX2) minX2 = p[0];
+      if (p[0] > maxX2) maxX2 = p[0];
+      if (p[1] < minY2) minY2 = p[1];
+      if (p[1] > maxY2) maxY2 = p[1];
+    }
+    const w2 = maxX2 - minX2;
+    const h2 = maxY2 - minY2;
+    assert.ok(w2 >= 2.5, `Two-point dot width (${w2}) must be at least 2.5px, not collapsed`);
+    assert.ok(h2 >= 2.5, `Two-point dot height (${h2}) must be at least 2.5px, not collapsed`);
+  });
 });
 
 describe("EraserEngine", () => {
