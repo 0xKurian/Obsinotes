@@ -159,6 +159,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   };
 
   zoomLevel: number = 1.0;
+  private canvasResolutionTimeout: number | null = null;
+  private touchPointers: Map<number, { clientX: number; clientY: number }> = new Map();
+  private touchPinchDistance: number = 0;
+  private touchPinchStartZoom: number = 1.0;
+  private isTouchPinching: boolean = false;
   penWidth: number = 2.5;
   highlighterWidth: number = 14.0;
   isSidebarCollapsed: boolean = false;
@@ -912,6 +917,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   async onClose(): Promise<void> {
+    if (this.canvasResolutionTimeout !== null) {
+      window.clearTimeout(this.canvasResolutionTimeout);
+      this.canvasResolutionTimeout = null;
+    }
+    this.touchPointers.clear();
+    this.isTouchPinching = false;
     if (this.saveStatusResetTimer !== null) {
       window.clearTimeout(this.saveStatusResetTimer);
       this.saveStatusResetTimer = null;
@@ -930,6 +941,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   clear(): void {
+    if (this.canvasResolutionTimeout !== null) {
+      window.clearTimeout(this.canvasResolutionTimeout);
+      this.canvasResolutionTimeout = null;
+    }
+    this.touchPointers.clear();
+    this.isTouchPinching = false;
     this.pageIntersectionObserver?.disconnect();
     this.pageVirtualizer.destroy();
     this.sidebar.clear();
@@ -1321,6 +1338,19 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(this.scrollerEl, "pointerdown", (e: PointerEvent) => {
+      if (e.pointerType === "touch") {
+        this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+        if (this.touchPointers.size === 2) {
+          if (this.isPanning) {
+            this.finishPan();
+          }
+          const [p1, p2] = Array.from(this.touchPointers.values());
+          this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          this.touchPinchStartZoom = this.zoomLevel;
+          this.isTouchPinching = true;
+          return;
+        }
+      }
       if (this.isPanTrigger(e) || e.target === this.scrollerEl || e.target === this.pagesContainerEl) {
         if (this.textController.isEditing()) {
           this.textController.commitActiveEdit();
@@ -1436,8 +1466,32 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.registerDomEvent(this.scrollerEl, "wheel", (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY < 0 ? 0.1 : -0.1;
-        this.changeZoom(delta);
+        if (this.inkingController.isCurrentlyDrawing()) {
+          return;
+        }
+
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) {
+          // DOM_DELTA_LINE
+          dy *= 30;
+        } else if (e.deltaMode === 2) {
+          // DOM_DELTA_PAGE
+          dy *= 400;
+        }
+
+        if (Math.abs(dy) < 0.1) {
+          return;
+        }
+
+        // Smooth exponential zoom factor based on continuous deltaY.
+        // Symmetrically bounded between 1 / 1.15 and 1.15 to avoid massive jumps from single mouse wheel ticks,
+        // while tracking fluidly at 60-120fps during trackpad pinch gestures (dy ~ 1..20).
+        const MAX_ZOOM_IN_FACTOR = 1.15;
+        const MAX_ZOOM_OUT_FACTOR = 1 / MAX_ZOOM_IN_FACTOR;
+        const rawFactor = Math.exp(-dy * 0.005);
+        const factor = Math.min(MAX_ZOOM_IN_FACTOR, Math.max(MAX_ZOOM_OUT_FACTOR, rawFactor));
+
+        this.zoomByFactor(factor, e.clientX, e.clientY);
       }
     }, { passive: false });
 
@@ -1511,6 +1565,20 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.ensureDragOverlay();
 
     this.registerDomEvent(window, "pointermove", (e: PointerEvent) => {
+      if (e.pointerType === "touch" && this.touchPointers.has(e.pointerId)) {
+        this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+        if (this.touchPointers.size === 2 && this.isTouchPinching && this.touchPinchDistance > 10) {
+          const [p1, p2] = Array.from(this.touchPointers.values());
+          const currentDist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          const factor = currentDist / this.touchPinchDistance;
+          const targetZoom = this.touchPinchStartZoom * factor;
+          const midX = (p1.clientX + p2.clientX) / 2;
+          const midY = (p1.clientY + p2.clientY) / 2;
+          this.setZoomLevel(Math.round(targetZoom * 1000) / 1000, midX, midY, true);
+          return;
+        }
+      }
+
       if (this.isPanning) {
         this.updatePan(e.clientX, e.clientY);
         return;
@@ -1521,6 +1589,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(window, "pointerup", (e: PointerEvent) => {
+      if (e && e.pointerType === "touch") {
+        this.touchPointers.delete(e.pointerId);
+        if (this.touchPointers.size < 2 && this.isTouchPinching) {
+          this.isTouchPinching = false;
+          this.touchPinchDistance = 0;
+          this.scheduleCanvasResolutionUpdate(180);
+        }
+      }
       if (this.isPanning) {
         this.finishPan();
         return;
@@ -1530,7 +1606,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
     });
 
-    this.registerDomEvent(window, "pointercancel", () => {
+    this.registerDomEvent(window, "pointercancel", (e: PointerEvent) => {
+      if (e && e.pointerType === "touch") {
+        this.touchPointers.delete(e.pointerId);
+        if (this.touchPointers.size < 2 && this.isTouchPinching) {
+          this.isTouchPinching = false;
+          this.touchPinchDistance = 0;
+          this.scheduleCanvasResolutionUpdate(180);
+        }
+      }
       if (this.isPanning) {
         this.finishPan();
         return;
@@ -2313,15 +2397,111 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.sidebar.toggle();
   }
 
-  private changeZoom(delta: number): void {
-    const nextZoom = Math.min(Math.max(this.zoomLevel + delta, 0.4), 3.0);
-    this.zoomLevel = Math.round(nextZoom * 10) / 10;
-    this.applyZoom();
+  private scheduleCanvasResolutionUpdate(delayMs: number = 180): void {
+    if (this.canvasResolutionTimeout !== null) {
+      window.clearTimeout(this.canvasResolutionTimeout);
+    }
+    this.canvasResolutionTimeout = window.setTimeout(() => {
+      this.canvasResolutionTimeout = null;
+      this.updateCanvasResolutions();
+    }, delayMs);
+  }
+
+  private flushCanvasResolutionUpdate(): void {
+    if (this.canvasResolutionTimeout !== null) {
+      window.clearTimeout(this.canvasResolutionTimeout);
+      this.canvasResolutionTimeout = null;
+    }
+    this.updateCanvasResolutions();
+  }
+
+  private applyPagesContainerTransform(): void {
+    if (!this.pagesContainerEl) {
+      return;
+    }
+    if (this.zoomLevel > 1) {
+      const extraHeight = Math.ceil(this.pagesContainerEl.offsetHeight * (this.zoomLevel - 1));
+      const extraWidth = Math.ceil(this.pagesContainerEl.offsetWidth * (this.zoomLevel - 1));
+      const marginX = `${Math.ceil(extraWidth / 2) + 60}px`;
+      this.pagesContainerEl.setCssStyles({
+        transform: `scale(${this.zoomLevel})`,
+        marginBottom: `${extraHeight + 80}px`,
+        marginRight: marginX,
+        marginLeft: marginX
+      });
+    } else {
+      this.pagesContainerEl.setCssStyles({
+        transform: `scale(${this.zoomLevel})`,
+        marginBottom: "0px",
+        marginRight: "0px",
+        marginLeft: "0px"
+      });
+    }
+  }
+
+  setZoomLevel(targetZoom: number, anchorClientX?: number, anchorClientY?: number, isContinuous: boolean = false): void {
+    const clampedZoom = Math.min(3.0, Math.max(0.4, targetZoom));
+    if (Math.abs(clampedZoom - this.zoomLevel) < 0.0005) {
+      return;
+    }
+
+    if (!this.pagesContainerEl || !this.scrollerEl) {
+      this.zoomLevel = clampedZoom;
+      return;
+    }
+
+    let ax = anchorClientX;
+    let ay = anchorClientY;
+    if (ax === undefined || ay === undefined) {
+      const scrollerRect = this.scrollerEl.getBoundingClientRect();
+      ax = scrollerRect.left + scrollerRect.width / 2;
+      ay = scrollerRect.top + scrollerRect.height / 2;
+    }
+
+    const rectBefore = this.pagesContainerEl.getBoundingClientRect();
+    const canAnchor = rectBefore.width > 0 && rectBefore.height > 0;
+    const fracX = canAnchor ? (ax - rectBefore.left) / rectBefore.width : 0.5;
+    const fracY = canAnchor ? (ay - rectBefore.top) / rectBefore.height : 0.5;
+
+    this.zoomLevel = clampedZoom;
+
+    this.applyPagesContainerTransform();
+
+    if (canAnchor) {
+      const rectAfter = this.pagesContainerEl.getBoundingClientRect();
+      const newAx = rectAfter.left + fracX * rectAfter.width;
+      const newAy = rectAfter.top + fracY * rectAfter.height;
+      const diffX = newAx - ax;
+      const diffY = newAy - ay;
+
+      if (Number.isFinite(diffX) && Number.isFinite(diffY)) {
+        this.scrollerEl.scrollLeft += diffX;
+        this.scrollerEl.scrollTop += diffY;
+      }
+    }
+
+    this.toolbar.updateZoomDisplay(this.zoomLevel);
+    this.updateStatusDisplay();
+
+    if (isContinuous) {
+      this.scheduleCanvasResolutionUpdate(180);
+    } else {
+      this.flushCanvasResolutionUpdate();
+    }
+  }
+
+  zoomByFactor(factor: number, anchorClientX?: number, anchorClientY?: number): void {
+    const nextZoom = Math.min(3.0, Math.max(0.4, this.zoomLevel * factor));
+    this.setZoomLevel(Math.round(nextZoom * 1000) / 1000, anchorClientX, anchorClientY, true);
+  }
+
+  private changeZoom(delta: number, anchorClientX?: number, anchorClientY?: number): void {
+    const nextZoom = Math.min(3.0, Math.max(0.4, Math.round((this.zoomLevel + delta) * 10) / 10));
+    this.setZoomLevel(nextZoom, anchorClientX, anchorClientY, false);
   }
 
   private resetZoom(): void {
-    this.zoomLevel = 1.0;
-    this.applyZoom();
+    this.setZoomLevel(1.0);
   }
 
   getCanvasScale(): number {
@@ -2366,30 +2546,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
   }
 
-  private applyZoom(): void {
-    if (this.pagesContainerEl) {
-      if (this.zoomLevel > 1) {
-        const extraHeight = Math.ceil(this.pagesContainerEl.offsetHeight * (this.zoomLevel - 1));
-        const extraWidth = Math.ceil(this.pagesContainerEl.offsetWidth * (this.zoomLevel - 1));
-        const marginX = `${Math.ceil(extraWidth / 2) + 60}px`;
-        this.pagesContainerEl.setCssStyles({
-          transform: `scale(${this.zoomLevel})`,
-          marginBottom: `${extraHeight + 80}px`,
-          marginRight: marginX,
-          marginLeft: marginX
-        });
-      } else {
-        this.pagesContainerEl.setCssStyles({
-          transform: `scale(${this.zoomLevel})`,
-          marginBottom: "0px",
-          marginRight: "0px",
-          marginLeft: "0px"
-        });
-      }
-    }
-    this.updateCanvasResolutions();
-    this.toolbar.updateZoomDisplay(this.zoomLevel);
-    this.updateStatusDisplay();
+  applyZoom(): void {
+    this.setZoomLevel(this.zoomLevel);
   }
 
   private isPanTrigger(e: PointerEvent): boolean {
@@ -2699,6 +2857,26 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(activeCanvas, "pointerdown", (e: PointerEvent) => {
+      this.flushCanvasResolutionUpdate();
+
+      if (e.pointerType === "touch") {
+        this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+        if (this.touchPointers.size === 2) {
+          if (this.inkingController.isCurrentlyDrawing()) {
+            this.inkingController.handlePointerCancel(e);
+          }
+          if (this.isPanning) {
+            this.finishPan();
+          }
+          const [p1, p2] = Array.from(this.touchPointers.values());
+          this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          this.touchPinchStartZoom = this.zoomLevel;
+          this.isTouchPinching = true;
+          e.stopPropagation();
+          return;
+        }
+      }
+
       if (this.isPanTrigger(e)) {
         if (this.textController.isEditing()) {
           this.textController.commitActiveEdit();
