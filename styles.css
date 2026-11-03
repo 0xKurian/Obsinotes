@@ -630,7 +630,8 @@ body .notepages-view-container .notepages-scroller.is-panning {
   visibility: hidden;
 }
 
-.notepages-text-box.is-drawing {
+.notepages-text-box.is-drawing,
+.notepages-view-container:not(.is-tool-select):not(.is-tool-text):not(.is-tool-sticky) .notepages-text-box {
   pointer-events: none;
 }
 

@@ -448,6 +448,16 @@ export class TextController {
       this.renderFormattedContent(t.content, box);
 
       box.addEventListener("dblclick", (e: MouseEvent) => {
+        const curTool = this.callbacks.getActiveTool ? this.callbacks.getActiveTool() : "";
+        if (curTool !== "select" && curTool !== "text" && curTool !== "sticky") {
+          return;
+        }
+        if (curTool === "sticky" && !t.isSticky) {
+          return;
+        }
+        if (curTool === "text" && t.isSticky) {
+          return;
+        }
         e.stopPropagation();
         this.startEditing(page, pageEl, t);
       });

@@ -3255,6 +3255,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(activeCanvas, "dblclick", (e: MouseEvent) => {
+      const tool = this.inkingController.activeTool;
+      if (tool !== "select" && tool !== "text" && tool !== "sticky") {
+        return;
+      }
+
+      const pointerEvent = e as unknown as PointerEvent;
+      if (pointerEvent.pointerType === "touch" && !this.plugin.settings.drawWithFinger) {
+        return;
+      }
+
       const rect = activeCanvas.getBoundingClientRect();
       const scaleX = page.dimensions.width / rect.width;
       const scaleY = page.dimensions.height / rect.height;
@@ -3270,7 +3280,28 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         []
       );
       if (hit?.text) {
-        this.textController.startEditing(page, pageFrame, hit.text);
+        if (tool === "select" || (tool === "text" && !hit.text.isSticky) || (tool === "sticky" && hit.text.isSticky)) {
+          this.textController.startEditing(page, pageFrame, hit.text);
+        }
+      } else if (tool === "sticky") {
+        const defaultW = 140;
+        const defaultH = 140;
+        const margin = 10;
+        const adjustedX = Math.max(margin, Math.min(pageX, page.dimensions.width - margin - defaultW));
+        const adjustedY = Math.max(margin, Math.min(pageY, page.dimensions.height - margin - defaultH));
+        this.textController.startEditing(
+          page,
+          pageFrame,
+          undefined,
+          adjustedX,
+          adjustedY,
+          defaultW,
+          defaultH,
+          {
+            isSticky: true,
+            backgroundColor: this.currentStickyColor
+          }
+        );
       } else {
         const defaultW = 220;
         const defaultH = 60;
