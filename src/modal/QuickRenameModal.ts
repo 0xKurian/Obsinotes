@@ -100,7 +100,6 @@ export class QuickRenameModal extends Modal {
     this.errorEl = formGroup.createDiv({
       cls: "notepages-rename-error"
     });
-    this.errorEl.style.display = "none";
 
     const buttonGroup = contentEl.createDiv({
       cls: "notepages-rename-actions"
@@ -147,12 +146,12 @@ export class QuickRenameModal extends Modal {
     const validation = validateNotebookTitle(value, this.existingFileNames, this.currentTitle);
     if (!validation.valid) {
       this.errorEl.setText(validation.error || "Invalid title");
-      this.errorEl.style.display = "block";
+      this.errorEl.addClass("is-visible");
       this.submitBtn.disabled = true;
       return false;
     } else {
       this.errorEl.setText("");
-      this.errorEl.style.display = "none";
+      this.errorEl.removeClass("is-visible");
       this.submitBtn.disabled = false;
       return true;
     }

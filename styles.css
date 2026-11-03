@@ -1441,9 +1441,14 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
 }
 
 .notepages-rename-error {
+  display: none;
   font-size: 12px;
   color: var(--text-error, #f87171);
   padding: 2px 4px;
+}
+
+.notepages-rename-error.is-visible {
+  display: block;
 }
 
 .notepages-rename-actions {

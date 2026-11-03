@@ -131,7 +131,7 @@ export default class NotePagesPlugin extends Plugin {
       })
     );
 
-    this.addRibbonIcon("book-open", "NotePages: New notebook", async () => {
+    this.addRibbonIcon("book-open", "Notepages: New notebook", async () => {
       await this.createNewNotebook();
     });
 

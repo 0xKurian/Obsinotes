@@ -123,7 +123,7 @@ export class NotePagesToolbar {
     this.titleBtn = leftGroup.createEl("button", {
       cls: "notepages-title-btn"
     });
-    this.titleBtn.setAttribute("title", "Quick rename notebook (F2)");
+    this.titleBtn.setAttribute("title", "Quick rename notebook (f2)");
     this.titleTextEl = this.titleBtn.createSpan({
       cls: "notepages-title-text",
       text: this.delegate.getNotebookTitle() || "Untitled Notebook"
