@@ -72,9 +72,9 @@ export class PageVirtualizer {
     options: PageVirtualizerOptions = {}
   ) {
     this.delegate = delegate;
-    this.virtualizationThreshold = options.virtualizationThreshold ?? 4;
-    this.bufferPages = options.bufferPages ?? 1;
-    this.rootMargin = options.rootMargin ?? "600px 0px 600px 0px";
+    this.virtualizationThreshold = options.virtualizationThreshold ?? 15;
+    this.bufferPages = options.bufferPages ?? 2;
+    this.rootMargin = options.rootMargin ?? "800px 0px 800px 0px";
   }
 
   initialize(rootElement?: HTMLElement | null): void {
@@ -100,13 +100,25 @@ export class PageVirtualizer {
     }
   }
 
-  observePage(pageNumber: number, element: HTMLElement): void {
+  observePage(pageNumber: number, element: HTMLElement, isMounted: boolean = true): void {
     this.observedElements.set(pageNumber, element);
-    this.mountedPages.add(pageNumber);
+    if (isMounted) {
+      this.mountedPages.add(pageNumber);
+    } else {
+      this.mountedPages.delete(pageNumber);
+    }
 
     if (this.observer) {
       this.observer.observe(element);
     }
+  }
+
+  markPageMounted(pageNumber: number): void {
+    this.mountedPages.add(pageNumber);
+  }
+
+  markPageUnmounted(pageNumber: number): void {
+    this.mountedPages.delete(pageNumber);
   }
 
   unobservePage(pageNumber: number): void {

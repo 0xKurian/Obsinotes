@@ -7,6 +7,7 @@ import {
   Menu,
   Modal,
   App,
+  normalizePath,
   renderMath,
   finishRenderMath,
   loadMathJax
@@ -60,6 +61,7 @@ import { NotePagesImportHandler, NotePagesImportDelegate } from "./NotePagesImpo
 import { NotePagesSidebar, NotePagesSidebarDelegate } from "./NotePagesSidebar";
 import { NotePagesToolbar, NotePagesToolbarDelegate } from "./NotePagesToolbar";
 import { ExportModal } from "../modal/ExportModal";
+import { QuickRenameModal } from "../modal/QuickRenameModal";
 import { ExportEngine } from "../export/ExportEngine";
 import { PerformanceMonitor } from "../performance/PerformanceMonitor";
 import { PageVirtualizer } from "../performance/PageVirtualizer";
@@ -559,6 +561,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         const page = this.pageManager?.getPageByNumber(pageNumber);
         return page ? this.inkingController.isCurrentlyDrawing(page.id) : false;
       }
+    }, {
+      virtualizationThreshold: 15,
+      bufferPages: 2
     });
 
     this.inkingController.setPerformanceMonitor(this.performanceMonitor);
@@ -618,6 +623,27 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return;
     }
     await super.onLoadFile(file);
+    this.toolbar?.updateTitle(this.getNotebookTitle());
+  }
+
+  async onRename(file: TFile): Promise<void> {
+    await super.onRename(file);
+    const newTitle = file.basename.replace(/\.gnote$/, "");
+    if (this.document && this.document.metadata) {
+      this.document.metadata.title = newTitle;
+    }
+    this.toolbar?.updateTitle(newTitle);
+    this.updateStatusDisplay();
+  }
+
+  getNotebookTitle(): string {
+    if (this.file instanceof TFile) {
+      return this.file.basename.replace(/\.gnote$/, "");
+    }
+    if (this.document?.metadata?.title) {
+      return this.document.metadata.title;
+    }
+    return "Untitled Notebook";
   }
 
   getDisplayText(): string {
@@ -893,6 +919,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return false;
     });
 
+    this.scope.register([], "F2", (e) => {
+      if (this.textController.isEditing()) {
+        return true;
+      }
+      e.preventDefault();
+      this.openQuickRenameModal();
+      return false;
+    });
+
     this.scope.register([], "Escape", (e) => {
       if (this.textController.isEditing()) {
         return true;
@@ -1120,6 +1155,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   onToggleSidebar(): void {
     this.toggleSidebar();
+  }
+
+  onQuickRename(): void {
+    this.openQuickRenameModal();
   }
 
   onUndo(): void {
@@ -1450,6 +1489,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       });
 
       menu.addSeparator();
+
+      menu.addItem((item) => {
+        item
+          .setTitle("Quick rename notebook...")
+          .setIcon("pencil")
+          .onClick(() => {
+            this.openQuickRenameModal();
+          });
+      });
 
       menu.addItem((item) => {
         item
@@ -2686,6 +2734,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.toolbar.updatePaperTemplateButtons(activeType);
       const orient = this.pageManager.getNotebookOrientation();
       this.updateOrientationButtonDisplay(orient);
+      this.toolbar.updateTitle(this.getNotebookTitle());
     }
 
     this.updateActivePage(this.currentPageNumber);
@@ -2716,7 +2765,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const targetH = Math.round(page.dimensions.height * scale);
 
     const totalPages = this.pageManager ? this.pageManager.getPages().length : 1;
-    const shouldInitialMount = totalPages <= 4 || page.pageNumber <= 3;
+    const shouldInitialMount = totalPages <= 15 || page.pageNumber <= 4 || page.pageNumber === this.currentPageNumber;
     const initialW = shouldInitialMount ? targetW : 1;
     const initialH = shouldInitialMount ? targetH : 1;
 
@@ -2753,9 +2802,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     activeCanvas.dataset.pageHeight = String(page.dimensions.height);
     activeCanvas.width = initialW;
     activeCanvas.height = initialH;
+    if (shouldInitialMount) {
+      const actCtx = activeCanvas.getContext("2d");
+      if (actCtx && typeof actCtx.setTransform === "function") {
+        actCtx.setTransform(scale, 0, 0, scale, 0, 0);
+      }
+    }
     this.activeCanvasMap.set(page.id, activeCanvas);
 
-    this.pageVirtualizer.observePage(page.pageNumber, pageWrapper);
+    this.pageVirtualizer.observePage(page.pageNumber, pageWrapper, shouldInitialMount);
 
     const pageNumberWatermark = pageFrame.createDiv({
       cls: "notepages-page-number-watermark",
@@ -2773,6 +2828,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           });
           bgImg.src = this.resolveResourcePath(svgFile.path);
           bgImg.draggable = false;
+          if (pageFrame.firstChild && pageFrame.firstChild !== bgImg) {
+            pageFrame.insertBefore(bgImg, pageFrame.firstChild);
+          }
         }
       } else {
         if (this.pageIntersectionObserver) {
@@ -2858,6 +2916,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.registerDomEvent(activeCanvas, "pointerdown", (e: PointerEvent) => {
       this.flushCanvasResolutionUpdate();
+      this.ensurePageCanvasesMounted(page.pageNumber);
 
       if (e.pointerType === "touch") {
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
@@ -3754,6 +3813,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.clearActiveSelectionCanvas();
     }
     this.currentPageNumber = pageNumber;
+    this.ensurePageCanvasesMounted(pageNumber);
+    if (pageNumber > 1) {
+      this.ensurePageCanvasesMounted(pageNumber - 1);
+    }
+    if (this.pageManager && pageNumber < this.pageManager.getPageCount()) {
+      this.ensurePageCanvasesMounted(pageNumber + 1);
+    }
     const targetEl = this.pageElements.get(pageNumber);
     if (targetEl) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3763,6 +3829,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   private updateActivePage(pageNumber: number): void {
     this.currentPageNumber = pageNumber;
+    this.ensurePageCanvasesMounted(pageNumber);
     this.sidebar.updateActivePage(pageNumber);
     this.updateStatusDisplay();
   }
@@ -3804,6 +3871,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const newIndex = this.pageManager.getPageCount() - 1;
     this.renderPage(newPage);
+    this.ensurePageCanvasesMounted(newPage.pageNumber);
     this.renderThumbnail(newPage, newIndex);
     this.ensureDragOverlay();
 
@@ -4026,6 +4094,80 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     modal.open();
   }
 
+  openQuickRenameModal(): void {
+    if (!(this.file instanceof TFile)) {
+      new Notice("Cannot rename: not a valid file");
+      return;
+    }
+
+    const currentTitle = this.getNotebookTitle();
+    const siblingNames = this.getFolderSiblingNotebookNames();
+
+    new QuickRenameModal(
+      this.app,
+      currentTitle,
+      siblingNames,
+      async (newTitle: string) => {
+        return await this.executeRenameNotebook(newTitle);
+      }
+    ).open();
+  }
+
+  getFolderSiblingNotebookNames(): string[] {
+    if (!(this.file instanceof TFile)) {
+      return [];
+    }
+    const parentFolder = this.file.parent;
+    if (!parentFolder || !parentFolder.children) {
+      return [];
+    }
+    const names: string[] = [];
+    for (const child of parentFolder.children) {
+      if (child instanceof TFile && child.path !== this.file.path) {
+        names.push(child.basename);
+      }
+    }
+    return names;
+  }
+
+  async executeRenameNotebook(newTitle: string): Promise<boolean> {
+    if (!(this.file instanceof TFile)) {
+      new Notice("Cannot rename: not a valid file");
+      return false;
+    }
+
+    const trimmed = newTitle.trim();
+    const currentTitle = this.getNotebookTitle();
+    if (trimmed === currentTitle) {
+      return true;
+    }
+
+    const currentFile = this.file;
+    const parentPath = currentFile.parent ? (currentFile.parent.path === "/" ? "" : currentFile.parent.path) : "";
+    const extension = currentFile.extension;
+    const newFileName = `${trimmed}.${extension}`;
+    const newFilePath = normalizePath(parentPath ? `${parentPath}/${newFileName}` : newFileName);
+
+    try {
+      if (this.document && this.document.metadata) {
+        this.document.metadata.title = trimmed;
+        this.document.metadata.updatedAt = Date.now();
+      }
+
+      await this.save();
+      await this.app.fileManager.renameFile(currentFile, newFilePath);
+
+      this.toolbar.updateTitle(trimmed);
+      this.updateStatusDisplay();
+      new Notice(`Renamed notebook to "${trimmed}"`);
+      return true;
+    } catch (err) {
+      console.error("[NotePages] Error renaming notebook:", err);
+      new Notice(`Failed to rename notebook: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  }
+
   openImagePicker(targetPageId?: string): void {
     this.importHandler.openImagePicker(targetPageId);
   }
@@ -4192,6 +4334,18 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     );
   }
 
+  ensurePageCanvasesMounted(pageNumber: number): void {
+    const page = this.pageManager?.getPageByNumber(pageNumber);
+    if (!page) {
+      return;
+    }
+    const committedCanvas = this.committedCanvasMap.get(page.id);
+    const activeCanvas = this.activeCanvasMap.get(page.id);
+    if (!committedCanvas || !activeCanvas || committedCanvas.width <= 1 || activeCanvas.width <= 1) {
+      this.mountPageCanvases(pageNumber);
+    }
+  }
+
   mountPageCanvases(pageNumber: number): void {
     const page = this.pageManager?.getPageByNumber(pageNumber);
     if (!page) {
@@ -4203,23 +4357,27 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const targetH = Math.round(page.dimensions.height * scale);
 
     const committedCanvas = this.committedCanvasMap.get(page.id);
-    if (committedCanvas && committedCanvas.width <= 1) {
+    if (committedCanvas && (committedCanvas.width <= 1 || committedCanvas.width !== targetW || committedCanvas.height !== targetH)) {
       committedCanvas.width = targetW;
       committedCanvas.height = targetH;
       this.redrawCommittedCanvas(page.id);
     }
 
     const templateCanvas = this.templateCanvasMap.get(page.id);
-    if (templateCanvas && templateCanvas.width <= 1) {
+    if (templateCanvas && (templateCanvas.width <= 1 || templateCanvas.width !== targetW || templateCanvas.height !== targetH)) {
       templateCanvas.width = targetW;
       templateCanvas.height = targetH;
       TemplateRenderer.renderTemplate(templateCanvas, page.dimensions, page.template);
     }
 
     const activeCanvas = this.activeCanvasMap.get(page.id);
-    if (activeCanvas && activeCanvas.width <= 1) {
+    if (activeCanvas && (activeCanvas.width <= 1 || activeCanvas.width !== targetW || activeCanvas.height !== targetH)) {
       activeCanvas.width = targetW;
       activeCanvas.height = targetH;
+      const ctx = activeCanvas.getContext("2d");
+      if (ctx && typeof ctx.setTransform === "function") {
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      }
     }
 
     const pageEl = this.pageElements.get(pageNumber);
@@ -4232,6 +4390,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
     }
 
+    this.pageVirtualizer?.markPageMounted?.(pageNumber);
+
     this.performanceMonitor.updatePageCounts(
       this.pageVirtualizer.getMountedPages().length,
       this.pageVirtualizer.getCulledPages().length
@@ -4243,7 +4403,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (!page) {
       return;
     }
+    // Never unmount the active page or while drawing/editing
+    if (pageNumber === this.currentPageNumber) {
+      return;
+    }
     if (this.inkingController.isCurrentlyDrawing(page.id)) {
+      return;
+    }
+    if (this.textController.isEditing()) {
       return;
     }
 
@@ -4272,6 +4439,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.pdfBackgroundManager.unrenderPdfBackground(page, frameEl);
       }
     }
+
+    this.pageVirtualizer?.markPageUnmounted?.(pageNumber);
 
     this.performanceMonitor.updatePageCounts(
       this.pageVirtualizer.getMountedPages().length,

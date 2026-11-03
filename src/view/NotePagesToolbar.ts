@@ -9,6 +9,8 @@ import {
 
 export interface NotePagesToolbarDelegate {
   onToggleSidebar(): void;
+  onQuickRename(): void;
+  getNotebookTitle(): string;
   onUndo(): void;
   onRedo(): void;
   onSelectTool(tool: ToolType): void;
@@ -93,6 +95,8 @@ export class NotePagesToolbar {
   paperTemplateButtons: Map<PaperTemplateType, HTMLElement> = new Map();
   notebookOrientationBtn!: HTMLButtonElement;
   zoomResetBtn!: HTMLButtonElement;
+  titleBtn!: HTMLButtonElement;
+  titleTextEl!: HTMLElement;
 
   constructor(delegate: NotePagesToolbarDelegate) {
     this.delegate = delegate;
@@ -114,6 +118,22 @@ export class NotePagesToolbar {
     sidebarToggleBtn.setAttribute("title", "Toggle pages sidebar (b)");
     this.delegate.registerDomEvent(sidebarToggleBtn, "click", () => {
       this.delegate.onToggleSidebar();
+    });
+
+    this.titleBtn = leftGroup.createEl("button", {
+      cls: "notepages-title-btn"
+    });
+    this.titleBtn.setAttribute("title", "Quick rename notebook (F2)");
+    this.titleTextEl = this.titleBtn.createSpan({
+      cls: "notepages-title-text",
+      text: this.delegate.getNotebookTitle() || "Untitled Notebook"
+    });
+    const editIconEl = this.titleBtn.createSpan({
+      cls: "notepages-title-edit-icon"
+    });
+    setIcon(editIconEl, "pencil");
+    this.delegate.registerDomEvent(this.titleBtn, "click", () => {
+      this.delegate.onQuickRename();
     });
 
     leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
@@ -607,6 +627,12 @@ export class NotePagesToolbar {
         e.preventDefault();
       }
     });
+  }
+
+  updateTitle(newTitle: string): void {
+    if (this.titleTextEl) {
+      this.titleTextEl.setText(newTitle || "Untitled Notebook");
+    }
   }
 
   setActiveTool(tool: ToolType, currentShapeType: ShapeType, hasSelection: boolean): void {

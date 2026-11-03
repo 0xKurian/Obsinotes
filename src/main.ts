@@ -87,6 +87,22 @@ export default class NotePagesPlugin extends Plugin {
 
             menu.addItem((item) => {
               item
+                .setTitle("Quick rename notebook...")
+                .setIcon("pencil")
+                .onClick(async () => {
+                  const leaf = this.app.workspace.getLeaf(false);
+                  await leaf.setViewState({
+                    type: NOTE_PAGES_VIEW_TYPE,
+                    state: { file: file.path }
+                  });
+                  if (leaf.view instanceof NotePagesView) {
+                    leaf.view.openQuickRenameModal();
+                  }
+                });
+            });
+
+            menu.addItem((item) => {
+              item
                 .setTitle("Export notebook...")
                 .setIcon("file-down")
                 .onClick(async () => {
@@ -238,6 +254,22 @@ export default class NotePagesPlugin extends Plugin {
           return true;
         }
         activeView.openExportModal();
+        return true;
+      }
+    });
+
+    this.addCommand({
+      id: "quick-rename-notebook",
+      name: "Quick rename notebook",
+      checkCallback: (checking: boolean) => {
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (!activeView) {
+          return false;
+        }
+        if (checking) {
+          return true;
+        }
+        activeView.openQuickRenameModal();
         return true;
       }
     });

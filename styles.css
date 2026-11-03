@@ -1335,6 +1335,124 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   font-size: 0.9em;
 }
 
+/* Quick Rename Toolbar Title Button */
+.notepages-title-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+  cursor: pointer;
+  max-width: 220px;
+  min-width: 40px;
+  height: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.notepages-title-btn:hover {
+  background-color: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border);
+}
+
+.notepages-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notepages-title-edit-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0.6;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.notepages-title-btn:hover .notepages-title-edit-icon {
+  opacity: 1;
+  color: var(--interactive-accent);
+}
+
+@container (max-width: 720px) {
+  .notepages-title-btn {
+    max-width: 140px;
+  }
+}
+
+@container (max-width: 580px) {
+  .notepages-title-btn {
+    max-width: 90px;
+  }
+}
+
+/* Quick Rename Modal */
+.notepages-rename-modal {
+  padding: 10px 4px 6px;
+  max-width: 420px;
+}
+
+.notepages-rename-modal h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.notepages-rename-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.notepages-rename-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.notepages-rename-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.notepages-rename-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.notepages-rename-error {
+  font-size: 12px;
+  color: var(--text-error, #f87171);
+  padding: 2px 4px;
+}
+
+.notepages-rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+
 
 
 
