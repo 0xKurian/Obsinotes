@@ -440,4 +440,113 @@ describe("SelectionController", () => {
     assert.strictEqual(committedTexts[0].id, "t_sel");
     assert.ok(committedTexts[0].x > 30);
   });
+
+  test("onMoveStart invokes callback with bounds, clientX, and clientY, and cancelMove resets move state", () => {
+    let moveStarted = false;
+    let receivedClientX = 0;
+    let receivedClientY = 0;
+    let receivedPageId = "";
+
+    const controller = new SelectionController({
+      onSelectionChanged: () => {},
+      onTransformCommitted: () => {},
+      onElementsDeleted: () => {},
+      onRequestRedraw: () => {},
+      onMoveStart: (pageId, bounds, clientX, clientY) => {
+        moveStarted = true;
+        receivedPageId = pageId;
+        receivedClientX = clientX ?? 0;
+        receivedClientY = clientY ?? 0;
+        assert.ok(bounds.maxX > bounds.minX);
+      }
+    });
+
+    const page = createSamplePage();
+    const canvas = createMockCanvas();
+
+    controller.handlePointerDown(
+      { button: 0, pointerType: "mouse", pointerId: 1 } as PointerEvent,
+      page,
+      canvas,
+      { x: 10, y: 10 }
+    );
+    controller.handlePointerMove(canvas, { x: 120, y: 10 });
+    controller.handlePointerMove(canvas, { x: 120, y: 120 });
+    controller.handlePointerMove(canvas, { x: 10, y: 120 });
+    controller.handlePointerUp({ pointerId: 1 } as PointerEvent, page, canvas);
+
+    assert.strictEqual(controller.hasSelection(), true);
+    const bounds = controller.getCombinedBounds()!;
+    const cx = (bounds.minX + bounds.maxX) / 2;
+    const cy = (bounds.minY + bounds.maxY) / 2;
+
+    controller.handlePointerDown(
+      { button: 0, pointerType: "mouse", pointerId: 1, clientX: 350, clientY: 220 } as PointerEvent,
+      page,
+      canvas,
+      { x: cx, y: cy }
+    );
+
+    assert.strictEqual(moveStarted, true);
+    assert.strictEqual(receivedPageId, "page_1");
+    assert.strictEqual(receivedClientX, 350);
+    assert.strictEqual(receivedClientY, 220);
+
+    controller.cancelMove();
+
+    controller.handlePointerUp({ pointerId: 1 } as PointerEvent, page, canvas);
+    assert.strictEqual(controller.hasSelection(), true);
+  });
+
+  test("setSelection accepts texts and images and computes combined bounds", () => {
+    let selectionActive = false;
+    const controller = new SelectionController({
+      onSelectionChanged: (hasSel) => {
+        selectionActive = hasSel;
+      },
+      onTransformCommitted: () => {},
+      onElementsDeleted: () => {},
+      onRequestRedraw: () => {}
+    });
+
+    const canvas = createMockCanvas();
+    const textObj: TextObject = {
+      id: "t_set",
+      elementType: "text",
+      x: 50,
+      y: 60,
+      width: 100,
+      height: 40,
+      content: "Hello",
+      fontSize: 16,
+      fontFamily: "sans-serif",
+      fontWeight: "normal",
+      color: "#000000",
+      textAlign: "left",
+      bounds: { minX: 50, minY: 60, maxX: 150, maxY: 100 }
+    };
+    const imgObj = {
+      id: "img_set",
+      elementType: "image" as const,
+      vaultPath: "assets/pic.png",
+      x: 200,
+      y: 120,
+      width: 80,
+      height: 60,
+      bounds: { minX: 200, minY: 120, maxX: 280, maxY: 180 }
+    };
+
+    controller.setSelection("page_1", [], [], canvas, [textObj], [imgObj]);
+
+    assert.strictEqual(selectionActive, true);
+    assert.strictEqual(controller.hasSelection(), true);
+    assert.strictEqual(controller.getSelectedTexts().length, 1);
+    assert.strictEqual(controller.getSelectedImages().length, 1);
+    const bounds = controller.getCombinedBounds();
+    assert.notStrictEqual(bounds, null);
+    assert.strictEqual(bounds!.minX, 50);
+    assert.strictEqual(bounds!.minY, 60);
+    assert.strictEqual(bounds!.maxX, 280);
+    assert.strictEqual(bounds!.maxY, 180);
+  });
 });

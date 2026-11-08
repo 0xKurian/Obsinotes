@@ -332,6 +332,63 @@ export class NotePagesSidebar {
         StrokeGeometry.renderStroke(ctx, stroke);
       }
     }
+    if (Array.isArray(page.texts)) {
+      for (const text of page.texts) {
+        const w = text.width || 100;
+        const h = text.height || 30;
+        if (text.isSticky) {
+          ctx.save();
+          ctx.fillStyle = text.backgroundColor || "#fef08a";
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
+          ctx.lineWidth = 1;
+          ctx.fillRect(text.x, text.y, w, h);
+          ctx.strokeRect(text.x, text.y, w, h);
+          ctx.restore();
+        }
+        if (text.content && text.content.trim().length > 0) {
+          ctx.save();
+          ctx.fillStyle = text.color || "#1e293b";
+          const fontSize = Math.max(8, text.fontSize || 14);
+          ctx.font = `${text.italic ? "italic " : ""}${text.fontWeight || "normal"} ${fontSize}px ${text.fontFamily || "sans-serif"}`;
+          ctx.textBaseline = "top";
+          const lines = text.content.split("\n");
+          const pad = text.isSticky ? 8 : 4;
+          const lineHeight = fontSize * 1.25;
+          for (let i = 0; i < lines.length; i++) {
+            const lineY = text.y + pad + i * lineHeight;
+            if (lineY + fontSize > text.y + h) {
+              break;
+            }
+            ctx.fillText(lines[i], text.x + pad, lineY, Math.max(10, w - pad * 2));
+          }
+          ctx.restore();
+        }
+      }
+    }
+    if (Array.isArray(page.images)) {
+      const pageFrame = this.delegate.getPageFrame(page.pageNumber);
+      for (const imgObj of page.images) {
+        const imgEl = pageFrame?.querySelector<HTMLImageElement>(
+          `.notepages-image-frame[data-image-id="${imgObj.id}"] img`
+        );
+        if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+          ctx.save();
+          if (typeof imgObj.opacity === "number") {
+            ctx.globalAlpha = imgObj.opacity;
+          }
+          ctx.drawImage(imgEl, imgObj.x, imgObj.y, imgObj.width, imgObj.height);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.fillStyle = "rgba(148, 163, 184, 0.25)";
+          ctx.strokeStyle = "rgba(100, 116, 139, 0.5)";
+          ctx.lineWidth = 1.5;
+          ctx.fillRect(imgObj.x, imgObj.y, imgObj.width, imgObj.height);
+          ctx.strokeRect(imgObj.x, imgObj.y, imgObj.width, imgObj.height);
+          ctx.restore();
+        }
+      }
+    }
     ctx.restore();
   }
 

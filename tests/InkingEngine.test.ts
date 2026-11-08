@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert";
 import { StrokeGeometry } from "../src/ink/StrokeGeometry";
 import { EraserEngine } from "../src/ink/EraserEngine";
-import { PointSample, StrokeObject } from "../src/types";
+import { PointSample, StrokeObject, ShapeObject } from "../src/types";
 
 describe("InkingEngine & StrokeGeometry", () => {
   test("getStrokeOptions gives distinct configs for different tools", () => {
@@ -49,17 +49,14 @@ describe("InkingEngine & StrokeGeometry", () => {
   });
 
   test("isDot detects single point and micro-movement clusters", () => {
-    // 1 point
     assert.strictEqual(StrokeGeometry.isDot([{ x: 100, y: 100, pressure: 0.5, timestamp: 0 }], 2.5), true);
 
-    // 2 close points (typical stylus tap with slight wobble)
     const closePoints: PointSample[] = [
       { x: 100, y: 100, pressure: 0.4, timestamp: 0 },
       { x: 100.4, y: 100.2, pressure: 0.4, timestamp: 10 }
     ];
     assert.strictEqual(StrokeGeometry.isDot(closePoints, 2.5), true);
 
-    // Normal stroke with movement > threshold
     const linePoints: PointSample[] = [
       { x: 100, y: 100, pressure: 0.5, timestamp: 0 },
       { x: 110, y: 100, pressure: 0.5, timestamp: 10 }
@@ -68,7 +65,6 @@ describe("InkingEngine & StrokeGeometry", () => {
   });
 
   test("generateOutline renders visible dot for pressure tool with 1, 2, or 3 close points", () => {
-    // 1 point with pressure tool
     const singlePt: PointSample[] = [{ x: 50, y: 50, pressure: 0.5, timestamp: 0 }];
     const outline1 = StrokeGeometry.generateOutline(singlePt, "pressure", 2.5);
     assert.ok(outline1.length >= 12, "Single point must produce a multi-vertex circle outline");
@@ -85,7 +81,6 @@ describe("InkingEngine & StrokeGeometry", () => {
     assert.ok(w1 >= 2.5, `Single point dot width (${w1}) must be at least 2.5px`);
     assert.ok(h1 >= 2.5, `Single point dot height (${h1}) must be at least 2.5px`);
 
-    // 2 close points with pressure tool (must NOT collapse to 0.02px)
     const twoClosePts: PointSample[] = [
       { x: 100, y: 100, pressure: 0.2, timestamp: 0 },
       { x: 100.5, y: 100.3, pressure: 0.2, timestamp: 10 }
@@ -197,5 +192,46 @@ describe("EraserEngine", () => {
 
     assert.ok(elapsed < 32, `5000-stroke eraser hit-testing took ${elapsed}ms, expected under 32ms`);
     assert.ok(result.deletedIds.length >= 0);
+  });
+
+  test("hitTestShape and eraseShapes accurately erase lines, arrows, rectangles, and circles", () => {
+    const lineShape: ShapeObject = {
+      id: "shape_line",
+      type: "arrow",
+      color: "#000000",
+      strokeWidth: 2,
+      bounds: { minX: 10, minY: 10, maxX: 110, maxY: 10 },
+      geometryData: { x1: 10, y1: 10, x2: 110, y2: 10 }
+    };
+    const rectShape: ShapeObject = {
+      id: "shape_rect",
+      type: "rectangle",
+      color: "#ff0000",
+      strokeWidth: 2,
+      bounds: { minX: 20, minY: 50, maxX: 120, maxY: 150 },
+      geometryData: { x: 20, y: 50, width: 100, height: 100 }
+    };
+    const circleShape: ShapeObject = {
+      id: "shape_circle",
+      type: "circle",
+      color: "#0000ff",
+      strokeWidth: 2,
+      bounds: { minX: 150, minY: 50, maxX: 250, maxY: 150 },
+      geometryData: { cx: 200, cy: 100, radius: 50 }
+    };
+
+    assert.strictEqual(EraserEngine.hitTestShape(lineShape, 60, 10, 6), true);
+    assert.strictEqual(EraserEngine.hitTestShape(lineShape, 60, 40, 6), false);
+
+    assert.strictEqual(EraserEngine.hitTestShape(rectShape, 20, 100, 6), true);
+    assert.strictEqual(EraserEngine.hitTestShape(rectShape, 70, 100, 6), false);
+
+    assert.strictEqual(EraserEngine.hitTestShape(circleShape, 250, 100, 6), true);
+    assert.strictEqual(EraserEngine.hitTestShape(circleShape, 200, 100, 6), false);
+
+    const shapes = [lineShape, rectShape, circleShape];
+    const eraseRes = EraserEngine.eraseShapes(shapes, 20, 100, 6);
+    assert.strictEqual(eraseRes.remaining.length, 2);
+    assert.deepStrictEqual(eraseRes.deletedIds, ["shape_rect"]);
   });
 });

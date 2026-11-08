@@ -53,11 +53,29 @@ export class NotePagesSettingTab extends PluginSettingTab {
         },
       },
       {
+        name: "Default paper background",
+        desc: "Background color applied to newly created notebook pages.",
+        control: {
+          type: "color",
+          key: "defaultPaperBackground",
+        },
+      },
+      {
         name: "Default line color",
         desc: "Color applied to paper template rule lines and grids.",
         control: {
           type: "color",
           key: "defaultLineColor",
+        },
+      },
+      {
+        name: "Default line spacing (pt)",
+        desc: "Distance in points between ruled lines, grid cells, or dots (12 to 64).",
+        control: {
+          type: "number",
+          key: "defaultLineSpacing",
+          min: 12,
+          max: 64,
         },
       },
       {
@@ -90,6 +108,14 @@ export class NotePagesSettingTab extends PluginSettingTab {
     if (key === "autosaveIntervalMs") {
       const parsed = typeof value === "number" ? value : parseInt(String(value), 10);
       if (!isNaN(parsed) && parsed >= 300) {
+        settings[key] = parsed;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
+    if (key === "defaultLineSpacing") {
+      const parsed = typeof value === "number" ? value : parseInt(String(value), 10);
+      if (!isNaN(parsed) && parsed >= 12 && parsed <= 64) {
         settings[key] = parsed;
         await this.plugin.saveSettings();
       }
@@ -149,6 +175,18 @@ export class NotePagesSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Default paper background")
+      .setDesc("Background color applied to newly created notebook pages.")
+      .addColorPicker((picker) => {
+        picker
+          .setValue(this.plugin.settings.defaultPaperBackground)
+          .onChange(async (value) => {
+            this.plugin.settings.defaultPaperBackground = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Default line color")
       .setDesc("Color applied to paper template rule lines and grids.")
       .addColorPicker((picker) => {
@@ -157,6 +195,21 @@ export class NotePagesSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.defaultLineColor = value;
             await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Default line spacing (pt)")
+      .setDesc("Distance in points between ruled lines, grid cells, or dots (12 to 64).")
+      .addText((text) => {
+        text
+          .setValue(String(this.plugin.settings.defaultLineSpacing))
+          .onChange(async (value) => {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed) && parsed >= 12 && parsed <= 64) {
+              this.plugin.settings.defaultLineSpacing = parsed;
+              await this.plugin.saveSettings();
+            }
           });
       });
 

@@ -6,9 +6,6 @@ export interface RenameValidationResult {
   sanitizedTitle?: string;
 }
 
-/**
- * Validates a proposed notebook title against filesystem rules and existing siblings.
- */
 export function validateNotebookTitle(
   rawTitle: string,
   existingFileNames: string[] = [],
@@ -27,7 +24,6 @@ export function validateNotebookTitle(
     return { valid: false, error: "Title cannot start with a dot (.)" };
   }
 
-  // Windows / Linux / macOS illegal filename characters: / \ : * ? " < > |
   const illegalCharsRegex = /[\\/:*?"<>|]/;
   if (illegalCharsRegex.test(trimmed)) {
     return {
@@ -134,7 +130,6 @@ export class QuickRenameModal extends Modal {
       }
     });
 
-    // Auto-focus and select all text
     window.setTimeout(() => {
       this.inputEl.focus();
       this.inputEl.select();

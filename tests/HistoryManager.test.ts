@@ -2,14 +2,16 @@ import { test, describe } from "node:test";
 import assert from "node:assert";
 import {
   AddStrokeCommand,
+  AddElementsCommand,
   ConvertShapeCommand,
   DeleteElementsCommand,
   EraseStrokesCommand,
   HistoryManager,
   TransformElementsCommand,
-  MoveElementsAcrossPagesCommand
+  MoveElementsAcrossPagesCommand,
+  DeletePageCommand
 } from "../src/history/HistoryManager";
-import { PageData, ShapeObject, StrokeObject } from "../src/types";
+import { PageData, ShapeObject, StrokeObject, TextObject, ImageObject } from "../src/types";
 
 describe("HistoryManager", () => {
   function createSamplePage(): PageData {
@@ -226,5 +228,163 @@ describe("HistoryManager", () => {
     history.undo();
     history.undo();
     assert.strictEqual(history.canUndo(), false);
+  });
+
+  test("AddElementsCommand adds, undoes, and redoes strokes, shapes, texts, and images", () => {
+    const page = createSamplePage();
+    const history = new HistoryManager();
+    const s1 = createStroke("s_dup");
+    const sh1: ShapeObject = {
+      id: "sh_dup",
+      type: "rectangle",
+      color: "#000000",
+      strokeWidth: 2,
+      bounds: { minX: 10, minY: 10, maxX: 50, maxY: 50 },
+      geometryData: { x: 10, y: 10, width: 40, height: 40 }
+    };
+    const t1: TextObject = {
+      id: "t_dup",
+      elementType: "text",
+      x: 20,
+      y: 20,
+      width: 100,
+      height: 40,
+      content: "Duplicated Text",
+      fontSize: 16,
+      fontFamily: "sans-serif",
+      fontWeight: "normal",
+      color: "#000000",
+      textAlign: "left",
+      bounds: { minX: 20, minY: 20, maxX: 120, maxY: 60 }
+    };
+    const img1: ImageObject = {
+      id: "img_dup",
+      elementType: "image",
+      vaultPath: "assets/test.png",
+      x: 40,
+      y: 40,
+      width: 120,
+      height: 90,
+      bounds: { minX: 40, minY: 40, maxX: 160, maxY: 130 }
+    };
+
+    let mutateCount = 0;
+    const cmd = new AddElementsCommand(
+      page,
+      [s1],
+      [sh1],
+      () => {
+        mutateCount++;
+      },
+      [t1],
+      [img1]
+    );
+
+    history.execute(cmd);
+    assert.strictEqual(page.strokes.length, 1);
+    assert.strictEqual(page.shapes.length, 1);
+    assert.strictEqual(page.texts.length, 1);
+    assert.strictEqual(page.images.length, 1);
+    assert.strictEqual(page.texts[0].id, "t_dup");
+    assert.strictEqual(page.images[0].id, "img_dup");
+    assert.strictEqual(mutateCount, 1);
+
+    history.undo();
+    assert.strictEqual(page.strokes.length, 0);
+    assert.strictEqual(page.shapes.length, 0);
+    assert.strictEqual(page.texts.length, 0);
+    assert.strictEqual(page.images.length, 0);
+    assert.strictEqual(mutateCount, 2);
+
+    history.redo();
+    assert.strictEqual(page.strokes.length, 1);
+    assert.strictEqual(page.shapes.length, 1);
+    assert.strictEqual(page.texts.length, 1);
+    assert.strictEqual(page.images.length, 1);
+    assert.strictEqual(mutateCount, 3);
+  });
+
+  test("EraseStrokesCommand erases and restores shapes alongside strokes", () => {
+    const page = createSamplePage();
+    const history = new HistoryManager();
+    const s1 = createStroke("s_erase");
+    const sh1: ShapeObject = {
+      id: "sh_erase",
+      type: "arrow",
+      color: "#000000",
+      strokeWidth: 2,
+      bounds: { minX: 10, minY: 10, maxX: 100, maxY: 10 },
+      geometryData: { x1: 10, y1: 10, x2: 100, y2: 10 }
+    };
+    page.strokes = [s1];
+    page.shapes = [sh1];
+
+    const cmd = new EraseStrokesCommand(page, [s1], [], () => {}, [sh1], []);
+    history.execute(cmd);
+    assert.strictEqual(page.strokes.length, 0);
+    assert.strictEqual(page.shapes.length, 0);
+
+    history.undo();
+    assert.strictEqual(page.strokes.length, 1);
+    assert.strictEqual(page.shapes.length, 1);
+    assert.strictEqual(page.shapes[0].id, "sh_erase");
+
+    history.redo();
+    assert.strictEqual(page.strokes.length, 0);
+    assert.strictEqual(page.shapes.length, 0);
+  });
+
+  test("DeletePageCommand deletes page, renumbers remaining pages, and restores on undo", () => {
+    const p1 = createSamplePage();
+    p1.id = "page_1";
+    p1.pageNumber = 1;
+
+    const p2 = createSamplePage();
+    p2.id = "page_2";
+    p2.pageNumber = 2;
+
+    const p3 = createSamplePage();
+    p3.id = "page_3";
+    p3.pageNumber = 3;
+
+    const pages: PageData[] = [p1, p2, p3];
+    const history = new HistoryManager();
+    let deletedPageId = "";
+    let restoredPageId = "";
+
+    const cmd = new DeletePageCommand(
+      pages,
+      p2,
+      1,
+      (deleted) => {
+        deletedPageId = deleted.id;
+      },
+      (restored) => {
+        restoredPageId = restored.id;
+      }
+    );
+
+    history.execute(cmd);
+    assert.strictEqual(pages.length, 2);
+    assert.strictEqual(pages[0].id, "page_1");
+    assert.strictEqual(pages[0].pageNumber, 1);
+    assert.strictEqual(pages[1].id, "page_3");
+    assert.strictEqual(pages[1].pageNumber, 2);
+    assert.strictEqual(deletedPageId, "page_2");
+
+    history.undo();
+    assert.strictEqual(pages.length, 3);
+    assert.strictEqual(pages[0].id, "page_1");
+    assert.strictEqual(pages[0].pageNumber, 1);
+    assert.strictEqual(pages[1].id, "page_2");
+    assert.strictEqual(pages[1].pageNumber, 2);
+    assert.strictEqual(pages[2].id, "page_3");
+    assert.strictEqual(pages[2].pageNumber, 3);
+    assert.strictEqual(restoredPageId, "page_2");
+
+    history.redo();
+    assert.strictEqual(pages.length, 2);
+    assert.strictEqual(pages[1].id, "page_3");
+    assert.strictEqual(pages[1].pageNumber, 2);
   });
 });

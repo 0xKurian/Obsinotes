@@ -1,7 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
+import type { App } from "obsidian";
 import { PageData, TextObject } from "../src/types";
 import { TextController } from "../src/text/TextController";
+import { ImageController } from "../src/image/ImageController";
 
 describe("Text Tool Guards and Accidental Textbox Suppression", () => {
   interface MockNode {
@@ -25,6 +27,7 @@ describe("Text Tool Guards and Accidental Textbox Suppression", () => {
     addEventListener: (type: string, handler: (e: unknown) => void) => void;
     focus: () => void;
     querySelector: (sel: string) => MockNode | null;
+    querySelectorAll?: (sel: string) => MockNode[];
     listeners: Map<string, Array<(e: unknown) => void>>;
     dispatchEvent: (type: string, event?: unknown) => void;
   }
@@ -154,24 +157,16 @@ describe("Text Tool Guards and Accidental Textbox Suppression", () => {
       page.texts.push(regularText);
 
       const mockFrame = createMockNode();
-      // Render text into frame
       textController.renderPageTexts(page, mockFrame as unknown as HTMLElement);
 
-      // Inspect created text box
-      // mockFrame.createDiv was called during renderPageTexts
-      // Let's test with different tools
       const drawingTools = ["pen", "pressure", "fountain", "highlighter", "eraser", "shape", "connector", "lasso"];
       for (const tool of drawingTools) {
         activeTool = tool;
-        // Re-render
         textController.renderPageTexts(page, mockFrame as unknown as HTMLElement);
 
-        // Find child nodes with class notepages-text-box
-        // In our mock, createDiv creates the box. Let's trigger events on mock children
         assert.strictEqual(textController.isEditing(), false);
       }
 
-      // Now test switching to select tool
       activeTool = "select";
       textController.renderPageTexts(page, mockFrame as unknown as HTMLElement);
       assert.strictEqual(textController.isEditing(), false);
@@ -226,38 +221,31 @@ describe("Text Tool Guards and Accidental Textbox Suppression", () => {
 
       const mockFrame = createMockNode();
 
-      // 1. Render while using "pressure" (drawing tool)
       currentTool = "pressure";
       lastCreatedBox = null;
       textController.renderPageTexts(page, mockFrame as unknown as HTMLElement);
       assert.notStrictEqual(lastCreatedBox, null);
 
-      // Simulate dblclick on the box while tool is "pressure"
       lastCreatedBox!.dispatchEvent("dblclick");
       assert.strictEqual(textController.isEditing(), false, "Dblclick with pressure tool must NOT start editing");
 
-      // Simulate click on the box while tool is "pressure"
       lastCreatedBox!.dispatchEvent("click");
       assert.strictEqual(textController.isEditing(), false, "Click with pressure tool must NOT start editing");
 
-      // 2. Simulate dblclick while tool is "pen"
       currentTool = "pen";
       lastCreatedBox!.dispatchEvent("dblclick");
       assert.strictEqual(textController.isEditing(), false, "Dblclick with pen tool must NOT start editing");
 
-      // 3. Simulate dblclick while tool is "highlighter"
       currentTool = "highlighter";
       lastCreatedBox!.dispatchEvent("dblclick");
       assert.strictEqual(textController.isEditing(), false, "Dblclick with highlighter tool must NOT start editing");
 
-      // 4. Simulate dblclick while tool is "select"
       currentTool = "select";
       lastCreatedBox!.dispatchEvent("dblclick");
       assert.strictEqual(textController.isEditing(), true, "Dblclick with select tool SHOULD start editing");
       textController.commitActiveEdit();
       assert.strictEqual(textController.isEditing(), false);
 
-      // 5. Test sticky note distinction
       const stickyObj: TextObject = {
         id: "sticky_filter_test",
         elementType: "text",
@@ -283,25 +271,98 @@ describe("Text Tool Guards and Accidental Textbox Suppression", () => {
       assert.notStrictEqual(lastCreatedBox, null);
       const stickyBox = lastCreatedBox!;
 
-      // While tool is "text", clicking/dblclicking a sticky note should NOT edit it
       stickyBox!.dispatchEvent("click");
       assert.strictEqual(textController.isEditing(), false, "Clicking sticky note with text tool should not edit");
       stickyBox!.dispatchEvent("dblclick");
       assert.strictEqual(textController.isEditing(), false, "Dblclicking sticky note with text tool should not edit");
 
-      // While tool is "sticky", clicking sticky note SHOULD edit
       currentTool = "sticky";
       stickyBox!.dispatchEvent("click");
       assert.strictEqual(textController.isEditing(), true, "Clicking sticky note with sticky tool should edit");
       textController.commitActiveEdit();
 
-      // While tool is "pen", sticky note should NOT edit
       currentTool = "pen";
       stickyBox!.dispatchEvent("dblclick");
       assert.strictEqual(textController.isEditing(), false, "Dblclicking sticky note with pen tool must not edit");
     } finally {
       (globalThis as unknown as { document?: unknown }).document = previousDoc;
       (globalThis as unknown as { window?: unknown }).window = previousWin;
+    }
+  });
+
+  test("ImageController disables pointerEvents on images during non-select tools including shape, connector, text, sticky, and lasso", () => {
+    const previousGlobalCreateDiv = (globalThis as unknown as { createDiv?: unknown }).createDiv;
+    let lastImageFrame: MockNode | null = null;
+    (globalThis as unknown as { createDiv?: unknown }).createDiv = (opts?: { cls?: string }) => {
+      const node = createMockNode();
+      if (opts?.cls) {
+        node.classList.add(opts.cls);
+      }
+      lastImageFrame = node;
+      return node;
+    };
+
+    try {
+      let currentTool = "select";
+      const page = createSamplePage();
+      page.images.push({
+        id: "img_guard_1",
+        elementType: "image",
+        vaultPath: "assets/photo.png",
+        x: 50,
+        y: 50,
+        width: 200,
+        height: 150,
+        bounds: { minX: 50, minY: 50, maxX: 250, maxY: 200 }
+      });
+
+      const mockApp = {} as App;
+      const imageController = new ImageController(mockApp, {
+        onImageAdded: () => {},
+        onImageModified: () => {},
+        onImageDeleted: () => {},
+        getActiveTool: () => currentTool
+      });
+
+      const mockFrame = createMockNode();
+      mockFrame.querySelectorAll = () => [];
+
+      const nonInteractiveTools = [
+        "pen",
+        "pressure",
+        "fountain",
+        "highlighter",
+        "eraser",
+        "shape",
+        "connector",
+        "text",
+        "sticky",
+        "lasso"
+      ];
+
+      for (const tool of nonInteractiveTools) {
+        currentTool = tool;
+        lastImageFrame = null;
+        imageController.renderPageImages(page, mockFrame as unknown as HTMLElement, (p) => p);
+        assert.notStrictEqual(lastImageFrame, null);
+        assert.strictEqual(
+          lastImageFrame!.style.pointerEvents,
+          "none",
+          `Image pointerEvents must be 'none' when active tool is '${tool}'`
+        );
+      }
+
+      currentTool = "select";
+      lastImageFrame = null;
+      imageController.renderPageImages(page, mockFrame as unknown as HTMLElement, (p) => p);
+      assert.notStrictEqual(lastImageFrame, null);
+      assert.strictEqual(
+        lastImageFrame!.style.pointerEvents,
+        "auto",
+        "Image pointerEvents must be 'auto' when active tool is 'select'"
+      );
+    } finally {
+      (globalThis as unknown as { createDiv?: unknown }).createDiv = previousGlobalCreateDiv;
     }
   });
 });

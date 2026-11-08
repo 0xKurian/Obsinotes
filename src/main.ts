@@ -16,7 +16,7 @@ import {
   NOTE_PAGES_EXTENSION,
   NOTE_PAGES_FRONTMATTER_KEY,
   CURRENT_SCHEMA_VERSION,
-  PAGE_DIMENSION_PRESETS,
+  getEffectivePageDimensions,
   NotebookDocument
 } from "./types";
 
@@ -444,7 +444,10 @@ export default class NotePagesPlugin extends Plugin {
 
   private generateInitialDocumentContent(title: string): string {
     const now = Date.now();
-    const dimensions = PAGE_DIMENSION_PRESETS[this.settings.defaultPageSize === "Letter" ? "Letter" : "A4"];
+    const dimensions = getEffectivePageDimensions(
+      this.settings.defaultPageSize,
+      this.settings.defaultOrientation
+    );
 
     const initialDoc: NotebookDocument = {
       metadata: {

@@ -14,7 +14,11 @@ import { PerformanceMonitor } from "../performance/PerformanceMonitor";
 export interface InkingControllerCallbacks {
   onStrokeCommitted: (pageId: string, stroke: StrokeObject) => void;
   onShapeCommitted?: (pageId: string, shape: ShapeObject, rawStroke: StrokeObject) => void;
-  onStrokesErased: (pageId: string, remainingStrokes: StrokeObject[]) => void;
+  onStrokesErased: (
+    pageId: string,
+    remainingStrokes: StrokeObject[],
+    remainingShapes?: ShapeObject[]
+  ) => void;
 }
 
 export class InkingController {
@@ -86,7 +90,8 @@ export class InkingController {
     activeCanvas: HTMLCanvasElement,
     committedCanvas: HTMLCanvasElement,
     pageCoords: { x: number; y: number },
-    existingStrokes: StrokeObject[]
+    existingStrokes: StrokeObject[],
+    existingShapes: ShapeObject[] = []
   ): void {
     if (e.pointerType === "pen") {
       this.lastPenTimestamp = Date.now();
@@ -125,7 +130,7 @@ export class InkingController {
 
     if (this.activeTool === "eraser") {
       this.isDrawing = true;
-      this.executeEraser(pageId, pageCoords.x, pageCoords.y, existingStrokes);
+      this.executeEraser(pageId, pageCoords.x, pageCoords.y, existingStrokes, existingShapes);
       return;
     }
 
@@ -149,7 +154,8 @@ export class InkingController {
   handlePointerMove(
     e: PointerEvent,
     pageCoordsList: { x: number; y: number }[],
-    existingStrokes: StrokeObject[]
+    existingStrokes: StrokeObject[],
+    existingShapes: ShapeObject[] = []
   ): void {
     if (!this.isDrawing || !this.activePageId) {
       return;
@@ -159,7 +165,7 @@ export class InkingController {
 
     if (this.activeTool === "eraser") {
       for (const pt of pageCoordsList) {
-        this.executeEraser(this.activePageId, pt.x, pt.y, existingStrokes);
+        this.executeEraser(this.activePageId, pt.x, pt.y, existingStrokes, existingShapes);
       }
       return;
     }
@@ -215,7 +221,6 @@ export class InkingController {
       this.clearCanvas(this.activeCanvas);
     }
 
-    // Preserve and commit any valid inking points if cancelled by browser/OS gesture disambiguation
     if (this.isDrawing && this.activePageId && this.currentPoints.length > 0 && this.activeTool !== "eraser") {
       this.commitCurrentStroke();
     }
@@ -359,17 +364,29 @@ export class InkingController {
     pageId: string,
     x: number,
     y: number,
-    existingStrokes: StrokeObject[]
+    existingStrokes: StrokeObject[],
+    existingShapes: ShapeObject[] = []
   ): void {
+    const shapeResult = EraserEngine.eraseShapes(existingShapes, x, y, this.eraserRadius);
+    const shapesErased = shapeResult.deletedIds.length > 0;
+
     if (this.eraserMode === "stroke") {
       const result = EraserEngine.eraseByStroke(existingStrokes, x, y, this.eraserRadius);
-      if (result.deletedIds.length > 0) {
-        this.callbacks.onStrokesErased(pageId, result.remaining);
+      if (result.deletedIds.length > 0 || shapesErased) {
+        this.callbacks.onStrokesErased(
+          pageId,
+          result.remaining,
+          shapesErased ? shapeResult.remaining : undefined
+        );
       }
     } else {
       const result = EraserEngine.erasePrecision(existingStrokes, x, y, this.eraserRadius);
-      if (result.changed) {
-        this.callbacks.onStrokesErased(pageId, result.updatedStrokes);
+      if (result.changed || shapesErased) {
+        this.callbacks.onStrokesErased(
+          pageId,
+          result.updatedStrokes,
+          shapesErased ? shapeResult.remaining : undefined
+        );
       }
     }
   }

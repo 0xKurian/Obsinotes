@@ -92,7 +92,12 @@ export class ImageController {
       activeTool === "pressure" ||
       activeTool === "fountain" ||
       activeTool === "highlighter" ||
-      activeTool === "eraser";
+      activeTool === "eraser" ||
+      activeTool === "shape" ||
+      activeTool === "connector" ||
+      activeTool === "text" ||
+      activeTool === "sticky" ||
+      activeTool === "lasso";
 
     page.images.forEach((img) => {
       const isSelected = this.selectedImageId === img.id;

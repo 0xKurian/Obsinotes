@@ -18,19 +18,16 @@ describe("Page Mounting and Virtualization Guards", () => {
       bufferPages: 1
     });
 
-    // Simulate pages 1-3 mounted, pages 4-10 unmounted (1x1)
     for (let p = 1; p <= 10; p++) {
       const fakeEl = { dataset: { pageNumber: String(p) } } as unknown as HTMLElement;
       const isInitiallyMounted = p <= 3;
       virtualizer.observePage(p, fakeEl, isInitiallyMounted);
     }
 
-    // Initially, only pages 1, 2, 3 are mounted
     assert.deepStrictEqual(virtualizer.getMountedPages(), [1, 2, 3]);
     assert.ok(virtualizer.getCulledPages().includes(4));
     assert.ok(virtualizer.getCulledPages().includes(5));
 
-    // Now simulate scrolling to page 4
     const fakeEntries: IntersectionObserverEntry[] = [
       {
         target: { dataset: { pageNumber: "4" } } as unknown as Element,
@@ -41,7 +38,6 @@ describe("Page Mounting and Virtualization Guards", () => {
     (virtualizer as unknown as { handleIntersectionEntries: (entries: IntersectionObserverEntry[]) => void })
       .handleIntersectionEntries(fakeEntries);
 
-    // Page 4 must have been mounted!
     assert.ok(mounted.includes(4), "Page 4 must be mounted when scrolled into view");
     assert.ok(virtualizer.isPageMounted(4), "Virtualizer state must register Page 4 as mounted");
   });

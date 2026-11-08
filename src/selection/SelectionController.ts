@@ -51,7 +51,7 @@ export interface SelectionControllerCallbacks {
     sourceTexts?: TextObject[],
     targetTexts?: TextObject[]
   ) => void;
-  onMoveStart?: (sourcePageId: string, bounds: StrokeBoundingBox) => void;
+  onMoveStart?: (sourcePageId: string, bounds: StrokeBoundingBox, clientX?: number, clientY?: number) => void;
 }
 
 export class SelectionController {
@@ -148,12 +148,21 @@ export class SelectionController {
     pageId: string,
     strokes: StrokeObject[],
     shapes: ShapeObject[],
-    activeCanvas?: HTMLCanvasElement
+    activeCanvas?: HTMLCanvasElement,
+    texts: TextObject[] = [],
+    images: ImageObject[] = []
   ): void {
     this.activePageId = pageId;
     this.selectedStrokes = [...strokes];
     this.selectedShapes = [...shapes];
-    this.combinedBounds = SelectionEngine.computeCombinedBoundingBox(strokes, shapes);
+    this.selectedTexts = [...texts];
+    this.selectedImages = [...images];
+    this.combinedBounds = SelectionEngine.computeCombinedBoundingBox(
+      strokes,
+      shapes,
+      texts,
+      images
+    );
     this.mode = "idle";
 
     if (activeCanvas) {
@@ -231,7 +240,7 @@ export class SelectionController {
         this.initialTexts = this.selectedTexts.map((t) => ({ ...t }));
         this.initialImages = this.selectedImages.map((img) => ({ ...img }));
         this.currentPreviewCanvas = activeCanvas;
-        this.callbacks.onMoveStart?.(page.id, this.initialBounds);
+        this.callbacks.onMoveStart?.(page.id, this.initialBounds, e.clientX, e.clientY);
         return;
       }
     }
@@ -998,6 +1007,20 @@ export class SelectionController {
     this.initialShapes = [];
     this.initialTexts = [];
     this.initialImages = [];
+  }
+
+  cancelMove(): void {
+    if (this.mode === "moving") {
+      this.mode = "idle";
+      this.activeHandle = null;
+      this.dragStartPoint = null;
+      this.initialBounds = null;
+      this.initialStrokes = [];
+      this.initialShapes = [];
+      this.initialTexts = [];
+      this.initialImages = [];
+      this.currentPreviewCanvas = null;
+    }
   }
 
   renderSelectionDashedBox(

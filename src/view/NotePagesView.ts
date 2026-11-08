@@ -18,7 +18,7 @@ import {
   CURRENT_SCHEMA_VERSION,
   NotebookDocument,
   PageData,
-  PAGE_DIMENSION_PRESETS,
+  getEffectivePageDimensions,
   ToolType,
   PaperTemplateType,
   PageOrientation,
@@ -50,7 +50,8 @@ import {
   AddTextCommand,
   ModifyTextCommand,
   AddImageCommand,
-  ModifyImageCommand
+  ModifyImageCommand,
+  DeletePageCommand
 } from "../history/HistoryManager";
 import { DocumentSerializer } from "../storage/DocumentSerializer";
 import { StorageManager } from "../storage/StorageManager";
@@ -136,7 +137,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   performanceMonitor: PerformanceMonitor = new PerformanceMonitor();
   pageVirtualizer!: PageVirtualizer;
 
-  clipboard: { strokes: StrokeObject[]; shapes: ShapeObject[] } | null = null;
+  clipboard: {
+    strokes: StrokeObject[];
+    shapes: ShapeObject[];
+    texts: TextObject[];
+    images: ImageObject[];
+  } | null = null;
 
   isPanning: boolean = false;
   panStartX: number = 0;
@@ -384,17 +390,26 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           );
         }
       },
-      onStrokesErased: (pageId: string, remainingStrokes: StrokeObject[]) => {
+      onStrokesErased: (pageId: string, remainingStrokes: StrokeObject[], remainingShapes?: ShapeObject[]) => {
         if (!this.pageManager || !this.document) {
           return;
         }
         const page = this.pageManager.getPage(pageId);
         if (page) {
           const prevStrokes = [...page.strokes];
+          const prevShapes = [...page.shapes];
+          const nextShapes = remainingShapes ?? prevShapes;
           this.historyManager.execute(
-            new EraseStrokesCommand(page, prevStrokes, remainingStrokes, () => {
-              this.handleMutation(page);
-            })
+            new EraseStrokesCommand(
+              page,
+              prevStrokes,
+              remainingStrokes,
+              () => {
+                this.handleMutation(page);
+              },
+              prevShapes,
+              nextShapes
+            )
           );
         }
       }
@@ -540,8 +555,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
         this.updateActivePage(targetPage.pageNumber);
       },
-      onMoveStart: (sourcePageId: string, bounds: StrokeBoundingBox) => {
-        this.startSelectionDrag(sourcePageId, bounds);
+      onMoveStart: (sourcePageId: string, bounds: StrokeBoundingBox, clientX?: number, clientY?: number) => {
+        this.startSelectionDrag(sourcePageId, bounds, clientX, clientY);
       }
     });
 
@@ -952,6 +967,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   async onClose(): Promise<void> {
+    if (this.textController?.isEditing()) {
+      this.textController.commitActiveEdit();
+    }
     if (this.canvasResolutionTimeout !== null) {
       window.clearTimeout(this.canvasResolutionTimeout);
       this.canvasResolutionTimeout = null;
@@ -976,6 +994,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   clear(): void {
+    if (this.textController?.isEditing()) {
+      this.textController.commitActiveEdit();
+    }
     if (this.canvasResolutionTimeout !== null) {
       window.clearTimeout(this.canvasResolutionTimeout);
       this.canvasResolutionTimeout = null;
@@ -1010,6 +1031,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getViewData(): string {
+    if (this.textController?.isEditing()) {
+      this.textController.commitActiveEdit();
+    }
     if (this.isCorrupted) {
       return this.rawCorruptedData;
     }
@@ -1520,10 +1544,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
         let dy = e.deltaY;
         if (e.deltaMode === 1) {
-          // DOM_DELTA_LINE
           dy *= 30;
         } else if (e.deltaMode === 2) {
-          // DOM_DELTA_PAGE
           dy *= 400;
         }
 
@@ -1531,9 +1553,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           return;
         }
 
-        // Smooth exponential zoom factor based on continuous deltaY.
-        // Symmetrically bounded between 1 / 1.15 and 1.15 to avoid massive jumps from single mouse wheel ticks,
-        // while tracking fluidly at 60-120fps during trackpad pinch gestures (dy ~ 1..20).
         const MAX_ZOOM_IN_FACTOR = 1.15;
         const MAX_ZOOM_OUT_FACTOR = 1 / MAX_ZOOM_IN_FACTOR;
         const rawFactor = Math.exp(-dy * 0.005);
@@ -2038,14 +2057,114 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.dragOverlayEl = this.pagesContainerEl.createDiv({
         cls: "notepages-drag-overlay"
       });
-      this.dragOverlayEl.toggle(false);
       this.dragOverlayCanvas = this.dragOverlayEl.createEl("canvas", {
         cls: "notepages-drag-canvas"
       });
     }
   }
 
-  private startSelectionDrag(sourcePageId: string, bounds: StrokeBoundingBox): void {
+  private renderTextObjectToCanvas(ctx: CanvasRenderingContext2D, text: TextObject): void {
+    ctx.save();
+
+    if (text.isSticky) {
+      ctx.fillStyle = text.backgroundColor || "#fef08a";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.15)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 2;
+
+      const r = 4;
+      ctx.beginPath();
+      ctx.moveTo(text.x + r, text.y);
+      ctx.lineTo(text.x + text.width - r, text.y);
+      ctx.quadraticCurveTo(text.x + text.width, text.y, text.x + text.width, text.y + r);
+      ctx.lineTo(text.x + text.width, text.y + text.height - r);
+      ctx.quadraticCurveTo(text.x + text.width, text.y + text.height, text.x + text.width - r, text.y + text.height);
+      ctx.lineTo(text.x + r, text.y + text.height);
+      ctx.quadraticCurveTo(text.x, text.y + text.height, text.x, text.y + text.height - r);
+      ctx.lineTo(text.x + r, text.y + r);
+      ctx.quadraticCurveTo(text.x, text.y, text.x + r, text.y);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+    }
+
+    const fontSize = text.fontSize || 16;
+    const fontStyle = text.italic ? "italic" : "normal";
+    const fontWeight = text.fontWeight || "normal";
+    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${text.fontFamily || "sans-serif"}`;
+    ctx.fillStyle = text.color || "#000000";
+
+    const paddingX = text.isSticky ? 12 : 4;
+    const paddingTop = text.isSticky ? 12 : 2;
+    const lineHeight = fontSize * 1.35;
+
+    let textX = text.x + paddingX;
+    if (text.textAlign === "center") {
+      ctx.textAlign = "center";
+      textX = text.x + text.width / 2;
+    } else if (text.textAlign === "right") {
+      ctx.textAlign = "right";
+      textX = text.x + text.width - paddingX;
+    } else {
+      ctx.textAlign = "left";
+    }
+
+    const lines = (text.content || "").split("\n");
+    lines.forEach((line, idx) => {
+      const lineY = text.y + paddingTop + fontSize + idx * lineHeight;
+      ctx.fillText(line, textX, lineY);
+      if (text.underline) {
+        const textMetric = ctx.measureText(line);
+        let underlineStart = textX;
+        if (text.textAlign === "center") {
+          underlineStart = textX - textMetric.width / 2;
+        } else if (text.textAlign === "right") {
+          underlineStart = textX - textMetric.width;
+        }
+        ctx.fillRect(underlineStart, lineY + 2, textMetric.width, 1);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  private renderImageObjectToCanvas(ctx: CanvasRenderingContext2D, img: ImageObject): void {
+    ctx.save();
+    const domImg = this.pagesContainerEl?.querySelector<HTMLImageElement>(
+      `[data-image-id="${img.id}"] img`
+    );
+    if (domImg && domImg.complete && domImg.naturalWidth > 0) {
+      if (typeof img.opacity === "number") {
+        ctx.globalAlpha = img.opacity;
+      }
+      if (img.rotation) {
+        const cx = img.x + img.width / 2;
+        const cy = img.y + img.height / 2;
+        ctx.translate(cx, cy);
+        ctx.rotate((img.rotation * Math.PI) / 180);
+        ctx.drawImage(domImg, -img.width / 2, -img.height / 2, img.width, img.height);
+      } else {
+        ctx.drawImage(domImg, img.x, img.y, img.width, img.height);
+      }
+    } else {
+      ctx.fillStyle = "rgba(59, 130, 246, 0.1)";
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(img.x, img.y, img.width, img.height);
+      ctx.fillRect(img.x, img.y, img.width, img.height);
+    }
+    ctx.restore();
+  }
+
+  private startSelectionDrag(
+    sourcePageId: string,
+    bounds: StrokeBoundingBox,
+    clientX?: number,
+    clientY?: number
+  ): void {
     this.ensureDragOverlay();
     if (!this.pageManager || !this.dragOverlayEl || !this.dragOverlayCanvas) {
       return;
@@ -2053,6 +2172,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const sourcePage = this.pageManager.getPage(sourcePageId);
     if (!sourcePage) {
       return;
+    }
+
+    if (typeof clientX === "number" && typeof clientY === "number") {
+      this.dragStartClientX = clientX;
+      this.dragStartClientY = clientY;
     }
 
     const containerRect = this.pagesContainerEl.getBoundingClientRect();
@@ -2067,12 +2191,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const boxWidth = Math.max(1, bounds.maxX - bounds.minX);
     const boxHeight = Math.max(1, bounds.maxY - bounds.minY);
-    const padding = 16;
+    const padding = 20;
     const canvasWidth = Math.ceil(boxWidth + padding * 2);
     const canvasHeight = Math.ceil(boxHeight + padding * 2);
 
-    this.dragOverlayCanvas.width = canvasWidth;
-    this.dragOverlayCanvas.height = canvasHeight;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    this.dragOverlayCanvas.width = Math.round(canvasWidth * dpr);
+    this.dragOverlayCanvas.height = Math.round(canvasHeight * dpr);
     this.dragOverlayCanvas.setCssStyles({
       width: `${canvasWidth}px`,
       height: `${canvasHeight}px`
@@ -2080,8 +2205,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const ctx = this.dragOverlayCanvas.getContext("2d");
     if (ctx) {
-      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
       ctx.save();
+      if (typeof ctx.setTransform === "function") {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      ctx.clearRect(0, 0, this.dragOverlayCanvas.width, this.dragOverlayCanvas.height);
+      ctx.restore();
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
       ctx.translate(padding - bounds.minX, padding - bounds.minY);
 
       for (const stroke of this.selectionController.getSelectedStrokes()) {
@@ -2089,6 +2221,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
       for (const shape of this.selectionController.getSelectedShapes()) {
         ShapeRecognizer.renderShape(ctx, shape);
+      }
+      for (const text of this.selectionController.getSelectedTexts()) {
+        this.renderTextObjectToCanvas(ctx, text);
+      }
+      for (const img of this.selectionController.getSelectedImages()) {
+        this.renderImageObjectToCanvas(ctx, img);
       }
       this.selectionController.renderSelectionDashedBox(ctx, bounds);
 
@@ -2101,12 +2239,21 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.dragOverlayEl.setCssStyles({
       transform: `translate3d(${initialOverlayX}px, ${initialOverlayY}px, 0)`
     });
-    this.dragOverlayEl.toggle(true);
+    this.dragOverlayEl.addClass("is-active");
 
     const sourceCanvas = this.activeCanvasMap.get(sourcePageId);
     if (sourceCanvas) {
       const srcCtx = sourceCanvas.getContext("2d");
       srcCtx?.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+    }
+
+    for (const text of this.selectionController.getSelectedTexts()) {
+      const el = this.pagesContainerEl?.querySelector<HTMLElement>(`[data-text-id="${text.id}"]`);
+      el?.addClass("is-hidden");
+    }
+    for (const img of this.selectionController.getSelectedImages()) {
+      const el = this.pagesContainerEl?.querySelector<HTMLElement>(`[data-image-id="${img.id}"]`);
+      el?.addClass("is-hidden");
     }
 
     this.isDraggingSelection = true;
@@ -2135,7 +2282,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return;
     }
     this.isDraggingSelection = false;
-    this.dragOverlayEl.toggle(false);
+    this.dragOverlayEl.removeClass("is-active");
+
+    this.pagesContainerEl?.querySelectorAll(".is-hidden").forEach((el) => {
+      el.removeClass("is-hidden");
+    });
+
+    const movedDist = Math.hypot(clientX - this.dragStartClientX, clientY - this.dragStartClientY);
+    if (movedDist < 3) {
+      this.cancelSelectionDrag();
+      return;
+    }
 
     const dx = (clientX - this.dragStartClientX) / this.zoomLevel;
     const dy = (clientY - this.dragStartClientY) / this.zoomLevel;
@@ -2150,6 +2307,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       finalContainerBoxCenterY
     );
     if (!targetInfo) {
+      this.cancelSelectionDrag();
       return;
     }
 
@@ -2157,11 +2315,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const targetPageMinX = finalContainerBoxMinX - pageLeft;
     const targetPageMinY = finalContainerBoxMinY - pageTop;
 
-    const margin = 10;
-    let clampedMinX = Math.max(margin, Math.min(targetPageMinX, targetPage.dimensions.width - this.dragBoxWidth - margin));
-    let clampedMinY = Math.max(margin, Math.min(targetPageMinY, targetPage.dimensions.height - this.dragBoxHeight - margin));
-    if (this.dragBoxWidth > targetPage.dimensions.width - margin * 2) clampedMinX = margin;
-    if (this.dragBoxHeight > targetPage.dimensions.height - margin * 2) clampedMinY = margin;
+    const maxW = Math.max(0, targetPage.dimensions.width - this.dragBoxWidth);
+    const maxH = Math.max(0, targetPage.dimensions.height - this.dragBoxHeight);
+    const clampedMinX = Math.max(0, Math.min(targetPageMinX, maxW));
+    const clampedMinY = Math.max(0, Math.min(targetPageMinY, maxH));
 
     const targetBox: StrokeBoundingBox = {
       minX: clampedMinX,
@@ -2170,18 +2327,29 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       maxY: clampedMinY + this.dragBoxHeight
     };
 
-    const targetCanvas = this.activeCanvasMap.get(targetPage.id);
+    let targetCanvas = this.activeCanvasMap.get(targetPage.id);
+    if (!targetCanvas || targetCanvas.width <= 1) {
+      this.mountPageCanvases(targetPage.pageNumber);
+      targetCanvas = this.activeCanvasMap.get(targetPage.id);
+    }
     if (targetCanvas) {
       this.selectionController.commitMove(targetPage, targetBox, targetCanvas);
     }
   }
 
   private cancelSelectionDrag(): void {
-    if (!this.isDraggingSelection || !this.dragOverlayEl) {
+    if (!this.isDraggingSelection && !this.dragOverlayEl?.hasClass("is-active")) {
       return;
     }
     this.isDraggingSelection = false;
-    this.dragOverlayEl.toggle(false);
+    this.dragOverlayEl?.removeClass("is-active");
+
+    this.pagesContainerEl?.querySelectorAll(".is-hidden").forEach((el) => {
+      el.removeClass("is-hidden");
+    });
+
+    this.selectionController.cancelMove();
+
     const activePageId = this.selectionController.getActivePageId();
     if (activePageId) {
       const canvas = this.activeCanvasMap.get(activePageId);
@@ -2216,10 +2384,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     for (const page of pages) {
       const canvas = this.activeCanvasMap.get(page.id);
-      if (!canvas) {
+      const pageWrapper = this.pageElements.get(page.pageNumber);
+      if (!canvas && !pageWrapper) {
         continue;
       }
-      const canvasRect = canvas.getBoundingClientRect();
+      const canvasRect = canvas ? canvas.getBoundingClientRect() : pageWrapper!.getBoundingClientRect();
       const pageLeft = (canvasRect.left - containerRect.left) / this.zoomLevel;
       const pageTop = (canvasRect.top - containerRect.top) / this.zoomLevel;
       const pageBottom = pageTop + page.dimensions.height;
@@ -2307,19 +2476,71 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       };
     });
 
+    const clonedTexts: TextObject[] = this.selectionController.getSelectedTexts().map((t) => {
+      const newX = Math.max(0, Math.min(page.dimensions.width - t.width, t.x + offset));
+      const newY = Math.max(0, Math.min(page.dimensions.height - t.height, t.y + offset));
+      return {
+        ...t,
+        id: `text_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        x: newX,
+        y: newY,
+        bounds: {
+          minX: newX,
+          minY: newY,
+          maxX: newX + t.width,
+          maxY: newY + t.height
+        }
+      };
+    });
+
+    const clonedImages: ImageObject[] = this.selectionController.getSelectedImages().map((img) => {
+      const newX = Math.max(0, Math.min(page.dimensions.width - img.width, img.x + offset));
+      const newY = Math.max(0, Math.min(page.dimensions.height - img.height, img.y + offset));
+      return {
+        ...img,
+        id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        x: newX,
+        y: newY,
+        bounds: {
+          minX: newX,
+          minY: newY,
+          maxX: newX + img.width,
+          maxY: newY + img.height
+        }
+      };
+    });
+
     const activeCanvas = this.activeCanvasMap.get(page.id);
 
     this.selectionController.setSelection(
       page.id,
       clonedStrokes,
       clonedShapes,
-      activeCanvas
+      activeCanvas,
+      clonedTexts,
+      clonedImages
     );
 
     this.historyManager.execute(
-      new AddElementsCommand(page, clonedStrokes, clonedShapes, () => {
-        this.handleMutation(page);
-      })
+      new AddElementsCommand(
+        page,
+        clonedStrokes,
+        clonedShapes,
+        () => {
+          this.handleMutation(page);
+          const frameEl = this.getPageFrame(page.pageNumber);
+          if (frameEl) {
+            if (clonedTexts.length > 0) {
+              this.textController.renderPageTexts(page, frameEl);
+            }
+            if (clonedImages.length > 0) {
+              this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
+            }
+          }
+        },
+        clonedTexts,
+        clonedImages
+      )
     );
     new Notice("Duplicated selection");
   }
@@ -2350,6 +2571,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       shapes: this.selectionController.getSelectedShapes().map((sh) => ({
         ...sh,
         geometryData: { ...sh.geometryData }
+      })),
+      texts: this.selectionController.getSelectedTexts().map((t) => ({
+        ...t,
+        bounds: t.bounds ? { ...t.bounds } : undefined
+      })),
+      images: this.selectionController.getSelectedImages().map((img) => ({
+        ...img,
+        bounds: img.bounds ? { ...img.bounds } : undefined
       }))
     };
     new Notice("Selection copied");
@@ -2418,19 +2647,71 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       };
     });
 
+    const pastedTexts: TextObject[] = this.clipboard.texts.map((t) => {
+      const newX = Math.max(0, Math.min(page.dimensions.width - t.width, t.x + offset));
+      const newY = Math.max(0, Math.min(page.dimensions.height - t.height, t.y + offset));
+      return {
+        ...t,
+        id: `text_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        x: newX,
+        y: newY,
+        bounds: {
+          minX: newX,
+          minY: newY,
+          maxX: newX + t.width,
+          maxY: newY + t.height
+        }
+      };
+    });
+
+    const pastedImages: ImageObject[] = this.clipboard.images.map((img) => {
+      const newX = Math.max(0, Math.min(page.dimensions.width - img.width, img.x + offset));
+      const newY = Math.max(0, Math.min(page.dimensions.height - img.height, img.y + offset));
+      return {
+        ...img,
+        id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        x: newX,
+        y: newY,
+        bounds: {
+          minX: newX,
+          minY: newY,
+          maxX: newX + img.width,
+          maxY: newY + img.height
+        }
+      };
+    });
+
     const activeCanvas = this.activeCanvasMap.get(page.id);
 
     this.selectionController.setSelection(
       page.id,
       pastedStrokes,
       pastedShapes,
-      activeCanvas
+      activeCanvas,
+      pastedTexts,
+      pastedImages
     );
 
     this.historyManager.execute(
-      new AddElementsCommand(page, pastedStrokes, pastedShapes, () => {
-        this.handleMutation(page);
-      })
+      new AddElementsCommand(
+        page,
+        pastedStrokes,
+        pastedShapes,
+        () => {
+          this.handleMutation(page);
+          const frameEl = this.getPageFrame(page.pageNumber);
+          if (frameEl) {
+            if (pastedTexts.length > 0) {
+              this.textController.renderPageTexts(page, frameEl);
+            }
+            if (pastedImages.length > 0) {
+              this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
+            }
+          }
+        },
+        pastedTexts,
+        pastedImages
+      )
     );
     new Notice("Pasted elements");
   }
@@ -3063,7 +3344,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           activeCanvas,
           committedCanvas,
           { x: pageX, y: pageY },
-          page.strokes
+          page.strokes,
+          page.shapes
         );
       }
     });
@@ -3153,7 +3435,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           x: (ev.clientX - rect.left) * scaleX,
           y: (ev.clientY - rect.top) * scaleY
         }));
-        this.inkingController.handlePointerMove(e, coordsList, page.strokes);
+        this.inkingController.handlePointerMove(e, coordsList, page.strokes, page.shapes);
       }
     });
 
@@ -3164,6 +3446,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
 
       if (this.isDraggingSelection) {
+        try {
+          activeCanvas.releasePointerCapture(e.pointerId);
+        } catch (err) {
+          void err;
+        }
         this.finishSelectionDrag(e.clientX, e.clientY);
         return;
       }
@@ -3920,7 +4207,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   deletePageAndSyncDom(pageId: string): void {
-    if (!this.pageManager) {
+    if (!this.pageManager || !this.document) {
       return;
     }
     if (this.pageManager.getPageCount() <= 1) {
@@ -3932,79 +4219,102 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (!pageToDelete) {
       return;
     }
-    const deletedPageNumber = pageToDelete.pageNumber;
-    const targetNum = Math.max(1, deletedPageNumber - 1);
-
-    if (this.textController.isEditing()) {
-      this.textController.commitActiveEdit();
-    }
-    this.imageController.deselectImage();
-    this.clearActiveSelectionCanvas();
-
-    const pageWrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${pageId}"]`);
-
-    this.pageVirtualizer.unobservePage(deletedPageNumber);
-
-    if (pageWrapper && this.pageIntersectionObserver) {
-      this.pageIntersectionObserver.unobserve(pageWrapper);
+    const deletedIndex = this.document.pages.findIndex((p) => p.id === pageId);
+    if (deletedIndex === -1) {
+      return;
     }
 
-    const committedCanvas = this.committedCanvasMap.get(pageId);
-    if (committedCanvas) {
-      committedCanvas.width = 1;
-      committedCanvas.height = 1;
-      this.committedCanvasMap.delete(pageId);
-    }
+    const performDomDelete = (deletedPage: PageData): void => {
+      const deletedPageNumber = deletedPage.pageNumber;
+      const targetNum = Math.max(1, deletedPageNumber - 1);
 
-    const activeCanvas = this.activeCanvasMap.get(pageId);
-    if (activeCanvas) {
-      activeCanvas.width = 1;
-      activeCanvas.height = 1;
-      this.activeCanvasMap.delete(pageId);
-    }
-
-    const templateCanvas = this.templateCanvasMap.get(pageId);
-    if (templateCanvas) {
-      templateCanvas.width = 1;
-      templateCanvas.height = 1;
-      this.templateCanvasMap.delete(pageId);
-    }
-
-    if (pageWrapper) {
-      const extraCanvases = pageWrapper.querySelectorAll("canvas");
-      extraCanvases.forEach((c) => {
-        c.width = 1;
-        c.height = 1;
-      });
-      pageWrapper.remove();
-    }
-
-    this.sidebar.removeThumbnail(pageId);
-
-    this.pageManager.deletePage(pageId);
-
-    const pages = this.pageManager.getPages();
-    this.pageElements.clear();
-
-    for (let index = 0; index < pages.length; index++) {
-      const p = pages[index];
-      const wrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${p.id}"]`);
-      if (wrapper) {
-        wrapper.dataset.pageNumber = String(p.pageNumber);
-        const watermark = wrapper.querySelector(".notepages-page-number-watermark");
-        if (watermark) {
-          watermark.textContent = String(p.pageNumber);
-        }
-        this.pageElements.set(p.pageNumber, wrapper);
+      if (this.textController.isEditing()) {
+        this.textController.commitActiveEdit();
       }
-    }
+      this.imageController.deselectImage();
+      this.clearActiveSelectionCanvas();
 
-    this.sidebar.renumberThumbnails(pages);
+      const pageWrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${deletedPage.id}"]`);
 
-    this.requestSave();
-    this.scrollToPage(targetNum);
-    this.updateStatusDisplay();
-    new Notice(`Deleted Page ${deletedPageNumber}`);
+      this.pageVirtualizer.unobservePage(deletedPageNumber);
+
+      if (pageWrapper && this.pageIntersectionObserver) {
+        this.pageIntersectionObserver.unobserve(pageWrapper);
+      }
+
+      const committedCanvas = this.committedCanvasMap.get(deletedPage.id);
+      if (committedCanvas) {
+        committedCanvas.width = 1;
+        committedCanvas.height = 1;
+        this.committedCanvasMap.delete(deletedPage.id);
+      }
+
+      const activeCanvas = this.activeCanvasMap.get(deletedPage.id);
+      if (activeCanvas) {
+        activeCanvas.width = 1;
+        activeCanvas.height = 1;
+        this.activeCanvasMap.delete(deletedPage.id);
+      }
+
+      const templateCanvas = this.templateCanvasMap.get(deletedPage.id);
+      if (templateCanvas) {
+        templateCanvas.width = 1;
+        templateCanvas.height = 1;
+        this.templateCanvasMap.delete(deletedPage.id);
+      }
+
+      if (pageWrapper) {
+        const extraCanvases = pageWrapper.querySelectorAll("canvas");
+        extraCanvases.forEach((c) => {
+          c.width = 1;
+          c.height = 1;
+        });
+        pageWrapper.remove();
+      }
+
+      this.sidebar.removeThumbnail(deletedPage.id);
+
+      const pages = this.pageManager ? this.pageManager.getPages() : [];
+      this.pageElements.clear();
+
+      for (let index = 0; index < pages.length; index++) {
+        const p = pages[index];
+        const wrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${p.id}"]`);
+        if (wrapper) {
+          wrapper.dataset.pageNumber = String(p.pageNumber);
+          const watermark = wrapper.querySelector(".notepages-page-number-watermark");
+          if (watermark) {
+            watermark.textContent = String(p.pageNumber);
+          }
+          this.pageElements.set(p.pageNumber, wrapper);
+        }
+      }
+
+      this.sidebar.renumberThumbnails(pages);
+
+      this.requestSave();
+      this.scrollToPage(targetNum);
+      this.updateStatusDisplay();
+      new Notice(`Deleted Page ${deletedPageNumber}`);
+    };
+
+    const performDomRestore = (restoredPage: PageData): void => {
+      this.renderDocument();
+      this.requestSave();
+      this.scrollToPage(restoredPage.pageNumber);
+      this.updateStatusDisplay();
+      new Notice(`Restored Page ${restoredPage.pageNumber}`);
+    };
+
+    this.historyManager.execute(
+      new DeletePageCommand(
+        this.document.pages,
+        pageToDelete,
+        deletedIndex,
+        performDomDelete,
+        performDomRestore
+      )
+    );
   }
 
   private isDarkColor(hexColor: string): boolean {
@@ -4033,7 +4343,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const initialPage: PageData = {
       id: "page-" + Math.random().toString(36).substring(2, 10),
       pageNumber: 1,
-      dimensions: { ...PAGE_DIMENSION_PRESETS.A4 },
+      dimensions: getEffectivePageDimensions(
+        this.plugin.settings.defaultPageSize,
+        this.plugin.settings.defaultOrientation
+      ),
       orientation: this.plugin.settings.defaultOrientation,
       template: {
         type: this.plugin.settings.defaultTemplate,
@@ -4403,7 +4716,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (!page) {
       return;
     }
-    // Never unmount the active page or while drawing/editing
     if (pageNumber === this.currentPageNumber) {
       return;
     }

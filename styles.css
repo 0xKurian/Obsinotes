@@ -455,6 +455,11 @@ body .notepages-view-container .notepages-scroller.is-panning {
   pointer-events: none;
   z-index: 1000;
   will-change: transform;
+  display: none;
+}
+
+.notepages-drag-overlay.is-active {
+  display: block;
 }
 
 .notepages-drag-canvas {
@@ -629,7 +634,8 @@ body .notepages-view-container .notepages-scroller.is-panning {
   user-select: text;
 }
 
-.notepages-text-box.is-hidden {
+.notepages-text-box.is-hidden,
+.notepages-image-frame.is-hidden {
   visibility: hidden;
 }
 
@@ -1056,10 +1062,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   touch-action: none;
 }
 
-.notepages-drag-overlay {
-  display: none;
-}
-
 .notepages-modal-header {
   margin-bottom: 14px;
 }
@@ -1335,7 +1337,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   font-size: 0.9em;
 }
 
-/* Quick Rename Toolbar Title Button */
 .notepages-title-btn {
   display: inline-flex;
   align-items: center;
@@ -1398,7 +1399,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   }
 }
 
-/* Quick Rename Modal */
 .notepages-rename-modal {
   padding: 10px 4px 6px;
   max-width: 420px;

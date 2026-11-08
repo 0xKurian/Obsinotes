@@ -48,28 +48,36 @@ export class EraseStrokesCommand implements HistoryCommand {
   private page: PageData;
   private previousStrokes: StrokeObject[];
   private nextStrokes: StrokeObject[];
+  private previousShapes: ShapeObject[];
+  private nextShapes: ShapeObject[];
   private onMutate: () => void;
 
   constructor(
     page: PageData,
     previousStrokes: StrokeObject[],
     nextStrokes: StrokeObject[],
-    onMutate: () => void
+    onMutate: () => void,
+    previousShapes?: ShapeObject[],
+    nextShapes?: ShapeObject[]
   ) {
     this.id = `cmd_erase_${Date.now()}`;
     this.page = page;
     this.previousStrokes = [...previousStrokes];
     this.nextStrokes = [...nextStrokes];
+    this.previousShapes = previousShapes ? [...previousShapes] : [...page.shapes];
+    this.nextShapes = nextShapes ? [...nextShapes] : [...page.shapes];
     this.onMutate = onMutate;
   }
 
   execute(): void {
     this.page.strokes = [...this.nextStrokes];
+    this.page.shapes = [...this.nextShapes];
     this.onMutate();
   }
 
   undo(): void {
     this.page.strokes = [...this.previousStrokes];
+    this.page.shapes = [...this.previousShapes];
     this.onMutate();
   }
 
@@ -451,18 +459,24 @@ export class AddElementsCommand implements HistoryCommand {
   private page: PageData;
   private addedStrokes: StrokeObject[];
   private addedShapes: ShapeObject[];
+  private addedTexts: TextObject[];
+  private addedImages: ImageObject[];
   private onMutate: () => void;
 
   constructor(
     page: PageData,
     strokes: StrokeObject[],
     shapes: ShapeObject[],
-    onMutate: () => void
+    onMutate: () => void,
+    texts: TextObject[] = [],
+    images: ImageObject[] = []
   ) {
     this.id = `cmd_add_elems_${Date.now()}`;
     this.page = page;
     this.addedStrokes = [...strokes];
     this.addedShapes = [...shapes];
+    this.addedTexts = [...texts];
+    this.addedImages = [...images];
     this.onMutate = onMutate;
   }
 
@@ -477,14 +491,28 @@ export class AddElementsCommand implements HistoryCommand {
         this.page.shapes.push(sh);
       }
     }
+    for (const t of this.addedTexts) {
+      if (!this.page.texts.some((existing) => existing.id === t.id)) {
+        this.page.texts.push(t);
+      }
+    }
+    for (const img of this.addedImages) {
+      if (!this.page.images.some((existing) => existing.id === img.id)) {
+        this.page.images.push(img);
+      }
+    }
     this.onMutate();
   }
 
   undo(): void {
     const strokeIds = new Set(this.addedStrokes.map((s) => s.id));
     const shapeIds = new Set(this.addedShapes.map((sh) => sh.id));
+    const textIds = new Set(this.addedTexts.map((t) => t.id));
+    const imageIds = new Set(this.addedImages.map((img) => img.id));
     this.page.strokes = this.page.strokes.filter((s) => !strokeIds.has(s.id));
     this.page.shapes = this.page.shapes.filter((sh) => !shapeIds.has(sh.id));
+    this.page.texts = this.page.texts.filter((t) => !textIds.has(t.id));
+    this.page.images = this.page.images.filter((img) => !imageIds.has(img.id));
     this.onMutate();
   }
 
@@ -599,6 +627,58 @@ export class MoveElementsAcrossPagesCommand implements HistoryCommand {
       }
     }
     this.onMutate(this.sourcePage, this.targetPage);
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class DeletePageCommand implements HistoryCommand {
+  id: string;
+  description: string = "Delete page";
+  private pages: PageData[];
+  private deletedPage: PageData;
+  private deletedIndex: number;
+  private onDeleteSync: (deletedPage: PageData, deletedIndex: number) => void;
+  private onRestoreSync: (restoredPage: PageData, restoredIndex: number) => void;
+
+  constructor(
+    pages: PageData[],
+    deletedPage: PageData,
+    deletedIndex: number,
+    onDeleteSync: (deletedPage: PageData, deletedIndex: number) => void,
+    onRestoreSync: (restoredPage: PageData, restoredIndex: number) => void
+  ) {
+    this.id = `cmd_del_page_${deletedPage.id}_${Date.now()}`;
+    this.pages = pages;
+    this.deletedPage = deletedPage;
+    this.deletedIndex = deletedIndex;
+    this.onDeleteSync = onDeleteSync;
+    this.onRestoreSync = onRestoreSync;
+  }
+
+  execute(): void {
+    const idx = this.pages.findIndex((p) => p.id === this.deletedPage.id);
+    if (idx !== -1 && this.pages.length > 1) {
+      this.deletedIndex = idx;
+      this.pages.splice(idx, 1);
+      for (let i = 0; i < this.pages.length; i++) {
+        this.pages[i].pageNumber = i + 1;
+      }
+      this.onDeleteSync(this.deletedPage, this.deletedIndex);
+    }
+  }
+
+  undo(): void {
+    if (!this.pages.some((p) => p.id === this.deletedPage.id)) {
+      const insertIdx = Math.max(0, Math.min(this.deletedIndex, this.pages.length));
+      this.pages.splice(insertIdx, 0, this.deletedPage);
+      for (let i = 0; i < this.pages.length; i++) {
+        this.pages[i].pageNumber = i + 1;
+      }
+      this.onRestoreSync(this.deletedPage, insertIdx);
+    }
   }
 
   redo(): void {
