@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotePages - High-Performance Digital Notebook for Obsidian</title>
+  <meta name="description" content="Create multi-page digital notebooks and whiteboards in Obsidian with stylus inking, paper templates, sticky notes, LaTeX math, and continuous scrolling.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238b5cf6'><path d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              200: '#ddd6fe',
+              300: '#c4b5fd',
+              400: '#a78bfa',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+            },
+            dark: {
+              base: '#0c0e14',
+              surface: '#141721',
+              card: '#1a1e2b',
+              border: '#272d3e',
+              muted: '#94a3b8'
+            },
+            light: {
+              base: '#faf8f5',
+              surface: '#ffffff',
+              card: '#ffffff',
+              border: '#e7e3dc',
+              muted: '#64748b'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .bg-grid-pattern {
+      background-size: 28px 28px;
+      background-image: 
+        linear-gradient(to right, rgba(140, 150, 180, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(140, 150, 180, 0.08) 1px, transparent 1px);
+    }
+    .dark .bg-grid-pattern {
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    }
+    .glow-glow {
+      box-shadow: 0 0 60px -15px rgba(139, 92, 246, 0.35);
+    }
+    .paper-shadow {
+      box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    }
+    .dark .paper-shadow {
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-light-base dark:bg-dark-base text-stone-800 dark:text-stone-100 transition-colors duration-200 antialiased selection:bg-brand-500 selection:text-white">
+
+  <nav class="sticky top-0 z-50 backdrop-blur-md bg-light-base/80 dark:bg-dark-base/80 border-b border-light-border dark:border-dark-border">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/25 group-hover:scale-105 transition-transform">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+          </svg>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="font-bold text-lg tracking-tight">NotePages</span>
+          <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/60 text-brand-700 dark:text-brand-300">v1.1.1</span>
+        </div>
+      </a>
+
+      <div class="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600 dark:text-stone-300">
+        <a href="#demo" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Interactive Demo</a>
+        <a href="#features" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Features</a>
+        <a href="#shortcuts" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Shortcuts</a>
+        <a href="#feedback" class="hover:text-brand-600 dark:hover:text-brand-400 transition-colors">Survey</a>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="themeToggle" aria-label="Toggle theme" class="p-2 rounded-lg text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-200/60 dark:hover:bg-dark-surface border border-transparent hover:border-light-border dark:hover:border-dark-border transition-all">
+          <svg id="sunIcon" class="w-5 h-5 hidden dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <svg id="moonIcon" class="w-5 h-5 block dark:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        </button>
+
+        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 text-sm font-semibold rounded-lg bg-stone-100 dark:bg-dark-surface hover:bg-stone-200 dark:hover:bg-dark-card border border-light-border dark:border-dark-border transition-all">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          GitHub
+        </a>
+
+        <a href="https://github.com/0xKurian/Obsinotes/releases" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-semibold rounded-lg bg-brand-600 hover:bg-brand-700 text-white shadow-sm shadow-brand-500/20 transition-all">
+          Download
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="relative pt-16 pb-20 overflow-hidden bg-grid-pattern">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-700 dark:text-brand-300 text-xs font-semibold uppercase tracking-wider mb-6">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        Obsidian Community Plugin
+      </div>
+      <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-stone-900 dark:text-white mb-6 leading-tight">
+        The Tactile Digital Notebook<br>
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-500 dark:from-brand-400 dark:to-indigo-300">Built Natively for Obsidian.</span>
+      </h1>
+      <p class="text-lg sm:text-xl text-stone-600 dark:text-stone-300 max-w-3xl mx-auto mb-10 leading-relaxed font-normal">
+        Experience the fluid freedom of physical pen-and-paper inside your personal knowledge vault. Smooth stylus inking, procedural paper templates, sticky notes, LaTeX math, and continuous scrolling with 100% offline local privacy.
+      </p>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
+        <a href="https://github.com/0xKurian/Obsinotes/releases/latest" target="_blank" class="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-7 py-3.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-lg shadow-brand-500/25 transition-all text-base">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Get NotePages v1.1.1
+        </a>
+        <a href="#demo" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-stone-100 dark:bg-dark-surface hover:bg-stone-200 dark:hover:bg-dark-card border border-light-border dark:border-dark-border font-semibold transition-all text-base">
+          Try Live Sandbox
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </a>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto text-left">
+        <div class="p-4 rounded-xl bg-white/70 dark:bg-dark-surface/70 border border-light-border dark:border-dark-border backdrop-blur-sm">
+          <div class="text-2xl font-bold text-brand-600 dark:text-brand-400 font-mono">100%</div>
+          <div class="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Local & Offline Vault</div>
+        </div>
+        <div class="p-4 rounded-xl bg-white/70 dark:bg-dark-surface/70 border border-light-border dark:border-dark-border backdrop-blur-sm">
+          <div class="text-2xl font-bold text-brand-600 dark:text-brand-400 font-mono">120 FPS</div>
+          <div class="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Zero Inking Latency</div>
+        </div>
+        <div class="p-4 rounded-xl bg-white/70 dark:bg-dark-surface/70 border border-light-border dark:border-dark-border backdrop-blur-sm">
+          <div class="text-2xl font-bold text-brand-600 dark:text-brand-400 font-mono">169</div>
+          <div class="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Unit Tests Passed</div>
+        </div>
+        <div class="p-4 rounded-xl bg-white/70 dark:bg-dark-surface/70 border border-light-border dark:border-dark-border backdrop-blur-sm">
+          <div class="text-2xl font-bold text-brand-600 dark:text-brand-400 font-mono">.gnote</div>
+          <div class="text-xs text-stone-500 dark:text-stone-400 mt-0.5">Clean JSON Document</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="demo" class="py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <div class="text-center mb-8">
+      <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-white">
+        Interactive Notebook Sandbox
+      </h2>
+      <p class="text-sm sm:text-base text-stone-600 dark:text-stone-400 mt-2">
+        Pick a pen, choose your paper template, and draw directly below to test NotePages in action.
+      </p>
+    </div>
+
+    <div class="rounded-2xl border border-light-border dark:border-dark-border bg-white dark:bg-dark-surface paper-shadow overflow-hidden">
+      <div class="p-3 border-b border-light-border dark:border-dark-border bg-stone-50 dark:bg-dark-card flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div class="flex items-center gap-1.5 bg-stone-200/60 dark:bg-dark-surface p-1 rounded-lg">
+          <button id="toolPen" class="px-3 py-1.5 rounded-md font-medium text-xs bg-white dark:bg-brand-600 shadow-sm text-stone-900 dark:text-white transition-all flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+            </svg>
+            Pen
+          </button>
+          <button id="toolHighlighter" class="px-3 py-1.5 rounded-md font-medium text-xs text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-all flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+            </svg>
+            Highlighter
+          </button>
+          <button id="toolEraser" class="px-3 py-1.5 rounded-md font-medium text-xs text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-all flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            Eraser
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
+            <button class="color-btn w-6 h-6 rounded-full border-2 border-white dark:border-dark-card shadow-sm bg-stone-900 ring-2 ring-brand-500 scale-110" data-color="#1c1917"></button>
+            <button class="color-btn w-6 h-6 rounded-full border-2 border-white dark:border-dark-card shadow-sm bg-violet-600" data-color="#7c3aed"></button>
+            <button class="color-btn w-6 h-6 rounded-full border-2 border-white dark:border-dark-card shadow-sm bg-emerald-600" data-color="#059669"></button>
+            <button class="color-btn w-6 h-6 rounded-full border-2 border-white dark:border-dark-card shadow-sm bg-amber-500" data-color="#f59e0b"></button>
+            <button class="color-btn w-6 h-6 rounded-full border-2 border-white dark:border-dark-card shadow-sm bg-rose-500" data-color="#e11d48"></button>
+          </div>
+
+          <div class="h-4 w-px bg-stone-300 dark:bg-stone-700 mx-1"></div>
+
+          <select id="templateSelect" class="text-xs rounded-lg border border-light-border dark:border-dark-border bg-white dark:bg-dark-surface px-2.5 py-1.5 text-stone-800 dark:text-stone-200">
+            <option value="ruled">Ruled Paper</option>
+            <option value="grid">Grid Paper</option>
+            <option value="dotted">Dotted Paper</option>
+            <option value="cornell">Cornell Paper</option>
+            <option value="blank">Blank Paper</option>
+          </select>
+
+          <button id="clearCanvasBtn" class="text-xs px-2.5 py-1.5 rounded-lg border border-light-border dark:border-dark-border hover:bg-stone-200/60 dark:hover:bg-dark-surface text-stone-600 dark:text-stone-400 font-medium transition-all">
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div class="relative w-full h-[420px] bg-white dark:bg-[#1a1c24] cursor-crosshair overflow-hidden touch-none" id="canvasContainer">
+        <canvas id="templateCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+        <canvas id="drawingCanvas" class="absolute inset-0"></canvas>
+        <div class="absolute bottom-3 right-4 text-[11px] font-mono font-medium text-stone-400 dark:text-stone-500 select-none pointer-events-none">
+          Page 1 • A4 Portrait • NotePages Engine
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+    <div class="text-center max-w-3xl mx-auto mb-16">
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-stone-900 dark:text-white">
+        Engineered for Digital Notebook Craft
+      </h2>
+      <p class="text-base sm:text-lg text-stone-600 dark:text-stone-300 mt-3">
+        Every tool is tailored to feel natural under a stylus while staying deeply tied to Obsidian's linked notes.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="p-7 rounded-2xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border paper-shadow">
+        <div class="w-11 h-11 rounded-xl bg-violet-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-stone-900 dark:text-white mb-2">High-Precision Inking</h3>
+        <p class="text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+          Ballpoint, Fountain, and Pressure Pen powered by <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-stone-100 dark:bg-dark-card">perfect-freehand</code>. Sensitive micro-dot detection and layered multiplier highlighters.
+        </p>
+      </div>
+
+      <div class="p-7 rounded-2xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border paper-shadow">
+        <div class="w-11 h-11 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-stone-900 dark:text-white mb-2">Hold-to-Snap Shapes</h3>
+        <p class="text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+          Draw circles, rectangles, triangles, or arrows freehand and pause for 350ms. NotePages instantly snaps them into crisp geometric vectors with customizable fill colors.
+        </p>
+      </div>
+
+      <div class="p-7 rounded-2xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border paper-shadow">
+        <div class="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-stone-900 dark:text-white mb-2">Sticky Notes & LaTeX</h3>
+        <p class="text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+          Color-coded pastel sticky notes with soft shadows. Type inline math <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-stone-100 dark:bg-dark-card">$E=mc^2$</code> and Obsidian Wikilinks <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-stone-100 dark:bg-dark-card">[[Note]]</code> natively.
+        </p>
+      </div>
+
+      <div class="p-7 rounded-2xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border paper-shadow">
+        <div class="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-stone-900 dark:text-white mb-2">PDF Annotations</h3>
+        <p class="text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+          Import multi-page PDF documents directly as notebook backgrounds. Highlight passages, write notes in the margins, and re-export without vector resolution loss.
+        </p>
+      </div>
+
+      <div class="p-7 rounded-2xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border paper-shadow">
+        <div class="w-11 h-11 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-stone-900 dark:text-white mb-2">Multi-Format Exporter</h3>
+        <p class="text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+          Export pages to 300 DPI print-ready PDF, high-res PNG, or pure scalable SVG. Save directly into your vault with zero name collisions.
+        </p>
+      </div>
+
+      <div class="p-7 rounded-2xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border paper-shadow">
+        <div class="w-11 h-11 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center mb-5">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-stone-900 dark:text-white mb-2">Memory Virtualization</h3>
+        <p class="text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+          Smart culling releases off-screen canvas contexts in notebooks with 100+ pages. Scroll continuously without frame drops, memory spikes, or GPU exhaustion.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="shortcuts" class="py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <div class="p-8 rounded-2xl bg-stone-100/80 dark:bg-dark-card border border-light-border dark:border-dark-border">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 class="text-xl font-bold text-stone-900 dark:text-white">Essential Keyboard Shortcuts</h3>
+          <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Work at the speed of thought with intuitive hotkeys.</p>
+        </div>
+        <span class="text-xs font-mono px-2.5 py-1 rounded bg-stone-200 dark:bg-dark-surface text-stone-700 dark:text-stone-300 self-start sm:self-auto">Obsidian Native</span>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Pen</span>
+            <kbd class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">P</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Switch to Pen</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Eraser</span>
+            <kbd class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">E</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Erase Stroke/Shape</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Add Page</span>
+            <kbd class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">A</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Insert Page Below</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Undo</span>
+            <kbd class="px-1.5 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">Ctrl+Z</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Undo Everything</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Pan</span>
+            <kbd class="px-1.5 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">Space</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Hold & Drag Canvas</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Zoom</span>
+            <kbd class="px-1.5 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">Ctrl+Wheel</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Focal Anchored Zoom</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Shapes</span>
+            <kbd class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">S</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Shape Palette</div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-white dark:bg-dark-surface border border-light-border dark:border-dark-border">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-stone-500 dark:text-stone-400">Width</span>
+            <kbd class="px-1.5 py-0.5 text-xs font-mono font-bold rounded bg-stone-100 dark:bg-dark-card border border-stone-300 dark:border-stone-700">[ / ]</kbd>
+          </div>
+          <div class="text-xs font-semibold text-stone-800 dark:text-stone-200">Stroke Thickness</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="feedback" class="py-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto text-center">
+    <div class="p-10 rounded-3xl bg-gradient-to-br from-brand-600/10 via-indigo-600/5 to-transparent border border-brand-500/20 glow-glow">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-600 text-white shadow-md shadow-brand-500/30 mb-5">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
+        </svg>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-white mb-3">
+        Help Shape the Future of NotePages
+      </h2>
+      <p class="text-stone-600 dark:text-stone-300 max-w-xl mx-auto mb-8 text-sm sm:text-base font-normal">
+        Your voice directly influences what we build next. Take our quick 1-minute survey to share feature requests, report pain points, or tell us how you use NotePages.
+      </p>
+
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold shadow-md shadow-brand-500/25 transition-all text-sm">
+          Take 1-Minute Survey
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+        </a>
+        <a href="https://github.com/0xKurian/Obsinotes/discussions" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white dark:bg-dark-surface hover:bg-stone-50 dark:hover:bg-dark-card border border-light-border dark:border-dark-border font-semibold text-stone-800 dark:text-stone-200 transition-all text-sm">
+          Join Discussions
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-t border-light-border dark:border-dark-border py-12 px-4 sm:px-6 lg:px-8 bg-stone-50/50 dark:bg-dark-surface/50">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-sm text-stone-500 dark:text-stone-400">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-stone-800 dark:text-stone-200">NotePages</span>
+        <span>•</span>
+        <span>MIT License</span>
+        <span>•</span>
+        <span>Created with love by <a href="https://github.com/0xKurian" class="underline hover:text-brand-600 dark:hover:text-brand-400">Vinh-Hung</a></span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/0xKurian/Obsinotes" class="hover:text-stone-900 dark:hover:text-white transition-colors">GitHub</a>
+        <a href="https://github.com/0xKurian/Obsinotes/releases" class="hover:text-stone-900 dark:hover:text-white transition-colors">Releases</a>
+        <a href="https://github.com/0xKurian/Obsinotes/issues" class="hover:text-stone-900 dark:hover:text-white transition-colors">Issues</a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform" class="hover:text-stone-900 dark:hover:text-white transition-colors">Feedback Form</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const themeToggleBtn = document.getElementById('themeToggle');
+    themeToggleBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      renderTemplate();
+    });
+
+    const canvas = document.getElementById('drawingCanvas');
+    const templateCanvas = document.getElementById('templateCanvas');
+    const container = document.getElementById('canvasContainer');
+    const ctx = canvas.getContext('2d');
+    const tCtx = templateCanvas.getContext('2d');
+
+    let currentTool = 'pen';
+    let currentColor = '#1c1917';
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    function resizeCanvases() {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.scale(dpr, dpr);
+
+      templateCanvas.width = rect.width * dpr;
+      templateCanvas.height = rect.height * dpr;
+      templateCanvas.style.width = rect.width + 'px';
+      templateCanvas.style.height = rect.height + 'px';
+      tCtx.scale(dpr, dpr);
+
+      renderTemplate();
+    }
+
+    function renderTemplate() {
+      const rect = container.getBoundingClientRect();
+      tCtx.clearRect(0, 0, rect.width, rect.height);
+      const isDark = document.documentElement.classList.contains('dark');
+      const lineColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.09)';
+      const type = document.getElementById('templateSelect').value;
+
+      tCtx.strokeStyle = lineColor;
+      tCtx.lineWidth = 1;
+
+      if (type === 'ruled') {
+        const step = 28;
+        for (let y = 40; y < rect.height; y += step) {
+          tCtx.beginPath();
+          tCtx.moveTo(0, y);
+          tCtx.lineTo(rect.width, y);
+          tCtx.stroke();
+        }
+      } else if (type === 'grid') {
+        const step = 24;
+        for (let x = 0; x < rect.width; x += step) {
+          tCtx.beginPath();
+          tCtx.moveTo(x, 0);
+          tCtx.lineTo(x, rect.height);
+          tCtx.stroke();
+        }
+        for (let y = 0; y < rect.height; y += step) {
+          tCtx.beginPath();
+          tCtx.moveTo(0, y);
+          tCtx.lineTo(rect.width, y);
+          tCtx.stroke();
+        }
+      } else if (type === 'dotted') {
+        const step = 22;
+        tCtx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.2)';
+        for (let x = step; x < rect.width; x += step) {
+          for (let y = step; y < rect.height; y += step) {
+            tCtx.beginPath();
+            tCtx.arc(x, y, 1, 0, Math.PI * 2);
+            tCtx.fill();
+          }
+        }
+      } else if (type === 'cornell') {
+        const step = 28;
+        for (let y = 40; y < rect.height - 70; y += step) {
+          tCtx.beginPath();
+          tCtx.moveTo(140, y);
+          tCtx.lineTo(rect.width, y);
+          tCtx.stroke();
+        }
+        tCtx.beginPath();
+        tCtx.moveTo(140, 0);
+        tCtx.lineTo(140, rect.height - 70);
+        tCtx.stroke();
+        tCtx.beginPath();
+        tCtx.moveTo(0, rect.height - 70);
+        tCtx.lineTo(rect.width, rect.height - 70);
+        tCtx.stroke();
+      }
+    }
+
+    window.addEventListener('resize', resizeCanvases);
+    setTimeout(resizeCanvases, 50);
+
+    document.getElementById('templateSelect').addEventListener('change', renderTemplate);
+
+    document.getElementById('toolPen').addEventListener('click', () => setTool('pen'));
+    document.getElementById('toolHighlighter').addEventListener('click', () => setTool('highlighter'));
+    document.getElementById('toolEraser').addEventListener('click', () => setTool('eraser'));
+
+    function setTool(tool) {
+      currentTool = tool;
+      const buttons = [
+        { id: 'toolPen', active: tool === 'pen' },
+        { id: 'toolHighlighter', active: tool === 'highlighter' },
+        { id: 'toolEraser', active: tool === 'eraser' }
+      ];
+      buttons.forEach(b => {
+        const el = document.getElementById(b.id);
+        if (b.active) {
+          el.className = 'px-3 py-1.5 rounded-md font-medium text-xs bg-white dark:bg-brand-600 shadow-sm text-stone-900 dark:text-white transition-all flex items-center gap-1.5';
+        } else {
+          el.className = 'px-3 py-1.5 rounded-md font-medium text-xs text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white transition-all flex items-center gap-1.5';
+        }
+      });
+    }
+
+    document.querySelectorAll('.color-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        currentColor = e.currentTarget.dataset.color;
+        document.querySelectorAll('.color-btn').forEach(b => {
+          b.classList.remove('ring-2', 'ring-brand-500', 'scale-110');
+        });
+        e.currentTarget.classList.add('ring-2', 'ring-brand-500', 'scale-110');
+        if (currentTool === 'eraser') {
+          setTool('pen');
+        }
+      });
+    });
+
+    document.getElementById('clearCanvasBtn').addEventListener('click', () => {
+      const rect = container.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+    });
+
+    function getCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    function startDraw(e) {
+      e.preventDefault();
+      isDrawing = true;
+      const { x, y } = getCoords(e);
+      lastX = x;
+      lastY = y;
+      draw(e);
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      const { x, y } = getCoords(e);
+
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+
+      if (currentTool === 'pen') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = currentColor;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      } else if (currentTool === 'highlighter') {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.strokeStyle = currentColor + '66';
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'square';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      } else if (currentTool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = 24;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+
+      lastX = x;
+      lastY = y;
+    }
+
+    function stopDraw() {
+      isDrawing = false;
+    }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDraw);
+
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    window.addEventListener('touchend', stopDraw);
+  </script>
+</body>
+</html>
