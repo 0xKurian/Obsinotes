@@ -1,35 +1,34 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NotePages - Fun, Colorful Digital Notebook for Obsidian</title>
-  <meta name="description" content="Playful and high-performance digital notebook for Obsidian. Stylus inking, colorful paper, sticky notes, shapes, and LaTeX math.">
+  <title>NotePages - The Colorful Doodle Notebook for Obsidian</title>
+  <meta name="description" content="Super colorful, doodle-style digital notebook and whiteboard plugin for Obsidian.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23f59e0b'><path d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@600;700;800;900&family=Fredoka:wght@600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
-            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-            doodle: ['"Caveat"', 'cursive'],
-            mono: ['"JetBrains Mono"', 'monospace']
+            bubble: ['"DynaPuff"', 'cursive'],
+            chunky: ['"Fredoka"', 'sans-serif'],
+            sans: ['"Plus Jakarta Sans"', 'sans-serif']
           },
           colors: {
-            doodle: {
-              yellow: '#fef08a',
-              pink: '#fbcfe8',
-              blue: '#bae6fd',
-              green: '#bbf7d0',
-              purple: '#e9d5ff',
-              orange: '#fed7aa',
-              dark: '#18181b',
-              ink: '#09090b'
+            pop: {
+              yellow: '#ffdd00',
+              pink: '#ff66aa',
+              blue: '#00ddff',
+              green: '#00ff88',
+              purple: '#b366ff',
+              orange: '#ff8800',
+              cream: '#fffdf5',
+              dark: '#141419'
             }
           }
         }
@@ -37,288 +36,304 @@
     }
   </script>
   <style>
-    .doodle-border {
-      border: 2.5px solid #18181b;
-      border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
-    }
-    .dark .doodle-border {
-      border: 2.5px solid #f4f4f5;
-    }
-    .doodle-card {
-      border: 2.5px solid #18181b;
-      box-shadow: 4px 4px 0px #18181b;
+    .cartoon-box {
+      border: 3.5px solid #141419;
+      box-shadow: 6px 6px 0px #141419;
       transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-    .dark .doodle-card {
-      border: 2.5px solid #f4f4f5;
-      box-shadow: 4px 4px 0px #f4f4f5;
+    .cartoon-box:hover {
+      transform: translate(-3px, -3px);
+      box-shadow: 9px 9px 0px #141419;
     }
-    .doodle-card:hover {
-      transform: translate(-2px, -2px);
-      box-shadow: 6px 6px 0px #18181b;
-    }
-    .dark .doodle-card:hover {
-      box-shadow: 6px 6px 0px #f4f4f5;
-    }
-    .doodle-btn {
-      border: 2px solid #18181b;
-      box-shadow: 3px 3px 0px #18181b;
+    .cartoon-btn {
+      border: 3px solid #141419;
+      box-shadow: 4px 4px 0px #141419;
       transition: transform 0.1s ease, box-shadow 0.1s ease;
     }
-    .dark .doodle-btn {
-      border: 2px solid #f4f4f5;
-      box-shadow: 3px 3px 0px #f4f4f5;
-    }
-    .doodle-btn:active {
+    .cartoon-btn:active {
       transform: translate(2px, 2px);
-      box-shadow: 1px 1px 0px #18181b;
+      box-shadow: 2px 2px 0px #141419;
     }
-    .dark .doodle-btn:active {
-      box-shadow: 1px 1px 0px #f4f4f5;
+    .sticker-badge {
+      border: 4.5px solid #ffffff;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), 4px 4px 0px #141419;
     }
-    .tape {
-      background: rgba(254, 240, 138, 0.75);
-      border-left: 2px dashed rgba(0, 0, 0, 0.15);
-      border-right: 2px dashed rgba(0, 0, 0, 0.15);
+    .tape-strip {
+      background: rgba(255, 240, 100, 0.85);
+      border-left: 2px dashed rgba(0, 0, 0, 0.2);
+      border-right: 2px dashed rgba(0, 0, 0, 0.2);
     }
-    .dark .tape {
-      background: rgba(254, 240, 138, 0.25);
+    .doodle-bg-hero {
+      background-image: url('doodle-art-bg.jpg');
+      background-size: cover;
+      background-position: center;
     }
-    .bg-dots {
-      background-size: 24px 24px;
-      background-image: radial-gradient(circle, rgba(0, 0, 0, 0.1) 1.5px, transparent 1.5px);
-    }
-    .dark .bg-dots {
-      background-image: radial-gradient(circle, rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px);
+    .wavy-underline {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='10' viewBox='0 0 40 10'%3E%3Cpath d='M0 5 Q10 0 20 5 T40 5' fill='none' stroke='%23ff66aa' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: repeat-x;
+      background-position: bottom;
+      padding-bottom: 6px;
     }
   </style>
 </head>
-<body class="bg-[#faf8f5] dark:bg-[#12131a] text-stone-900 dark:text-stone-100 transition-colors duration-200 antialiased selection:bg-amber-300 selection:text-stone-900 bg-dots">
+<body class="bg-[#fffdf5] text-stone-900 antialiased selection:bg-pop-yellow selection:text-black">
 
-  <nav class="sticky top-0 z-50 backdrop-blur-md bg-[#faf8f5]/90 dark:bg-[#12131a]/90 border-b-2 border-stone-900 dark:border-stone-100">
+  <nav class="sticky top-0 z-50 bg-[#fffdf5]/95 backdrop-blur-md border-b-[3.5px] border-black">
     <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-      <a href="#" class="flex items-center gap-2.5 group">
-        <div class="w-10 h-10 rounded-xl bg-amber-400 dark:bg-amber-500 border-2 border-stone-900 dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff] flex items-center justify-center font-doodle text-2xl font-bold text-stone-900 group-hover:rotate-6 transition-transform">
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="w-10 h-10 rounded-2xl bg-pop-yellow border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-xl font-bubble group-hover:rotate-12 transition-transform">
           ✏️
         </div>
         <div class="flex items-baseline gap-2">
-          <span class="font-extrabold text-xl tracking-tight">NotePages</span>
-          <span class="font-doodle text-lg font-bold text-violet-600 dark:text-violet-400 rotate-[-4deg]">v1.1.1</span>
+          <span class="font-bubble text-2xl font-black tracking-wide text-black">NotePages</span>
+          <span class="px-2 py-0.5 rounded-full bg-pop-pink text-white font-chunky text-xs font-black border-2 border-black rotate-[-3deg]">v1.1.1</span>
         </div>
       </a>
 
-      <div class="hidden sm:flex items-center gap-6 font-semibold text-sm">
-        <a href="#demo" class="hover:text-amber-600 dark:hover:text-amber-400 transition-colors">Doodle Sandbox</a>
-        <a href="#features" class="hover:text-amber-600 dark:hover:text-amber-400 transition-colors">Features</a>
-        <a href="#feedback" class="hover:text-amber-600 dark:hover:text-amber-400 transition-colors">Survey</a>
+      <div class="hidden sm:flex items-center gap-6 font-chunky text-base font-bold">
+        <a href="#demo" class="hover:text-pop-purple hover:underline transition-colors">Doodle Pad</a>
+        <a href="#features" class="hover:text-pop-pink hover:underline transition-colors">Features</a>
+        <a href="#feedback" class="hover:text-pop-orange hover:underline transition-colors">Survey</a>
       </div>
 
       <div class="flex items-center gap-3">
-        <button id="themeToggle" aria-label="Toggle theme" class="w-9 h-9 rounded-lg bg-white dark:bg-stone-800 border-2 border-stone-900 dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff] flex items-center justify-center text-sm font-bold transition-all active:translate-x-0.5 active:translate-y-0.5">
-          <span class="dark:hidden">🌙</span>
-          <span class="hidden dark:inline">☀️</span>
-        </button>
-
-        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="doodle-btn px-4 py-1.5 rounded-lg bg-white dark:bg-stone-800 text-sm font-bold hidden sm:inline-block">
+        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="cartoon-btn px-4 py-1.5 rounded-xl bg-white font-chunky text-sm font-bold hidden sm:inline-block">
           GitHub
         </a>
-
-        <a href="https://github.com/0xKurian/Obsinotes/releases" target="_blank" rel="noopener noreferrer" class="doodle-btn px-4 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 dark:bg-amber-500 dark:hover:bg-amber-400 text-stone-900 text-sm font-extrabold">
-          Get Plugin
+        <a href="https://github.com/0xKurian/Obsinotes/releases" target="_blank" rel="noopener noreferrer" class="cartoon-btn px-4 py-1.5 rounded-xl bg-pop-green hover:bg-emerald-300 text-black font-bubble text-sm font-bold">
+          Get Plugin 🚀
         </a>
       </div>
     </div>
   </nav>
 
-  <section class="pt-14 pb-16 px-4 max-w-5xl mx-auto text-center relative">
-    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-200 dark:bg-violet-900/60 border-2 border-stone-900 dark:border-white shadow-[2px_2px_0px_#000] dark:shadow-[2px_2px_0px_#fff] text-xs font-bold text-violet-900 dark:text-violet-200 uppercase tracking-wider mb-6 rotate-[-1deg]">
-      <span>🎨</span> Obsidian Digital Notebook
+  <section class="relative pt-6 pb-12 px-4 max-w-6xl mx-auto">
+    <div class="relative rounded-3xl border-4 border-black shadow-[8px_8px_0px_#000] overflow-hidden doodle-bg-hero p-8 sm:p-14 text-center">
+      <div class="absolute inset-0 bg-black/35 backdrop-blur-[1px]"></div>
+
+      <div class="relative z-10">
+        <div class="inline-block mb-6">
+          <div class="sticker-badge bg-[#141419] text-white px-8 py-3.5 sm:px-12 sm:py-5 rounded-[32px] rotate-[-2deg] hover:rotate-0 transition-transform">
+            <span class="font-bubble text-3xl sm:text-6xl font-black tracking-wider text-white select-none">
+              NotePages
+            </span>
+          </div>
+        </div>
+
+        <div class="max-w-2xl mx-auto bg-white/95 border-3 border-black rounded-2xl p-4 sm:p-6 shadow-[5px_5px_0px_#000] mb-8">
+          <h2 class="font-bubble text-2xl sm:text-4xl text-black mb-2">
+            The Colorful Doodle Notebook for Obsidian! 🎨
+          </h2>
+          <p class="font-chunky text-base sm:text-lg text-stone-700 font-semibold leading-relaxed">
+            Draw, doodle, annotate PDFs, and take handwritten notes right inside your personal vault. 100% offline, zero cloud lock-in.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-center gap-4">
+          <a href="https://github.com/0xKurian/Obsinotes/releases/latest" target="_blank" class="cartoon-btn px-7 py-3.5 rounded-2xl bg-pop-yellow hover:bg-yellow-300 text-black font-bubble text-lg font-bold">
+            📥 Download Plugin v1.1.1
+          </a>
+          <a href="#demo" class="cartoon-btn px-6 py-3.5 rounded-2xl bg-pop-pink hover:bg-pink-300 text-white font-bubble text-lg font-bold">
+            ✏️ Try Doodle Pad
+          </a>
+        </div>
+      </div>
     </div>
 
-    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
-      Think in Ink.<br>
-      <span class="relative inline-block font-doodle text-5xl sm:text-7xl text-violet-600 dark:text-violet-400 rotate-[-2deg] mt-1">
-        Notes without borders!
-        <span class="absolute -bottom-2 left-0 right-0 h-3 bg-amber-300/60 dark:bg-amber-400/40 -z-10 rounded-full rotate-1"></span>
-      </span>
-    </h1>
-
-    <p class="text-base sm:text-xl text-stone-600 dark:text-stone-300 max-w-2xl mx-auto mb-8 font-medium">
-      Freehand stylus inking, colorful paper templates, sticky notes, and LaTeX math. Everything saves 100% locally in your vault.
-    </p>
-
-    <div class="flex flex-wrap items-center justify-center gap-3.5 mb-12">
-      <a href="https://github.com/0xKurian/Obsinotes/releases/latest" target="_blank" class="doodle-btn px-7 py-3 rounded-xl bg-violet-500 hover:bg-violet-400 text-white font-extrabold text-base shadow-[3px_3px_0px_#000]">
-        🚀 Download NotePages v1.1.1
-      </a>
-      <a href="#demo" class="doodle-btn px-6 py-3 rounded-xl bg-amber-300 hover:bg-amber-200 text-stone-900 font-extrabold text-base">
-        ✏️ Doodle Now
-      </a>
-    </div>
-
-    <div class="flex flex-wrap items-center justify-center gap-4 text-xs font-bold">
-      <span class="px-3 py-1 rounded-md bg-pink-200 dark:bg-pink-900/50 border border-stone-800 dark:border-stone-200 rotate-[-2deg] text-stone-900 dark:text-stone-100">🔒 100% Offline Vault</span>
-      <span class="px-3 py-1 rounded-md bg-cyan-200 dark:bg-cyan-900/50 border border-stone-800 dark:border-stone-200 rotate-[2deg] text-stone-900 dark:text-stone-100">⚡ 120 FPS Latency-Free</span>
-      <span class="px-3 py-1 rounded-md bg-green-200 dark:bg-green-900/50 border border-stone-800 dark:border-stone-200 rotate-[-1deg] text-stone-900 dark:text-stone-100">📐 Math & Shapes</span>
-      <span class="px-3 py-1 rounded-md bg-amber-200 dark:bg-amber-900/50 border border-stone-800 dark:border-stone-200 rotate-[1deg] text-stone-900 dark:text-stone-100">📄 Clean .gnote JSON</span>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+      <div class="cartoon-box p-3 rounded-2xl bg-pop-yellow text-center rotate-[-1deg]">
+        <div class="text-2xl mb-0.5">🔒</div>
+        <div class="font-bubble text-sm font-bold">100% Local</div>
+        <div class="font-chunky text-xs text-stone-700">Stored in your vault</div>
+      </div>
+      <div class="cartoon-box p-3 rounded-2xl bg-pop-green text-center rotate-[1deg]">
+        <div class="text-2xl mb-0.5">⚡</div>
+        <div class="font-bubble text-sm font-bold">120 FPS</div>
+        <div class="font-chunky text-xs text-stone-700">Smooth stylus inking</div>
+      </div>
+      <div class="cartoon-box p-3 rounded-2xl bg-pop-blue text-center rotate-[-1.5deg]">
+        <div class="text-2xl mb-0.5">📐</div>
+        <div class="font-bubble text-sm font-bold">Snap Shapes</div>
+        <div class="font-chunky text-xs text-stone-700">Auto geometry vectors</div>
+      </div>
+      <div class="cartoon-box p-3 rounded-2xl bg-pop-purple text-center rotate-[1.5deg]">
+        <div class="text-2xl mb-0.5">📄</div>
+        <div class="font-bubble text-sm font-bold">PDF Annotate</div>
+        <div class="font-chunky text-xs text-stone-700">Draw on any book</div>
+      </div>
     </div>
   </section>
 
-  <section id="demo" class="py-8 px-4 max-w-4xl mx-auto">
-    <div class="relative doodle-card rounded-2xl bg-white dark:bg-[#1a1b26] p-2 sm:p-4">
-      <div class="absolute -top-3 left-10 w-24 h-6 tape rotate-[-3deg] z-30 pointer-events-none"></div>
-      <div class="absolute -top-3 right-10 w-24 h-6 tape rotate-[4deg] z-30 pointer-events-none"></div>
+  <section id="demo" class="py-10 px-4 max-w-5xl mx-auto">
+    <div class="text-center mb-6">
+      <h2 class="font-bubble text-3xl sm:text-4xl text-black">
+        🎨 Live Doodle Sketchbook
+      </h2>
+      <p class="font-chunky text-base text-stone-600 font-semibold mt-1">
+        Pick your favorite marker color and scribble directly below!
+      </p>
+    </div>
 
-      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 mb-2 border-b-2 border-dashed border-stone-300 dark:border-stone-700">
-        <div class="flex items-center gap-1.5">
-          <button id="toolPen" class="doodle-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-300 text-stone-900">
+    <div class="relative cartoon-box rounded-3xl bg-white p-3 sm:p-5">
+      <div class="absolute -top-3 left-10 w-24 h-6 tape-strip rotate-[-3deg] z-20 pointer-events-none"></div>
+      <div class="absolute -top-3 right-10 w-24 h-6 tape-strip rotate-[4deg] z-20 pointer-events-none"></div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 mb-3 border-b-3 border-dashed border-stone-300">
+        <div class="flex items-center gap-2">
+          <button id="toolPen" class="cartoon-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bubble font-bold bg-pop-yellow text-black">
             ✏️ Pen (P)
           </button>
-          <button id="toolHighlighter" class="doodle-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-stone-800 text-stone-900 dark:text-white">
+          <button id="toolHighlighter" class="cartoon-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bubble font-bold bg-white text-black">
             🖍️ Marker (H)
           </button>
-          <button id="toolEraser" class="doodle-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-stone-800 text-stone-900 dark:text-white">
+          <button id="toolEraser" class="cartoon-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bubble font-bold bg-white text-black">
             🧼 Eraser (E)
           </button>
         </div>
 
         <div class="flex items-center gap-2">
           <div class="flex items-center gap-1.5">
-            <button class="color-btn w-6 h-6 rounded-full border-2 border-stone-900 bg-stone-900 ring-2 ring-violet-500 scale-110" data-color="#18181b"></button>
-            <button class="color-btn w-6 h-6 rounded-full border-2 border-stone-900 bg-violet-500" data-color="#8b5cf6"></button>
-            <button class="color-btn w-6 h-6 rounded-full border-2 border-stone-900 bg-pink-500" data-color="#ec4899"></button>
-            <button class="color-btn w-6 h-6 rounded-full border-2 border-stone-900 bg-emerald-500" data-color="#10b981"></button>
-            <button class="color-btn w-6 h-6 rounded-full border-2 border-stone-900 bg-amber-400" data-color="#f59e0b"></button>
-            <button class="color-btn w-6 h-6 rounded-full border-2 border-stone-900 bg-sky-500" data-color="#0ea5e9"></button>
+            <button class="color-btn w-7 h-7 rounded-full border-2 border-black bg-[#141419] ring-3 ring-pop-purple scale-110" data-color="#141419"></button>
+            <button class="color-btn w-7 h-7 rounded-full border-2 border-black bg-pop-pink" data-color="#ff3388"></button>
+            <button class="color-btn w-7 h-7 rounded-full border-2 border-black bg-pop-purple" data-color="#9933ff"></button>
+            <button class="color-btn w-7 h-7 rounded-full border-2 border-black bg-pop-blue" data-color="#00bfff"></button>
+            <button class="color-btn w-7 h-7 rounded-full border-2 border-black bg-pop-green" data-color="#00dd55"></button>
+            <button class="color-btn w-7 h-7 rounded-full border-2 border-black bg-pop-orange" data-color="#ff7700"></button>
           </div>
 
-          <select id="templateSelect" class="doodle-btn px-2 py-1 text-xs font-bold rounded-lg bg-white dark:bg-stone-800 text-stone-900 dark:text-white">
+          <select id="templateSelect" class="cartoon-btn px-2.5 py-1 text-xs font-chunky font-bold rounded-xl bg-white text-black">
             <option value="ruled">Ruled Paper</option>
             <option value="grid">Grid Paper</option>
             <option value="dotted">Dotted Paper</option>
-            <option value="cornell">Cornell Note</option>
-            <option value="blank">Blank Sketch</option>
+            <option value="cornell">Cornell Paper</option>
+            <option value="blank">Blank Paper</option>
           </select>
 
-          <button id="clearBtn" class="doodle-btn px-3 py-1 text-xs font-bold rounded-lg bg-rose-200 dark:bg-rose-900/60 text-rose-900 dark:text-rose-100">
-            Clear
+          <button id="clearBtn" class="cartoon-btn px-3 py-1 text-xs font-bubble font-bold rounded-xl bg-rose-300 hover:bg-rose-400 text-black">
+            Clear 💣
           </button>
         </div>
       </div>
 
-      <div class="relative w-full h-[380px] bg-white dark:bg-[#161720] rounded-xl overflow-hidden cursor-crosshair touch-none" id="canvasBox">
+      <div class="relative w-full h-[400px] bg-white rounded-2xl overflow-hidden cursor-crosshair border-2 border-stone-200 touch-none" id="canvasBox">
         <canvas id="templateCanvas" class="absolute inset-0 pointer-events-none"></canvas>
         <canvas id="drawCanvas" class="absolute inset-0"></canvas>
         <canvas id="fxCanvas" class="absolute inset-0 pointer-events-none"></canvas>
 
-        <div id="demoHint" class="absolute bottom-3 left-4 font-doodle text-xl text-stone-400 dark:text-stone-500 pointer-events-none select-none">
-          ✨ Doodle with your mouse or stylus here!
+        <div id="demoHint" class="absolute bottom-3 left-4 font-bubble text-base text-stone-400 select-none pointer-events-none">
+          ✨ Scribble something cute here!
         </div>
 
-        <div class="absolute bottom-2 right-3 font-mono text-[10px] text-stone-400 select-none pointer-events-none">
-          NotePages Engine • Page 1
+        <div class="absolute bottom-2 right-3 font-mono text-[10px] text-stone-400 font-bold select-none pointer-events-none">
+          NotePages Canvas Engine
         </div>
       </div>
     </div>
   </section>
 
-  <section id="features" class="py-16 px-4 max-w-5xl mx-auto">
+  <section id="features" class="py-14 px-4 max-w-6xl mx-auto">
     <div class="text-center mb-10">
-      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight">
-        Tiny Features. Big Magic.
+      <h2 class="font-bubble text-3xl sm:text-5xl text-black">
+        Tiny Features. Big Magic. ✨
       </h2>
-      <p class="font-doodle text-xl text-violet-600 dark:text-violet-400 mt-1">
-        Everything you love about paper, supercharged for Obsidian.
+      <p class="font-chunky text-lg text-stone-600 font-bold mt-1">
+        Everything you need to think visually in Obsidian.
       </p>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-      <div class="doodle-card rounded-2xl bg-amber-100 dark:bg-amber-950/40 p-5 rotate-[-1deg]">
-        <div class="text-3xl mb-2">✍️</div>
-        <h3 class="text-lg font-extrabold text-stone-900 dark:text-white mb-1">Smooth Ink</h3>
-        <p class="text-xs text-stone-700 dark:text-stone-300 font-medium leading-relaxed">
-          Pressure-sensitive pens and realistic highlighters with 120 FPS zero-lag spline rendering.
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="cartoon-box rounded-3xl bg-pop-yellow p-6 rotate-[-1deg]">
+        <div class="w-12 h-12 rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-2xl mb-3">
+          ✍️
+        </div>
+        <h3 class="font-bubble text-xl text-black mb-1.5">Silky Stylus Inking</h3>
+        <p class="font-chunky text-sm text-stone-800 font-semibold leading-relaxed">
+          Ballpoint, Fountain, and Pressure Pen with real-feel highlighters and zero lag.
         </p>
       </div>
 
-      <div class="doodle-card rounded-2xl bg-pink-100 dark:bg-pink-950/40 p-5 rotate-[1deg]">
-        <div class="text-3xl mb-2">📌</div>
-        <h3 class="text-lg font-extrabold text-stone-900 dark:text-white mb-1">Sticky Notes</h3>
-        <p class="text-xs text-stone-700 dark:text-stone-300 font-medium leading-relaxed">
-          Color-coded pastel notes with shadows. Type thoughts, tasks, and Obsidian Wikilinks.
+      <div class="cartoon-box rounded-3xl bg-pop-pink p-6 rotate-[1deg]">
+        <div class="w-12 h-12 rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-2xl mb-3">
+          📌
+        </div>
+        <h3 class="font-bubble text-xl text-black mb-1.5">Pastel Sticky Notes</h3>
+        <p class="font-chunky text-sm text-stone-800 font-semibold leading-relaxed">
+          Color-coded notes with drop shadows for your quick ideas, tasks, and Wikilinks.
         </p>
       </div>
 
-      <div class="doodle-card rounded-2xl bg-emerald-100 dark:bg-emerald-950/40 p-5 rotate-[-1.5deg]">
-        <div class="text-3xl mb-2">📐</div>
-        <h3 class="text-lg font-extrabold text-stone-900 dark:text-white mb-1">Snap Shapes</h3>
-        <p class="text-xs text-stone-700 dark:text-stone-300 font-medium leading-relaxed">
+      <div class="cartoon-box rounded-3xl bg-pop-green p-6 rotate-[-1.5deg]">
+        <div class="w-12 h-12 rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-2xl mb-3">
+          📐
+        </div>
+        <h3 class="font-bubble text-xl text-black mb-1.5">Hold-to-Snap Shapes</h3>
+        <p class="font-chunky text-sm text-stone-800 font-semibold leading-relaxed">
           Draw circles, rectangles, or arrows. Hold 350ms to snap into perfect geometric vectors.
         </p>
       </div>
 
-      <div class="doodle-card rounded-2xl bg-cyan-100 dark:bg-cyan-950/40 p-5 rotate-[1.5deg]">
-        <div class="text-3xl mb-2">📄</div>
-        <h3 class="text-lg font-extrabold text-stone-900 dark:text-white mb-1">PDF Drawing</h3>
-        <p class="text-xs text-stone-700 dark:text-stone-300 font-medium leading-relaxed">
-          Import multi-page PDFs as notebook backgrounds. Highlight and take margin notes easily.
+      <div class="cartoon-box rounded-3xl bg-pop-blue p-6 rotate-[1.5deg]">
+        <div class="w-12 h-12 rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-2xl mb-3">
+          📑
+        </div>
+        <h3 class="font-bubble text-xl text-black mb-1.5">Draw on PDFs</h3>
+        <p class="font-chunky text-sm text-stone-800 font-semibold leading-relaxed">
+          Import multi-page PDF documents as backgrounds. Highlight and take margin notes easily.
         </p>
       </div>
 
-      <div class="doodle-card rounded-2xl bg-purple-100 dark:bg-purple-950/40 p-5 rotate-[-1deg]">
-        <div class="text-3xl mb-2">∑</div>
-        <h3 class="text-lg font-extrabold text-stone-900 dark:text-white mb-1">LaTeX Math</h3>
-        <p class="text-xs text-stone-700 dark:text-stone-300 font-medium leading-relaxed">
-          Native MathJax formulas. Type inline math <code class="font-mono bg-white/70 dark:bg-black/40 px-1 rounded text-[11px]">$E=mc^2$</code> right next to your drawings.
+      <div class="cartoon-box rounded-3xl bg-pop-purple p-6 rotate-[-1deg]">
+        <div class="w-12 h-12 rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-2xl mb-3">
+          ∑
+        </div>
+        <h3 class="font-bubble text-xl text-black mb-1.5">LaTeX Math Formulas</h3>
+        <p class="font-chunky text-sm text-stone-800 font-semibold leading-relaxed">
+          Native MathJax formulas. Type math like <code class="bg-white px-1.5 py-0.5 rounded border border-black font-mono text-xs">$E=mc^2$</code> directly on canvas.
         </p>
       </div>
 
-      <div class="doodle-card rounded-2xl bg-orange-100 dark:bg-orange-950/40 p-5 rotate-[1deg]">
-        <div class="text-3xl mb-2">🖨️</div>
-        <h3 class="text-lg font-extrabold text-stone-900 dark:text-white mb-1">Fast Export</h3>
-        <p class="text-xs text-stone-700 dark:text-stone-300 font-medium leading-relaxed">
-          Export pages to 300 DPI print-ready PDF, crisp PNG, or infinite vector SVG with one click.
+      <div class="cartoon-box rounded-3xl bg-pop-orange p-6 rotate-[1deg]">
+        <div class="w-12 h-12 rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-2xl mb-3">
+          🖨️
+        </div>
+        <h3 class="font-bubble text-xl text-black mb-1.5">1-Click Export</h3>
+        <p class="font-chunky text-sm text-stone-800 font-semibold leading-relaxed">
+          Export pages to 300 DPI print-ready PDF, crisp PNG, or infinite vector SVG anytime.
         </p>
       </div>
     </div>
   </section>
 
-  <section id="feedback" class="py-14 px-4 max-w-2xl mx-auto text-center">
-    <div class="doodle-card rounded-3xl bg-amber-200 dark:bg-amber-900/60 p-8 rotate-[-1deg]">
-      <div class="w-12 h-12 mx-auto rounded-full bg-white dark:bg-stone-800 border-2 border-stone-900 dark:border-white shadow-[2px_2px_0px_#000] flex items-center justify-center text-2xl mb-4">
-        💡
+  <section id="feedback" class="py-12 px-4 max-w-2xl mx-auto text-center">
+    <div class="cartoon-box rounded-3xl bg-pop-yellow p-8 rotate-[-1deg]">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-white border-3 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center text-3xl mb-4">
+        💌
       </div>
-      <h2 class="text-2xl font-extrabold text-stone-900 dark:text-white mb-2">
-        Got Ideas? We Build Fast.
+      <h2 class="font-bubble text-2xl sm:text-3xl text-black mb-2">
+        Got Ideas? We Build Fast!
       </h2>
-      <p class="text-xs sm:text-sm text-stone-800 dark:text-stone-200 font-semibold mb-6 max-w-md mx-auto">
-        Tell us what feature you want next or report any bugs in our 1-minute Google Survey.
+      <p class="font-chunky text-sm sm:text-base text-stone-800 font-semibold mb-6 max-w-md mx-auto">
+        Share your thoughts or report bugs in our quick 1-minute Google Survey.
       </p>
 
       <div class="flex flex-wrap items-center justify-center gap-3">
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform" target="_blank" rel="noopener noreferrer" class="doodle-btn px-6 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-sm">
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform" target="_blank" rel="noopener noreferrer" class="cartoon-btn px-6 py-3 rounded-2xl bg-black hover:bg-stone-800 text-white font-bubble text-base">
           Take 1-Min Survey ✍️
         </a>
-        <a href="https://github.com/0xKurian/Obsinotes/discussions" target="_blank" rel="noopener noreferrer" class="doodle-btn px-5 py-2.5 rounded-xl bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-extrabold text-sm">
+        <a href="https://github.com/0xKurian/Obsinotes/discussions" target="_blank" rel="noopener noreferrer" class="cartoon-btn px-5 py-3 rounded-2xl bg-white hover:bg-stone-50 text-black font-bubble text-base">
           GitHub Chat 💬
         </a>
       </div>
     </div>
   </section>
 
-  <footer class="border-t-2 border-stone-900 dark:border-stone-100 py-8 px-4 text-center text-xs font-bold text-stone-600 dark:text-stone-400 bg-white/50 dark:bg-stone-900/50">
+  <footer class="border-t-3 border-black py-8 px-4 text-center font-chunky text-sm font-bold text-stone-700 bg-white">
     <p>
-      NotePages • MIT License • Crafted with ❤️ by <a href="https://github.com/0xKurian" class="underline text-stone-900 dark:text-white">Vinh-Hung</a> for Obsidian
+      NotePages • MIT License • Crafted with 🎨 by <a href="https://github.com/0xKurian" class="underline text-black font-extrabold">Vinh-Hung</a> for Obsidian
     </p>
   </footer>
 
   <script>
-    const themeBtn = document.getElementById('themeToggle');
-    themeBtn.addEventListener('click', () => {
-      document.documentElement.classList.toggle('dark');
-      drawPaperTemplate();
-    });
-
     const drawCanvas = document.getElementById('drawCanvas');
     const templateCanvas = document.getElementById('templateCanvas');
     const fxCanvas = document.getElementById('fxCanvas');
@@ -328,7 +343,7 @@
     const fxCtx = fxCanvas.getContext('2d');
 
     let currentTool = 'pen';
-    let currentColor = '#18181b';
+    let currentColor = '#141419';
     let isDrawing = false;
     let lastX = 0;
     let lastY = 0;
@@ -352,12 +367,11 @@
     function drawPaperTemplate() {
       const rect = canvasBox.getBoundingClientRect();
       tCtx.clearRect(0, 0, rect.width, rect.height);
-      const isDark = document.documentElement.classList.contains('dark');
-      const lineColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
+      const lineColor = 'rgba(0, 0, 0, 0.08)';
       const type = document.getElementById('templateSelect').value;
 
       tCtx.strokeStyle = lineColor;
-      tCtx.lineWidth = 1;
+      tCtx.lineWidth = 1.2;
 
       if (type === 'ruled') {
         for (let y = 36; y < rect.height; y += 28) {
@@ -380,11 +394,11 @@
           tCtx.stroke();
         }
       } else if (type === 'dotted') {
-        tCtx.fillStyle = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+        tCtx.fillStyle = 'rgba(0, 0, 0, 0.16)';
         for (let x = 20; x < rect.width; x += 22) {
           for (let y = 20; y < rect.height; y += 22) {
             tCtx.beginPath();
-            tCtx.arc(x, y, 1.2, 0, Math.PI * 2);
+            tCtx.arc(x, y, 1.4, 0, Math.PI * 2);
             tCtx.fill();
           }
         }
@@ -420,9 +434,9 @@
       };
       Object.keys(map).forEach(k => {
         if (k === tool) {
-          map[k].className = 'doodle-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-300 dark:bg-amber-400 text-stone-900';
+          map[k].className = 'cartoon-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bubble font-bold bg-pop-yellow text-black';
         } else {
-          map[k].className = 'doodle-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-stone-800 text-stone-900 dark:text-white';
+          map[k].className = 'cartoon-btn px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bubble font-bold bg-white text-black';
         }
       });
     }
@@ -435,9 +449,9 @@
       btn.addEventListener('click', (e) => {
         currentColor = e.currentTarget.dataset.color;
         document.querySelectorAll('.color-btn').forEach(b => {
-          b.classList.remove('ring-2', 'ring-violet-500', 'scale-110');
+          b.classList.remove('ring-3', 'ring-pop-purple', 'scale-110');
         });
-        e.currentTarget.classList.add('ring-2', 'ring-violet-500', 'scale-110');
+        e.currentTarget.classList.add('ring-3', 'ring-pop-purple', 'scale-110');
         if (currentTool === 'eraser') setTool('pen');
       });
     });
@@ -449,16 +463,15 @@
     });
 
     function popConfetti(cx, cy) {
-      const rect = canvasBox.getBoundingClientRect();
       particles = [];
-      const colors = ['#f59e0b', '#ec4899', '#8b5cf6', '#10b981', '#38bdf8'];
-      for (let i = 0; i < 35; i++) {
+      const colors = ['#ffdd00', '#ff66aa', '#b366ff', '#00ff88', '#00ddff', '#ff8800'];
+      for (let i = 0; i < 40; i++) {
         particles.push({
-          x: cx + (Math.random() - 0.5) * 80,
-          y: cy + (Math.random() - 0.5) * 40,
-          vx: (Math.random() - 0.5) * 8,
-          vy: (Math.random() - 0.5) * 8 - 2,
-          radius: Math.random() * 4 + 2,
+          x: cx + (Math.random() - 0.5) * 100,
+          y: cy + (Math.random() - 0.5) * 50,
+          vx: (Math.random() - 0.5) * 9,
+          vy: (Math.random() - 0.5) * 9 - 3,
+          radius: Math.random() * 5 + 3,
           color: colors[Math.floor(Math.random() * colors.length)],
           alpha: 1
         });
@@ -475,7 +488,7 @@
           alive = true;
           p.x += p.vx;
           p.y += p.vy;
-          p.vy += 0.25;
+          p.vy += 0.28;
           p.alpha -= 0.03;
           fxCtx.beginPath();
           fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
@@ -518,20 +531,20 @@
       if (currentTool === 'pen') {
         ctx.globalCompositeOperation = 'source-over';
         ctx.strokeStyle = currentColor;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3.5;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
       } else if (currentTool === 'highlighter') {
         ctx.globalCompositeOperation = 'multiply';
-        ctx.strokeStyle = currentColor + '55';
-        ctx.lineWidth = 16;
+        ctx.strokeStyle = currentColor + '66';
+        ctx.lineWidth = 18;
         ctx.lineCap = 'square';
         ctx.lineJoin = 'round';
         ctx.stroke();
       } else if (currentTool === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
-        ctx.lineWidth = 26;
+        ctx.lineWidth = 28;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
