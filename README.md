@@ -18,7 +18,7 @@
 
 ## 🌟 Why NotePages?
 
-**NotePages** bridges the gap between structured Markdown note-taking and the fluid freedom of physical pen-and-paper. Designed from the ground up for students, researchers, visual thinkers, and professionals, it brings the best digital notebook workflows (like Goodnotes, Notability, and OneNote) natively into your Obsidian Vault with **100% offline local privacy**.
+**NotePages** bridges the gap between structured Markdown note-taking and the fluid freedom of physical pen-and-paper. Designed from the ground up for students, researchers, visual thinkers, and professionals, it brings a rich, dedicated multi-page digital notebook workflow natively into your Obsidian Vault with **100% offline local privacy**.
 
 > [!NOTE]
 > All drawings, sticky notes, formulas, and pages are stored as clean JSON files inside your vault with the `.gnote` extension. Your data remains completely yours—no external cloud dependencies, no tracking, and no proprietary lock-in.
