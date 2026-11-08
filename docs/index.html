@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NotePages - The Living Notebook Binder for Obsidian</title>
-  <meta name="description" content="The world's first tactile living notebook binder plugin for Obsidian. Stylus handwriting, PDF markup, Cornell study notes, smart shapes, and LaTeX math stored with 100% offline vault privacy.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d97706'><path d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/></svg>">
+  <title>NotePages - Digital Handwriting & Notebook Plugin for Obsidian</title>
+  <meta name="description" content="Digital handwriting, PDF annotation, Cornell paper templates, smart shapes, and LaTeX math natively inside your Obsidian vault. 100% offline and local privacy.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -16,29 +16,16 @@
         extend: {
           fontFamily: {
             sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-            handwriting: ['"Caveat"', 'cursive'],
             mono: ['"JetBrains Mono"', 'monospace']
           },
           colors: {
-            cream: {
-              50: '#fffdfa',
-              100: '#fefcf6',
-              200: '#fbf7ee',
-              300: '#f4ede0',
-              800: '#4a4437',
-              900: '#2b271f'
-            },
-            leather: {
-              700: '#644a36',
-              800: '#463325',
-              900: '#2d2017'
-            },
-            stationery: {
-              coral: '#f87171',
-              sky: '#38bdf8',
-              emerald: '#34d399',
-              purple: '#c084fc',
-              amber: '#fbbf24'
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81'
             }
           }
         }
@@ -46,548 +33,337 @@
     }
   </script>
   <style>
-    .desk-bg {
-      background-color: #f3efe6;
-      background-image: radial-gradient(#dcd5c7 1px, transparent 1px);
-      background-size: 24px 24px;
+    .ui-shadow {
+      box-shadow: 0 20px 50px -15px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.06);
     }
-    .binder-sheet {
-      background-color: #fffdf9;
-      box-shadow: 
-        -2px 0 0 #f0eadc,
-        0 2px 4px rgba(60, 45, 30, 0.04),
-        0 8px 16px rgba(60, 45, 30, 0.06),
-        0 20px 40px rgba(60, 45, 30, 0.08),
-        0 0 0 1px rgba(60, 45, 30, 0.06);
-    }
-    .binder-pages-stack {
-      box-shadow: 
-        0 1px 1px rgba(0, 0, 0, 0.06),
-        3px 3px 0 0 #f5efe1,
-        4px 4px 0 0 #e8dfcf,
-        7px 7px 0 0 #d9cfbd,
-        0 25px 50px -12px rgba(45, 32, 23, 0.25);
-    }
-    .binder-tab {
-      box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    .feature-card {
+      background: #ffffff;
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .binder-tab:hover {
-      transform: translateX(4px);
-    }
-    .binder-tab.active {
-      transform: translateX(8px);
-      box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.18), 0 0 0 1.5px rgba(0, 0, 0, 0.1);
-      font-weight: 700;
-    }
-    .spiral-ring {
-      background: linear-gradient(90deg, #94a3b8 0%, #cbd5e1 35%, #ffffff 50%, #94a3b8 70%, #475569 100%);
-      box-shadow: 1px 3px 6px rgba(0, 0, 0, 0.3);
-    }
-    .spiral-hole {
-      background: radial-gradient(circle, #33271e 30%, #524235 70%, #dcd3c3 100%);
-      box-shadow: inset 1px 1px 2px rgba(0,0,0,0.6);
-    }
-    .ribbon-bookmark {
-      background: linear-gradient(180deg, #dc2626 0%, #b91c1c 85%, #991b1b 100%);
-      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), 50% 100%, 0 calc(100% - 14px));
-      box-shadow: 2px 4px 8px rgba(0, 0, 0, 0.25);
-    }
-    .hand-card {
-      background: #ffffff;
-      border: 1px solid #ebd9c2;
-      box-shadow: 0 4px 12px rgba(70, 51, 37, 0.05);
-      transition: all 0.2s ease;
-    }
-    .hand-card:hover {
+    .feature-card:hover {
       transform: translateY(-2px);
-      box-shadow: 0 10px 24px rgba(70, 51, 37, 0.09);
-      border-color: #d4b58e;
+      box-shadow: 0 16px 32px -8px rgba(15, 23, 42, 0.08);
+      border-color: rgba(99, 102, 241, 0.3);
+    }
+    .text-gradient {
+      background: linear-gradient(135deg, #4f46e5 0%, #0284c7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .btn-gradient {
+      background: linear-gradient(135deg, #4f46e5 0%, #0284c7 100%);
     }
   </style>
 </head>
-<body class="desk-bg text-stone-900 antialiased selection:bg-amber-200 selection:text-stone-900">
+<body class="bg-[#f8fafc] text-slate-900 antialiased selection:bg-brand-100 selection:text-brand-900">
 
-  <nav class="sticky top-0 z-50 bg-[#fffdf9]/90 backdrop-blur-md border-b border-stone-300/80 shadow-xs">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-18 flex items-center justify-between">
-      <a href="#" class="flex items-center gap-3 group">
-        <div class="w-10 h-10 rounded-xl bg-leather-800 text-amber-200 border border-leather-700 flex items-center justify-center font-bold text-xl shadow-md group-hover:scale-105 transition-transform">
-          📓
+  <nav class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl btn-gradient flex items-center justify-center text-white shadow-sm">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
         </div>
-        <div>
-          <div class="flex items-baseline gap-2">
-            <span class="font-extrabold text-xl tracking-tight text-stone-900">NotePages</span>
-            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">v1.1.1</span>
-          </div>
-          <p class="text-[10px] font-semibold text-stone-500 uppercase tracking-widest hidden sm:block">The Living Binder for Obsidian</p>
+        <div class="flex items-baseline gap-2">
+          <span class="font-extrabold text-lg tracking-tight text-slate-900">NotePages</span>
+          <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">v1.1.1</span>
         </div>
       </a>
 
-      <div class="hidden md:flex items-center gap-7 text-sm font-semibold text-stone-700">
-        <a href="#binder" class="hover:text-amber-800 transition-colors">The Binder</a>
-        <a href="#features" class="hover:text-amber-800 transition-colors">Notebook Anatomy</a>
-        <a href="#workflow" class="hover:text-amber-800 transition-colors">3-Step Setup</a>
-        <a href="#survey" class="hover:text-amber-800 transition-colors">Community</a>
+      <div class="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+        <a href="#demo" class="hover:text-brand-600 transition-colors">Interactive Demo</a>
+        <a href="#features" class="hover:text-brand-600 transition-colors">Features</a>
+        <a href="#pdf" class="hover:text-brand-600 transition-colors">PDF Annotation</a>
+        <a href="#install" class="hover:text-brand-600 transition-colors">Installation</a>
+        <a href="#feedback" class="hover:text-brand-600 transition-colors">Community</a>
       </div>
 
       <div class="flex items-center gap-3">
-        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-stone-700 hover:text-stone-900 px-3.5 py-2 rounded-xl hover:bg-stone-200/60 transition-colors hidden sm:inline-flex items-center gap-1.5">
+        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-slate-700 hover:text-slate-900 px-3.5 py-2 rounded-xl hover:bg-slate-100 transition-colors hidden sm:inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
           <span>GitHub</span>
         </a>
-        <a href="https://community.obsidian.md/plugins/notepages" target="_blank" rel="noopener noreferrer" class="bg-amber-800 hover:bg-amber-900 text-amber-100 text-sm font-bold px-5 py-2.5 rounded-xl shadow-md shadow-amber-900/20 hover:shadow-lg transition-all flex items-center gap-1.5">
+        <a href="https://community.obsidian.md/plugins/notepages" target="_blank" rel="noopener noreferrer" class="btn-gradient text-white text-sm font-semibold px-4.5 py-2 rounded-xl shadow-sm hover:opacity-95 transition-all flex items-center gap-1.5">
           <span>Get Plugin</span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
         </a>
       </div>
     </div>
   </nav>
 
-  <header class="pt-12 pb-8 px-4 sm:px-6 max-w-5xl mx-auto text-center">
-    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 border border-stone-300 text-xs sm:text-sm font-semibold text-stone-700 shadow-xs mb-6">
-      <span class="w-2.5 h-2.5 rounded-full bg-amber-600 animate-pulse"></span>
-      <span>The Signature Living Binder for Obsidian</span>
-      <span class="text-stone-400">•</span>
-      <span class="text-amber-800 font-bold">100% Offline Vault Privacy</span>
+  <header class="pt-16 pb-12 px-4 sm:px-6 max-w-5xl mx-auto text-center">
+    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-50 border border-brand-100 text-xs sm:text-sm font-semibold text-brand-700 mb-6">
+      <span class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
+      <span>Official Obsidian Community Plugin</span>
+      <span class="text-brand-300">•</span>
+      <span>100% Offline Vault Storage (.gnote)</span>
     </div>
 
-    <h1 class="text-4xl sm:text-6xl font-extrabold text-stone-900 tracking-tight leading-[1.12] mb-5">
-      Your Thoughts, Bound in Ink. <br>
-      <span class="text-amber-800 font-handwriting text-5xl sm:text-7xl font-bold">Tangible, Living Paper for Obsidian.</span>
+    <h1 class="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.1] mb-5">
+      Digital Handwriting & Notebooks <br class="hidden sm:inline">
+      <span class="text-gradient">Natively in Obsidian.</span>
     </h1>
 
-    <p class="max-w-2xl mx-auto text-base sm:text-lg text-stone-600 font-medium leading-relaxed mb-8">
-      Why should digital notes feel sterile? NotePages gives your Obsidian Vault the sensory warmth of a real multi-page stationery binder—with fluid 120 FPS inking, Cornell study paper, PDF margin markup, and smart geometry.
+    <p class="max-w-2xl mx-auto text-base sm:text-lg text-slate-600 font-normal leading-relaxed mb-8">
+      Take handwritten notes with natural stylus pressure, annotate multi-page PDFs, snap geometric shapes, and type LaTeX math formulas. Stored directly inside your Obsidian vault with zero cloud lock-in.
     </p>
 
     <div class="flex flex-wrap items-center justify-center gap-4">
-      <a href="https://community.obsidian.md/plugins/notepages" target="_blank" rel="noopener noreferrer" class="bg-amber-800 hover:bg-amber-900 text-white font-bold text-base px-8 py-3.5 rounded-2xl shadow-lg shadow-amber-900/25 transition-all flex items-center gap-2">
-        <span>Get NotePages on Obsidian</span>
+      <a href="https://community.obsidian.md/plugins/notepages" target="_blank" rel="noopener noreferrer" class="btn-gradient text-white font-bold text-base px-7 py-3.5 rounded-xl shadow-md shadow-brand-500/20 hover:opacity-95 transition-all flex items-center gap-2">
+        <span>Install on Obsidian</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
       </a>
-      <a href="#binder" class="bg-white hover:bg-stone-50 text-stone-800 font-bold text-base px-7 py-3.5 rounded-2xl border border-stone-300 shadow-xs transition-all flex items-center gap-2">
-        <span>Flip Through The Binder</span>
-        <span class="text-amber-700">&darr;</span>
+      <a href="#demo" class="bg-white hover:bg-slate-50 text-slate-700 font-semibold text-base px-6 py-3.5 rounded-xl border border-slate-200 shadow-xs transition-all flex items-center gap-2">
+        <span>Try Interactive Canvas</span>
+        <span class="text-slate-400">&darr;</span>
       </a>
     </div>
   </header>
 
-  <section id="binder" class="py-10 px-2 sm:px-6 lg:px-8 max-w-6xl mx-auto">
-    <div class="relative max-w-5xl mx-auto">
+  <section id="demo" class="py-6 px-4 sm:px-6 max-w-6xl mx-auto">
+    <div class="bg-slate-900 rounded-2xl sm:rounded-3xl p-2.5 sm:p-4 ui-shadow">
+      <div class="flex items-center justify-between px-3 py-2 text-xs text-slate-400 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+          </div>
+          <span class="font-mono text-slate-300 ml-2 font-medium hidden sm:inline">Obsidian Vault / Linear_Algebra_Lecture.gnote</span>
+        </div>
+        <div class="flex items-center gap-4 font-mono text-[11px] text-slate-400">
+          <span>60–120 FPS</span>
+          <span class="text-emerald-400">● 100% Local</span>
+        </div>
+      </div>
 
-      <div class="absolute -top-4 right-14 sm:right-24 z-30 ribbon-bookmark w-8 sm:w-10 h-28 pointer-events-none"></div>
+      <div class="bg-white rounded-xl overflow-hidden mt-2 border border-slate-200">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-xs">
+          <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+            <button id="toolPen" class="px-3 py-1.5 rounded-lg font-semibold bg-brand-50 text-brand-700 transition-colors">
+              Pen (P)
+            </button>
+            <button id="toolHighlighter" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors">
+              Highlighter (H)
+            </button>
+            <button id="toolEraser" class="px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors">
+              Eraser (E)
+            </button>
+          </div>
 
-      <div class="relative binder-pages-stack rounded-3xl sm:rounded-[36px] bg-[#fffdf9] border border-stone-300/80 p-2 sm:p-6 lg:p-8 flex flex-col md:flex-row">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200">
+              <button class="color-btn w-5 h-5 rounded-full bg-slate-900 ring-2 ring-brand-500 scale-110" data-color="#0f172a" title="Obsidian Black"></button>
+              <button class="color-btn w-5 h-5 rounded-full bg-indigo-600" data-color="#4f46e5" title="Indigo Blue"></button>
+              <button class="color-btn w-5 h-5 rounded-full bg-rose-600" data-color="#e11d48" title="Crimson"></button>
+              <button class="color-btn w-5 h-5 rounded-full bg-emerald-600" data-color="#059669" title="Forest Green"></button>
+              <button class="color-btn w-5 h-5 rounded-full bg-amber-500" data-color="#d97706" title="Amber"></button>
+              <button class="color-btn w-5 h-5 rounded-full bg-purple-600" data-color="#9333ea" title="Violet"></button>
+            </div>
 
-        <div class="hidden sm:flex flex-col justify-between items-center py-6 pr-4 border-r-2 border-stone-200/80 select-none">
-          <div class="space-y-6">
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
-            <div class="flex items-center gap-1.5"><div class="spiral-hole w-4 h-4 rounded-full"></div><div class="spiral-ring w-9 h-3 rounded-full -ml-3"></div></div>
+            <select id="templateSelect" class="bg-white border border-slate-200 font-semibold text-slate-700 rounded-xl px-2.5 py-1 text-xs">
+              <option value="cornell">Cornell Template</option>
+              <option value="ruled">Ruled (Lined)</option>
+              <option value="grid">Grid Paper</option>
+              <option value="dotted">Dotted Paper</option>
+              <option value="blank">Blank White</option>
+            </select>
+
+            <button id="clearBtn" class="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 px-3 py-1 rounded-xl font-semibold transition-colors">
+              Clear
+            </button>
           </div>
         </div>
 
-        <div class="flex-1 px-2 sm:px-6 py-2 flex flex-col justify-between min-h-[580px]">
+        <div class="relative w-full h-[420px] bg-white cursor-crosshair touch-none select-none" id="canvasBox">
+          <canvas id="templateCanvas" class="absolute inset-0 pointer-events-none"></canvas>
+          <canvas id="drawCanvas" class="absolute inset-0"></canvas>
+          <canvas id="fxCanvas" class="absolute inset-0 pointer-events-none"></canvas>
 
-          <div class="flex flex-wrap items-center justify-between pb-4 border-b border-stone-200 gap-3">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-amber-500"></span>
-              <span id="pageTitle" class="font-extrabold text-base sm:text-lg text-stone-900 tracking-tight">Section 01: Interactive Inking Canvas</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs font-mono text-stone-500">
-              <span class="bg-stone-100 px-2 py-0.5 rounded border border-stone-200">120 FPS</span>
-              <span class="bg-stone-100 px-2 py-0.5 rounded border border-stone-200">Vault: /Notes/Binder.gnote</span>
-            </div>
+          <div id="demoHint" class="absolute bottom-4 left-6 pointer-events-none select-none text-slate-400 text-sm font-medium">
+            ✍️ Test stylus inking, highlighter layering, or paper templates here
           </div>
 
-          <div id="contentTab1" class="tab-pane py-4">
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-dashed border-stone-200 text-xs">
-              <div class="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl border border-stone-200">
-                <button id="toolPen" class="px-2.5 py-1 rounded-lg font-bold bg-amber-800 text-white shadow-xs">
-                  🖊️ Pen (P)
-                </button>
-                <button id="toolHighlighter" class="px-2.5 py-1 rounded-lg font-semibold text-stone-700 hover:text-stone-900">
-                  🖍️ Highlighter (H)
-                </button>
-                <button id="toolEraser" class="px-2.5 py-1 rounded-lg font-semibold text-stone-700 hover:text-stone-900">
-                  🧼 Eraser (E)
-                </button>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <div class="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl border border-stone-200">
-                  <button class="color-btn w-5 h-5 rounded-full bg-stone-900 ring-2 ring-amber-600 scale-110" data-color="#1c1917" title="Sumi Black"></button>
-                  <button class="color-btn w-5 h-5 rounded-full bg-amber-800" data-color="#92400e" title="Leather Brown"></button>
-                  <button class="color-btn w-5 h-5 rounded-full bg-blue-700" data-color="#1d4ed8" title="Indigo Blue"></button>
-                  <button class="color-btn w-5 h-5 rounded-full bg-emerald-700" data-color="#047857" title="Forest Green"></button>
-                  <button class="color-btn w-5 h-5 rounded-full bg-rose-700" data-color="#be123c" title="Crimson"></button>
-                  <button class="color-btn w-5 h-5 rounded-full bg-purple-700" data-color="#7e22ce" title="Obsidian Violet"></button>
-                </div>
-
-                <select id="templateSelect" class="bg-white border border-stone-300 font-semibold text-stone-700 rounded-xl px-2 py-1 text-xs">
-                  <option value="cornell">Cornell Template</option>
-                  <option value="ruled">Ruled Paper</option>
-                  <option value="grid">Engineering Grid</option>
-                  <option value="dotted">Bullet Dotted</option>
-                  <option value="blank">Plain White</option>
-                </select>
-
-                <button id="clearBtn" class="bg-stone-100 hover:bg-rose-50 text-rose-700 border border-stone-200 px-2.5 py-1 rounded-xl font-bold">
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            <div class="relative w-full h-[400px] bg-white rounded-2xl overflow-hidden cursor-crosshair border border-stone-200 touch-none shadow-inner" id="canvasBox">
-              <canvas id="templateCanvas" class="absolute inset-0 pointer-events-none"></canvas>
-              <canvas id="drawCanvas" class="absolute inset-0"></canvas>
-              <canvas id="fxCanvas" class="absolute inset-0 pointer-events-none"></canvas>
-
-              <div id="demoHint" class="absolute bottom-3 left-4 pointer-events-none select-none">
-                <p class="font-handwriting text-2xl text-stone-400">
-                  ✍️ Try handwriting a note, formula, or diagram on this binder page...
-                </p>
-              </div>
-
-              <div class="absolute bottom-2 right-3 pointer-events-none select-none font-mono text-[10px] text-stone-400 font-semibold">
-                NotePages Inking Engine • 120 FPS
-              </div>
-            </div>
-          </div>
-
-          <div id="contentTab2" class="tab-pane hidden py-4">
-            <div class="bg-amber-50/50 rounded-2xl border border-amber-200 p-6">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">Textbook Margin Study</span>
-                <span class="font-mono text-xs text-stone-500">Neuroscience_Lecture_04.pdf</span>
-              </div>
-              <h3 class="text-2xl font-bold text-stone-900 mb-2">Native PDF Annotation Without Cloud Uploads</h3>
-              <p class="text-stone-700 text-sm leading-relaxed mb-6">
-                Import multi-page scientific papers, books, and lecture presentations right into your vault. Each page becomes an immutable crisp background where your handwriting, highlighters, and sticky notes layer non-destructively.
-              </p>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div class="bg-white p-4 rounded-xl border border-stone-200">
-                  <div class="text-xl mb-1">📑</div>
-                  <h4 class="font-bold text-sm text-stone-900">Right-Click Import</h4>
-                  <p class="text-xs text-stone-600 mt-1">Right-click any PDF in your Obsidian file explorer &rarr; "Import PDF as notebook".</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border border-stone-200">
-                  <div class="text-xl mb-1">🖍️</div>
-                  <h4 class="font-bold text-sm text-stone-900">True Multiply Ink</h4>
-                  <p class="text-xs text-stone-600 mt-1">Highlighter uses canvas multiply blending so text remains 100% legible.</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border border-stone-200">
-                  <div class="text-xl mb-1">🖨️</div>
-                  <h4 class="font-bold text-sm text-stone-900">Vector PDF Export</h4>
-                  <p class="text-xs text-stone-600 mt-1">Export back to vector PDF with all handwritten annotations layered crisply.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="contentTab3" class="tab-pane hidden py-4">
-            <div class="bg-emerald-50/50 rounded-2xl border border-emerald-200 p-6">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-xs font-bold uppercase tracking-wider text-emerald-900 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300">Smart Recognition</span>
-                <span class="font-mono text-xs text-stone-500">350ms Hold-to-Snap</span>
-              </div>
-              <h3 class="text-2xl font-bold text-stone-900 mb-2">Draw Freely. Snap into Mathematical Geometry.</h3>
-              <p class="text-stone-700 text-sm leading-relaxed mb-6">
-                Scribble a circle, box, triangle, or connector line with your stylus. Pause for 350ms and NotePages transforms your freehand stroke into clean, vector-sharp geometry.
-              </p>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="bg-white p-4 rounded-xl border border-stone-200">
-                  <span class="text-xs font-bold text-emerald-700 uppercase">Automatic Shape Palette</span>
-                  <h4 class="font-bold text-base text-stone-900 mt-1">Rectangles, Circles, Ellipses & Triangles</h4>
-                  <p class="text-xs text-stone-600 mt-1">Customize border thickness, stroke colors, and solid background fills.</p>
-                </div>
-                <div class="bg-white p-4 rounded-xl border border-stone-200">
-                  <span class="text-xs font-bold text-emerald-700 uppercase">Smart Connectors</span>
-                  <h4 class="font-bold text-base text-stone-900 mt-1">Flowcharts & Linking Arrows</h4>
-                  <p class="text-xs text-stone-600 mt-1">Connect diagrams and mind maps with responsive snapping endpoints.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="contentTab4" class="tab-pane hidden py-4">
-            <div class="bg-purple-50/50 rounded-2xl border border-purple-200 p-6">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-xs font-bold uppercase tracking-wider text-purple-900 bg-purple-100 px-3 py-1 rounded-full border border-purple-300">Math & Knowledge</span>
-                <span class="font-mono text-xs text-stone-500">MathJax + [[Wikilinks]]</span>
-              </div>
-              <h3 class="text-2xl font-bold text-stone-900 mb-2">LaTeX Equations Beside Pastel Sticky Notes</h3>
-              <p class="text-stone-700 text-sm leading-relaxed mb-6">
-                Type inline formulas like <code class="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-purple-300 font-bold">$E=mc^2$</code> or full display blocks directly onto your pages. Color-coded sticky notes let you brainstorm ideas with native Obsidian <code class="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-purple-300 font-bold">[[Wikilinks]]</code>.
-              </p>
-              <div class="p-4 rounded-xl bg-white border border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div class="font-mono text-xs text-stone-800 bg-stone-50 p-3 rounded-lg border border-stone-200 w-full sm:w-auto">
-                  $$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$
-                </div>
-                <div class="text-xs text-stone-600">
-                  <span class="font-bold text-stone-900">Hover Previews:</span> Hover over any Wikilink with Ctrl/Cmd to preview the linked note inside your Obsidian vault.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div id="contentTab5" class="tab-pane hidden py-4">
-            <div class="bg-amber-50/60 rounded-2xl border border-amber-300 p-6">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-200 px-3 py-1 rounded-full border border-amber-400">100% Privacy</span>
-                <span class="font-mono text-xs text-stone-500">No Proprietary Lock-In</span>
-              </div>
-              <h3 class="text-2xl font-bold text-stone-900 mb-2">Stored as Open JSON in Your Local Vault</h3>
-              <p class="text-stone-700 text-sm leading-relaxed mb-6">
-                Unlike proprietary closed-cloud note apps or Apple Notes, your notebooks are not trapped in a proprietary closed cloud. NotePages saves every stroke, sticky note, and page as human-readable JSON files with the <code class="font-mono text-xs bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold">.gnote</code> extension inside your own folder.
-              </p>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-semibold text-stone-800">
-                <div class="bg-white p-3 rounded-xl border border-stone-200 flex items-center gap-2">
-                  <span class="text-emerald-600 font-bold text-base">&check;</span>
-                  <span>100% Works Offline</span>
-                </div>
-                <div class="bg-white p-3 rounded-xl border border-stone-200 flex items-center gap-2">
-                  <span class="text-emerald-600 font-bold text-base">&check;</span>
-                  <span>Git Sync Friendly</span>
-                </div>
-                <div class="bg-white p-3 rounded-xl border border-stone-200 flex items-center gap-2">
-                  <span class="text-emerald-600 font-bold text-base">&check;</span>
-                  <span>Zero Telemetry</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="pt-3 border-t border-stone-200 flex items-center justify-between text-xs text-stone-500 font-medium">
-            <span>Click any colored sticky tab on the right to flip sections &rarr;</span>
-            <span class="font-handwriting text-lg text-amber-900">NotePages Living Binder Edition</span>
+          <div class="absolute bottom-3 right-5 pointer-events-none select-none font-mono text-[11px] text-slate-400 font-semibold">
+            NotePages Inking Engine
           </div>
         </div>
-
-        <div class="flex md:flex-col justify-start gap-2 pt-2 md:pt-6 md:-mr-12 z-20 overflow-x-auto md:overflow-visible">
-          <button class="binder-tab active px-3.5 py-2.5 rounded-r-xl bg-amber-400 text-stone-900 text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5" data-tab="contentTab1" data-title="Section 01: Interactive Inking Canvas">
-            <span>🖊️</span><span class="hidden sm:inline">Inking Studio</span>
-          </button>
-          <button class="binder-tab px-3.5 py-2.5 rounded-r-xl bg-sky-300 text-stone-900 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5" data-tab="contentTab2" data-title="Section 02: PDF Annotation & Study">
-            <span>📑</span><span class="hidden sm:inline">PDF Study</span>
-          </button>
-          <button class="binder-tab px-3.5 py-2.5 rounded-r-xl bg-emerald-300 text-stone-900 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5" data-tab="contentTab3" data-title="Section 03: Smart Geometry & Connectors">
-            <span>📐</span><span class="hidden sm:inline">Smart Shapes</span>
-          </button>
-          <button class="binder-tab px-3.5 py-2.5 rounded-r-xl bg-purple-300 text-stone-900 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5" data-tab="contentTab4" data-title="Section 04: LaTeX Math & Sticky Notes">
-            <span>∑</span><span class="hidden sm:inline">LaTeX Math</span>
-          </button>
-          <button class="binder-tab px-3.5 py-2.5 rounded-r-xl bg-amber-200 text-stone-900 text-xs font-semibold whitespace-nowrap flex items-center gap-1.5" data-tab="contentTab5" data-title="Section 05: 100% Vault Privacy & Local Files">
-            <span>🔒</span><span class="hidden sm:inline">Local Vault</span>
-          </button>
-        </div>
-
       </div>
     </div>
   </section>
 
-  <section id="features" class="py-16 px-4 sm:px-6 max-w-6xl mx-auto">
+  <section id="features" class="py-16 px-4 sm:px-6 max-w-7xl mx-auto">
     <div class="text-center max-w-2xl mx-auto mb-12">
-      <span class="text-xs font-bold uppercase tracking-wider text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">Notebook Anatomy</span>
-      <h2 class="text-3xl sm:text-4xl font-extrabold text-stone-900 tracking-tight mt-3 mb-2">
-        Engineered for Serious Thinking
+      <span class="text-xs font-bold uppercase tracking-wider text-brand-600 bg-brand-50 px-3 py-1 rounded-full border border-brand-200">Built for Obsidian</span>
+      <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mt-3 mb-2">
+        Core Features & Capabilities
       </h2>
-      <p class="text-stone-600 text-base">
-        A complete digital notebook ecosystem packed inside a lightweight, lightning-fast Obsidian plugin.
+      <p class="text-slate-600 text-base">
+        A dedicated digital notebook workflow engineered specifically for note-takers, researchers, and students.
       </p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="hand-card p-6 rounded-2xl">
-        <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-lg mb-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="feature-card p-6 rounded-2xl">
+        <div class="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center font-bold text-lg mb-4">
           ✍️
         </div>
-        <h3 class="font-extrabold text-lg text-stone-900 mb-2">120 FPS Inking Engine</h3>
-        <p class="text-xs text-stone-600 leading-relaxed">
-          Ballpoint, Fountain, and Pressure Pen with micro-tap dot sensitivity. Real-feel multiply highlighters layer softly without hiding words.
+        <h3 class="font-bold text-lg text-slate-900 mb-2">Hardware-Accelerated Inking</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Ballpoint, Fountain, and Pressure-sensitive pens powered by <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">perfect-freehand</code>. Real canvas multiply highlighters layer softly without obscuring text.
         </p>
       </div>
 
-      <div class="hand-card p-6 rounded-2xl">
-        <div class="w-10 h-10 rounded-xl bg-sky-100 text-sky-900 flex items-center justify-center font-bold text-lg mb-4">
+      <div class="feature-card p-6 rounded-2xl">
+        <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-lg mb-4">
           📑
         </div>
-        <h3 class="font-extrabold text-lg text-stone-900 mb-2">PDF Margins & Bookmarks</h3>
-        <p class="text-xs text-stone-600 leading-relaxed">
-          Import slide decks or 500-page textbooks as high-resolution background pages. Take margin notes and highlight key definitions.
+        <h3 class="font-bold text-lg text-slate-900 mb-2">Native PDF Annotation</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Import multi-page PDF documents directly into your vault. Highlight text, draw diagrams in the margins, and export back to vector PDF with all handwritten annotations preserved.
         </p>
       </div>
 
-      <div class="hand-card p-6 rounded-2xl">
-        <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-900 flex items-center justify-center font-bold text-lg mb-4">
+      <div class="feature-card p-6 rounded-2xl">
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg mb-4">
           📐
         </div>
-        <h3 class="font-extrabold text-lg text-stone-900 mb-2">Hold-to-Snap Geometry</h3>
-        <p class="text-xs text-stone-600 leading-relaxed">
-          Draw circles, boxes, or arrows and pause for 350ms. NotePages automatically straightens your freehand doodle into crisp vector shapes.
+        <h3 class="font-bold text-lg text-slate-900 mb-2">Hold-to-Snap Geometry</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Draw circles, rectangles, triangles, or connector lines with your stylus. Pause for 350ms to automatically snap your freehand stroke into clean, vector-sharp geometry.
         </p>
       </div>
 
-      <div class="hand-card p-6 rounded-2xl">
-        <div class="w-10 h-10 rounded-xl bg-purple-100 text-purple-900 flex items-center justify-center font-bold text-lg mb-4">
+      <div class="feature-card p-6 rounded-2xl">
+        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg mb-4">
           📌
         </div>
-        <h3 class="font-extrabold text-lg text-stone-900 mb-2">Pastel Stickies & [[Links]]</h3>
-        <p class="text-xs text-stone-600 leading-relaxed">
-          Pin color-coded sticky notes anywhere on your page. Connect directly to other markdown notes with native Obsidian Wikilinks.
+        <h3 class="font-bold text-lg text-slate-900 mb-2">Pastel Sticky Notes & Wikilinks</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Drag-and-drop color-coded sticky notes with multi-line text. Type native Obsidian <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">[[Wikilinks]]</code> to connect handwritten boards directly to your markdown vault.
         </p>
       </div>
 
-      <div class="hand-card p-6 rounded-2xl">
-        <div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-900 flex items-center justify-center font-bold text-lg mb-4">
+      <div class="feature-card p-6 rounded-2xl">
+        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg mb-4">
           ∑
         </div>
-        <h3 class="font-extrabold text-lg text-stone-900 mb-2">Native MathJax LaTeX</h3>
-        <p class="text-xs text-stone-600 leading-relaxed">
-          Type inline formulas or display math blocks directly onto handwritten pages. Ideal for engineering, physics, and statistics notes.
+        <h3 class="font-bold text-lg text-slate-900 mb-2">LaTeX Math Formulas</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Type inline formulas like <code class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded text-slate-800">$E=mc^2$</code> or full display blocks directly onto your notebook pages with automatic MathJax rendering.
         </p>
       </div>
 
-      <div class="hand-card p-6 rounded-2xl">
-        <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold text-lg mb-4">
+      <div class="feature-card p-6 rounded-2xl">
+        <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-lg mb-4">
           🖨️
         </div>
-        <h3 class="font-extrabold text-lg text-stone-900 mb-2">300 DPI Print Export</h3>
-        <p class="text-xs text-stone-600 leading-relaxed">
-          Export single pages or your entire notebook binder to vector PDF, ultra high-resolution PNG (up to 300 DPI), or scalable SVG.
+        <h3 class="font-bold text-lg text-slate-900 mb-2">300 DPI Print & Vector Export</h3>
+        <p class="text-sm text-slate-600 leading-relaxed">
+          Export individual pages or entire multi-page notebooks to print-ready vector PDF, high-resolution PNG (up to 300 DPI), or scalable vector SVG anytime.
         </p>
       </div>
     </div>
   </section>
 
-  <section id="workflow" class="py-16 px-4 sm:px-6 max-w-4xl mx-auto">
-    <div class="bg-white rounded-3xl border border-stone-300 p-8 sm:p-12 shadow-sm">
-      <div class="text-center mb-10">
-        <h2 class="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
-          Start Your Living Binder in 3 Steps
+  <section id="pdf" class="py-16 bg-white border-y border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6">
+      <div class="text-center max-w-2xl mx-auto mb-12">
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          PDF Study & Annotation Workflow
         </h2>
-        <p class="text-stone-600 text-sm mt-1">
-          Installed in seconds through Obsidian Community Plugins.
+        <p class="text-slate-600 text-sm mt-1">
+          Turn any document in your vault into an annotated digital notebook in seconds.
         </p>
       </div>
 
-      <div class="space-y-6">
-        <div class="flex items-start gap-4">
-          <div class="w-8 h-8 rounded-full bg-amber-800 text-amber-100 font-bold flex items-center justify-center text-sm shrink-0 mt-0.5">
-            1
-          </div>
-          <div>
-            <h4 class="font-bold text-base text-stone-900">Install from Obsidian Community Plugins</h4>
-            <p class="text-xs text-stone-600 mt-1">
-              Open Obsidian &rarr; Settings &rarr; Community Plugins &rarr; Search for <code class="font-mono bg-stone-100 px-1 py-0.5 rounded text-stone-800">NotePages</code> &rarr; Click Install and Enable.
-            </p>
-          </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="font-mono text-xs font-bold text-brand-600 mb-2">STEP 01</div>
+          <h4 class="font-bold text-base text-slate-900 mb-1">Import Any PDF</h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Right-click any PDF in your Obsidian file explorer and choose <code class="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">Import PDF as notebook</code>.
+          </p>
         </div>
 
-        <div class="flex items-start gap-4">
-          <div class="w-8 h-8 rounded-full bg-amber-800 text-amber-100 font-bold flex items-center justify-center text-sm shrink-0 mt-0.5">
-            2
-          </div>
-          <div>
-            <h4 class="font-bold text-base text-stone-900">Open a New Digital Notebook</h4>
-            <p class="text-xs text-stone-600 mt-1">
-              Click the notebook ribbon icon on the left, or press <kbd class="font-mono bg-stone-100 border border-stone-300 px-1.5 py-0.5 rounded text-xs">Ctrl/Cmd + P</kbd> and type <code class="font-mono bg-stone-100 px-1 py-0.5 rounded text-stone-800">NotePages: New notebook</code>.
-            </p>
-          </div>
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="font-mono text-xs font-bold text-brand-600 mb-2">STEP 02</div>
+          <h4 class="font-bold text-base text-slate-900 mb-1">Highlight & Write</h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Use the highlighter to mark key concepts and pen tools for margin notes with full stylus pressure sensitivity.
+          </p>
         </div>
 
-        <div class="flex items-start gap-4">
-          <div class="w-8 h-8 rounded-full bg-amber-800 text-amber-100 font-bold flex items-center justify-center text-sm shrink-0 mt-0.5">
-            3
-          </div>
-          <div>
-            <h4 class="font-bold text-base text-stone-900">Choose Cornell, Ruled or Import PDF</h4>
-            <p class="text-xs text-stone-600 mt-1">
-              Pick your favorite paper template from the toolbar or import a textbook PDF to begin handwriting immediately with Apple Pencil or stylus.
-            </p>
-          </div>
+        <div class="p-6 rounded-2xl bg-slate-50 border border-slate-200">
+          <div class="font-mono text-xs font-bold text-brand-600 mb-2">STEP 03</div>
+          <h4 class="font-bold text-base text-slate-900 mb-1">Export with Annotations</h4>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            Export the annotated document back to PDF with your handwritten notes and highlights permanently embedded.
+          </p>
         </div>
       </div>
     </div>
   </section>
 
-  <section id="survey" class="py-14 px-4 max-w-4xl mx-auto text-center">
-    <div class="bg-leather-800 text-amber-100 rounded-3xl p-8 sm:p-12 shadow-xl border border-leather-700">
-      <div class="text-3xl mb-3">💌</div>
-      <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
-        Help Shape the Next Release of NotePages
+  <section id="install" class="py-16 px-4 sm:px-6 max-w-4xl mx-auto">
+    <div class="bg-white rounded-2xl border border-slate-200 p-8 sm:p-10 shadow-xs">
+      <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-4">
+        Installation & Quick Start
       </h2>
-      <p class="text-xs sm:text-sm text-amber-200/90 max-w-lg mx-auto mb-6 leading-relaxed">
-        We build features directly from your suggestions. Tell us which stationery paper templates or drawing tools you want next in our quick 1-minute survey!
-      </p>
+      <div class="space-y-4 text-sm text-slate-600">
+        <p>
+          <strong class="text-slate-900">Method 1 (Recommended):</strong> In Obsidian, open <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">Settings &rarr; Community Plugins &rarr; Browse</code>, search for <strong class="text-slate-900">NotePages</strong>, click Install and Enable.
+        </p>
+        <p>
+          <strong class="text-slate-900">Method 2 (Manual / GitHub Release):</strong> Download <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">main.js</code> and <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">manifest.json</code> from <a href="https://github.com/0xKurian/Obsinotes/releases" target="_blank" class="text-brand-600 underline font-semibold">GitHub Releases</a>, place them in <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">.obsidian/plugins/notepages/</code> and reload Obsidian.
+        </p>
+        <p>
+          <strong class="text-slate-900">To create your first notebook:</strong> Click the notebook ribbon icon on the left, or press <kbd class="font-mono bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded text-xs">Ctrl/Cmd + P</kbd> and run <code class="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">NotePages: New notebook</code>.
+        </p>
+      </div>
+    </div>
+  </section>
 
-      <div class="flex flex-wrap items-center justify-center gap-4">
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform" target="_blank" rel="noopener noreferrer" class="bg-amber-400 hover:bg-amber-300 text-stone-900 font-bold text-sm px-7 py-3 rounded-xl transition-all shadow-md">
+  <section id="feedback" class="py-14 px-4 max-w-3xl mx-auto text-center">
+    <div class="bg-slate-900 text-white rounded-2xl p-8 sm:p-10 shadow-md">
+      <h2 class="text-2xl font-bold mb-2">Community Feedback & Bug Reports</h2>
+      <p class="text-sm text-slate-300 max-w-md mx-auto mb-6">
+        Have feedback, feature suggestions, or found a bug? We actively maintain NotePages and build features based on user input.
+      </p>
+      <div class="flex flex-wrap items-center justify-center gap-3">
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform" target="_blank" rel="noopener noreferrer" class="btn-gradient text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow-xs hover:opacity-95 transition-all">
           Take 1-Min Survey ✍️
         </a>
-        <a href="https://github.com/0xKurian/Obsinotes/discussions" target="_blank" rel="noopener noreferrer" class="bg-leather-700 hover:bg-leather-900 text-amber-200 border border-leather-700 font-semibold text-sm px-6 py-3 rounded-xl transition-all">
-          GitHub Community 💬
+        <a href="https://github.com/0xKurian/Obsinotes/discussions" target="_blank" rel="noopener noreferrer" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-sm px-5 py-2.5 rounded-xl transition-all">
+          GitHub Discussions
         </a>
       </div>
     </div>
   </section>
 
-  <footer class="border-t border-stone-300 py-10 px-4 sm:px-6 bg-[#fffdf9]">
-    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-semibold text-stone-600">
+  <footer class="border-t border-slate-200 py-10 px-4 sm:px-6 bg-white text-xs text-slate-500">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
       <div class="flex items-center gap-2">
-        <span class="text-base">📓</span>
-        <span class="font-bold text-stone-900">NotePages</span>
+        <span class="font-bold text-slate-900 text-sm">NotePages</span>
         <span>• MIT Open Source License</span>
       </div>
 
-      <div class="flex items-center gap-6">
-        <a href="https://community.obsidian.md/plugins/notepages" target="_blank" rel="noopener noreferrer" class="hover:text-amber-800 transition-colors">Obsidian Plugin</a>
-        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="hover:text-amber-800 transition-colors">GitHub Repository</a>
-        <a href="https://github.com/0xKurian/Obsinotes/releases" target="_blank" rel="noopener noreferrer" class="hover:text-amber-800 transition-colors">Releases</a>
+      <div class="flex items-center gap-6 font-medium">
+        <a href="https://community.obsidian.md/plugins/notepages" target="_blank" rel="noopener noreferrer" class="hover:text-brand-600 transition-colors">Obsidian Plugin</a>
+        <a href="https://github.com/0xKurian/Obsinotes" target="_blank" rel="noopener noreferrer" class="hover:text-brand-600 transition-colors">GitHub Repository</a>
+        <a href="https://github.com/0xKurian/Obsinotes/releases" target="_blank" rel="noopener noreferrer" class="hover:text-brand-600 transition-colors">Releases</a>
       </div>
 
-      <div class="text-stone-400">
-        Crafted with ❤️ for Obsidian by <a href="https://github.com/0xKurian" target="_blank" class="underline text-stone-700">Vinh-Hung</a>
+      <div>
+        Crafted for <a href="https://obsidian.md" target="_blank" class="text-slate-700 underline font-semibold">Obsidian</a> by <a href="https://github.com/0xKurian" target="_blank" class="text-slate-700 underline font-semibold">Vinh-Hung</a>
       </div>
     </div>
   </footer>
 
   <script>
-    const tabs = document.querySelectorAll('.binder-tab');
-    const panes = document.querySelectorAll('.tab-pane');
-    const pageTitle = document.getElementById('pageTitle');
-
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => {
-          t.classList.remove('active');
-          t.classList.remove('font-extrabold');
-          t.classList.add('font-semibold');
-        });
-        tab.classList.add('active');
-        tab.classList.add('font-extrabold');
-        tab.classList.remove('font-semibold');
-
-        const target = tab.dataset.tab;
-        panes.forEach(p => p.classList.add('hidden'));
-        const activePane = document.getElementById(target);
-        if (activePane) activePane.classList.remove('hidden');
-
-        if (pageTitle && tab.dataset.title) {
-          pageTitle.textContent = tab.dataset.title;
-        }
-
-        if (target === 'contentTab1') {
-          setTimeout(resize, 30);
-        }
-      });
-    });
-
     const drawCanvas = document.getElementById('drawCanvas');
     const templateCanvas = document.getElementById('templateCanvas');
     const fxCanvas = document.getElementById('fxCanvas');
@@ -597,7 +373,7 @@
     const fxCtx = fxCanvas.getContext('2d');
 
     let currentTool = 'pen';
-    let currentColor = '#1c1917';
+    let currentColor = '#0f172a';
     let isDrawing = false;
     let lastX = 0;
     let lastY = 0;
@@ -624,7 +400,7 @@
       if (!canvasBox) return;
       const rect = canvasBox.getBoundingClientRect();
       tCtx.clearRect(0, 0, rect.width, rect.height);
-      const lineColor = 'rgba(70, 50, 30, 0.08)';
+      const lineColor = 'rgba(15, 23, 42, 0.08)';
       const type = document.getElementById('templateSelect').value;
 
       tCtx.strokeStyle = lineColor;
@@ -651,7 +427,7 @@
           tCtx.stroke();
         }
       } else if (type === 'dotted') {
-        tCtx.fillStyle = 'rgba(70, 50, 30, 0.18)';
+        tCtx.fillStyle = 'rgba(15, 23, 42, 0.16)';
         for (let x = 20; x < rect.width; x += 22) {
           for (let y = 20; y < rect.height; y += 22) {
             tCtx.beginPath();
@@ -691,9 +467,9 @@
       };
       Object.keys(map).forEach(k => {
         if (k === tool) {
-          map[k].className = 'px-2.5 py-1 rounded-lg font-bold bg-amber-800 text-white shadow-xs';
+          map[k].className = 'px-3 py-1.5 rounded-lg font-semibold bg-brand-50 text-brand-700 transition-colors';
         } else {
-          map[k].className = 'px-2.5 py-1 rounded-lg font-semibold text-stone-700 hover:text-stone-900';
+          map[k].className = 'px-3 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition-colors';
         }
       });
     }
@@ -706,9 +482,9 @@
       btn.addEventListener('click', (e) => {
         currentColor = e.currentTarget.dataset.color;
         document.querySelectorAll('.color-btn').forEach(b => {
-          b.classList.remove('ring-2', 'ring-amber-600', 'scale-110');
+          b.classList.remove('ring-2', 'ring-brand-500', 'scale-110');
         });
-        e.currentTarget.classList.add('ring-2', 'ring-amber-600', 'scale-110');
+        e.currentTarget.classList.add('ring-2', 'ring-brand-500', 'scale-110');
         if (currentTool === 'eraser') setTool('pen');
       });
     });
@@ -721,14 +497,14 @@
 
     function popConfetti(cx, cy) {
       particles = [];
-      const colors = ['#d97706', '#dc2626', '#2563eb', '#059669', '#7c3aed', '#f59e0b'];
-      for (let i = 0; i < 40; i++) {
+      const colors = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899'];
+      for (let i = 0; i < 35; i++) {
         particles.push({
-          x: cx + (Math.random() - 0.5) * 100,
-          y: cy + (Math.random() - 0.5) * 50,
+          x: cx + (Math.random() - 0.5) * 80,
+          y: cy + (Math.random() - 0.5) * 40,
           vx: (Math.random() - 0.5) * 8,
           vy: (Math.random() - 0.5) * 8 - 3,
-          radius: Math.random() * 4 + 2.5,
+          radius: Math.random() * 4 + 2,
           color: colors[Math.floor(Math.random() * colors.length)],
           alpha: 1
         });
