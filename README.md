@@ -1,110 +1,237 @@
-# NotePages
+<div align="center">
 
-NotePages is a modern, high-performance digital whiteboard and multi-page notebook plugin for [Obsidian](https://obsidian.md), designed for handwriting with stylus inking, paper templates, sticky notes, rich geometric shapes, LaTeX math, PDF annotation, off-screen multi-format export, and Goodnotes-like continuous vertical scrolling.
+# 📓 NotePages
 
----
+**The modern, high-performance digital notebook and handwritten whiteboard for [Obsidian](https://obsidian.md).**
 
-## Key Features
+[![Obsidian Target](https://img.shields.io/badge/Obsidian-v1.5.12+-purple?logo=obsidian&style=flat-square)](https://obsidian.md)
+[![Version](https://img.shields.io/badge/Version-1.1.1-blue?style=flat-square)](https://github.com/0xKurian/Obsinotes/releases)
+[![Tests](https://img.shields.io/badge/Tests-169%20Passed-brightgreen?style=flat-square)](https://github.com/0xKurian/Obsinotes)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
 
-### 1. Multi-Page Notebook Canvas
-- **Physical Paper Sizes**: Accurate dimensions for A4 (595.28 × 841.89 pt), US Letter (612 × 792 pt), and Custom sizes in both Portrait and Landscape orientations.
-- **Procedural Paper Templates**: Clean vector-rendered Blank, Ruled (Lined), Grid, Dotted, and Cornell note-taking layouts.
-- **Continuous Workspace**: Smooth vertical scrolling with zoom scaling from 40% up to 300%.
-- **Page Management**: Add, duplicate, delete, and reorder pages with real-time thumbnail preview drawer in the sidebar.
+[Quick Start](#-quick-start-in-60-seconds) • [Core Features](#-core-features) • [Shortcuts & Gestures](#-shortcuts--gestures) • [PDF Annotation](#-pdf-import--annotation) • [Configuration](#-settings--customization) • [Feedback & Community](#-feedback--community)
 
-### 2. High-Performance Digital Inking Engine
-- **Stylus Inking Tools**: Ballpoint Pen, Pressure-Sensitive Pen, and Fountain Pen powered by `perfect-freehand`.
-- **Customizable Stroke Width**: Fine-tune stroke thickness from 0.5pt to 30.0pt using preset buttons, interactive slider, or mouse wheel, complete with a live size/color preview dot and per-tool memory (Pen vs. Highlighter).
-- **Authentic Highlighter**: Layered with canvas `multiply` composite blending to highlight text without obscuring underlying handwriting or PDF content.
-- **Smart Erasers**: Dual-mode Stroke Eraser (deletes entire intersecting strokes) and Precision Eraser (splits and trims stroke geometry).
-- **Stylus & Palm Suppression**: Differentiates pen and finger touches, preventing unintended ink when resting palm on the screen.
-- **60–120 FPS Performance**: `requestAnimationFrame` batching handles high-frequency stylus input without dropped frames or visual lag.
-
-### 3. Smart Shapes & Connectors
-- **Hold-to-Snap Shape Recognition**: Draw freehand lines, circles, ellipses, rectangles, or triangles and hold the stylus still for 350ms to snap into perfect geometry.
-- **Dedicated Shape Palette**: Quick insertion of rectangles, rounded rectangles, diamonds, circles, arrows, stars, and callout speech bubbles with customizable fill color toggle.
-- **Connector Tool**: Draw interactive connector lines and arrows between elements with endpoint snapping and live previews.
-
-### 4. Advanced Notes, Math & Media
-- **Pastel Sticky Notes**: Color-coded sticky notes with realistic drop shadows, multi-line support, and drag-to-size handles.
-- **Rich Text Boxes**: Floating text boxes with adjustable font size, font family, alignment, bold, italic, and underline styling.
-- **LaTeX Math Rendering**: Native MathJax / KaTeX formulas via inline `$...$` and display `$$...$$` syntax.
-- **Obsidian Wikilinks**: Full integration with `[[Note Name]]` links, supporting click-to-open and native Obsidian hover previews.
-- **Image Management**: Paste from clipboard, drag-and-drop from OS, or insert from vault. Includes proportional resize handles, rotation, and move.
-- **PDF Background Annotation**: Import PDF documents directly into notebooks or annotate PDF pages with vector ink and sticky notes.
-
-### 5. Multi-Format Off-Screen Export Engine
-- **PDF Export**: Assemble multi-page print-ready PDFs with accurate physical dimensions and 300 DPI resolution using `pdf-lib`. Preserves vector backgrounds on imported PDF annotations.
-- **PNG Raster Export**: High-resolution image exports (1x = 72 DPI, 2x = 144 DPI, 4x = 300 DPI) rendered directly from vector document models.
-- **Vector SVG Export**: Pure SVG paths, shapes, text, and templates for lossless scaling and vector graphics workflows.
-- **Flexible Destinations**: Save exported files directly to your Obsidian Vault (with collision-safe numbering) or download to local disk.
-
-### 6. Viewport Culling & Virtualization
-- **RAM & VRAM Optimization**: In multi-page notebooks (50–100+ pages), canvases outside the active viewport window + buffer are deallocated from GPU memory, maintaining bounded, low memory usage.
-- **Zero Layout Shift**: Structural DOM containers preserve exact physical heights so scrolling is completely smooth and jitter-free.
+</div>
 
 ---
 
-## Keyboard Shortcuts & Gestures
+## 🌟 Why NotePages?
 
-| Action | Shortcut / Gesture |
+**NotePages** bridges the gap between structured Markdown note-taking and the fluid freedom of physical pen-and-paper. Designed from the ground up for students, researchers, visual thinkers, and professionals, it brings the best digital notebook workflows (like Goodnotes, Notability, and OneNote) natively into your Obsidian Vault with **100% offline local privacy**.
+
+> [!NOTE]
+> All drawings, sticky notes, formulas, and pages are stored as clean JSON files inside your vault with the `.gnote` extension. Your data remains completely yours—no external cloud dependencies, no tracking, and no proprietary lock-in.
+
+---
+
+## 🚀 Quick Start in 60 Seconds
+
+### Step 1: Create a Notebook
+- Click the **Book Icon** (`NotePages: New notebook`) in your Obsidian left Ribbon.
+- Alternatively, press `Ctrl/Cmd + P` and search for `NotePages: Create new notebook`.
+- You can also right-click any folder in the File Explorer and choose **New notebook**.
+
+### Step 2: Choose Your Paper Template
+- Use the **Top Toolbar** to switch between **Blank**, **Ruled (Lined)**, **Grid**, **Dotted**, or **Cornell** templates.
+- Adjust line spacing and background colors to match your favorite stationery.
+
+### Step 3: Ink, Type, and Sketch
+- Pick a pen tool (Ballpoint, Pressure Pen, Fountain Pen, or Highlighter).
+- Draw shapes and hold for **350ms**—they will snap automatically into clean geometry.
+- Double-click anywhere to insert a rich **Text Box**, or click the **Sticky Note** icon for pastel notes.
+- Type LaTeX formulas directly with `$...$` or `$$...$$`.
+
+### Step 4: Export & Share
+- Click the **Export** icon in the toolbar or open the Command Palette and type `NotePages: Export notebook`.
+- Export individual pages or entire notebooks to print-ready **PDF**, high-resolution **PNG (up to 300 DPI)**, or vector **SVG**.
+
+---
+
+## 🎨 Core Features
+
+### 1. High-Precision Stylus & Inking Engine
+- **Hardware-Accelerated Strokes**: Powered by `perfect-freehand` with 60–120 FPS render loops using `requestAnimationFrame`. Zero perceptible stroke latency.
+- **Natural Pen Tools**:
+  - **Ballpoint Pen**: Crisp, uniform lines ideal for fast writing and technical drawings.
+  - **Pressure-Sensitive Pen**: Responds realistically to stylus pressure on Apple Pencil, Surface Pen, and Wacom styluses.
+  - **Fountain Pen**: Dynamic velocity and calligraphic thinning for expressive handwriting.
+  - **Authentic Highlighter**: Uses canvas `multiply` blend mode so bright highlights layer softly without washing out text or underlying handwriting.
+- **Accurate Dot Inking**: Sensitive micro-tap detection ensures i-dots, periods, and commas register reliably.
+- **Dual Eraser Engine**:
+  - **Stroke Eraser**: Deletes entire intersecting strokes and geometric shapes with a single tap.
+  - **Precision Eraser**: Trims and cuts strokes at the exact touch radius for precision corrections.
+
+### 2. Smart Shapes & Connectors
+- **Hold-to-Snap Recognition**: Scribble a line, circle, ellipse, rectangle, triangle, or arrow and pause for 350ms—NotePages snaps it into a mathematically perfect shape.
+- **Dedicated Shape Palette**: Quickly drop predefined geometric shapes with custom stroke width, border colors, and optional solid fills.
+- **Smart Connectors**: Draw linking arrows and lines between diagrams with live snap endpoints.
+- **Eraser Compatibility**: The eraser tool deletes both freehand drawings and geometric shapes seamlessly.
+
+### 3. Sticky Notes, Rich Text & LaTeX Math
+- **Pastel Sticky Notes**: Color-coded notes with soft drop shadows, drag-to-resize bounds, and multi-line text editing.
+- **Rich Text Boxes**: Floating text containers with adjustable font sizes, alignment, font families, and markdown styling.
+- **Native LaTeX Formulas**: Write inline math `$\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$` or display blocks `$$E = mc^2$$` with automatic MathJax/KaTeX rendering.
+- **Obsidian Wikilinks**: Type `[[My Other Note]]` inside any text box or sticky note. Click to navigate, or hover with `Ctrl/Cmd` for native Obsidian popover previews.
+
+### 4. Continuous Multi-Page Workspace
+- **Seamless Vertical Scrolling**: Pages flow smoothly from top to bottom just like an endless paper binder.
+- **Page Thumbnail Sidebar**: An interactive side drawer displaying real-time miniature renderings of your strokes, sticky notes, texts, and images.
+- **Safe Page Management**: Add, duplicate, reorder, or delete pages with full **Undo / Redo (`Ctrl+Z` / `Ctrl+Y`)** protection—never lose work from an accidental deletion.
+- **Smart Memory Virtualization**: Large notebooks (50–100+ pages) cull off-screen canvases from memory, guaranteeing fast performance and minimal RAM usage.
+
+### 5. Smooth Touchpad & Touch Gestures
+- **Cursor-Anchored Zooming**: Smooth trackpad pinch-to-zoom keeps the exact point under your cursor fixed in place.
+- **Palm Rejection**: Dedicated drawing engine ignores palm touches when using an active stylus. Toggle **Draw with finger** in Settings if you prefer finger sketching.
+
+---
+
+## 📑 PDF Import & Annotation
+
+Turn any existing PDF into an annotated digital notebook:
+
+1. Right-click any PDF in your Obsidian Vault file explorer and select **Import PDF as notebook**.
+2. Or use the Command Palette: `NotePages: Import PDF as new notebook`.
+3. NotePages renders each PDF page as an immutable, crisp background canvas.
+4. Highlight passages, take margin notes, insert sticky notes, or draw diagrams on top of the original document.
+5. Export back to vector PDF with all your annotations layered over the original pages.
+
+---
+
+## ⌨️ Shortcuts & Gestures
+
+### Drawing & Inking
+| Shortcut | Action |
 | :--- | :--- |
-| **Stylus Inking** | Touch stylus to canvas (automatic palm suppression) |
-| **Pan Canvas** | Hold `Space` + Drag or Middle Mouse Drag (1 finger drag on touch) |
-| **Zoom Workspace** | `Ctrl` / `Cmd` + Mouse Wheel or 2-finger Pinch |
-| **Add Page Below** | Press `A` |
-| **Undo / Redo** | `Ctrl/Cmd + Z` / `Ctrl/Cmd + Y` (or `Ctrl/Cmd + Shift + Z`) |
-| **Decrease / Increase Stroke Width** | `[` / `]` (or scroll wheel over width slider) |
-| **Hold-to-Snap Shape** | Draw shape and hold stylus still for ~350ms |
-| **Quick Text Box** | Double-click canvas or use Canvas Context Menu |
-| **Canvas Context Menu** | Right-click on empty canvas area |
-| **Export Notebook** | Toolbar export icon (`file-down`) or Command Palette `NotePages: Export notebook` |
+| `P` | Switch to Pen tool |
+| `H` | Switch to Highlighter tool |
+| `E` | Switch to Eraser tool |
+| `S` | Open Shape Palette |
+| `C` | Switch to Connector Line/Arrow tool |
+| `L` | Switch to Lasso Selection tool |
+| `T` | Insert Rich Text Box |
+| `N` | Insert Sticky Note |
+| `[` / `]` | Decrease / Increase stroke width |
+| **Stylus Hold (~350ms)** | Snap freehand stroke into perfect geometric shape |
+
+### Canvas Navigation
+| Gesture / Shortcut | Action |
+| :--- | :--- |
+| `Space` + Drag | Pan across canvas workspace |
+| **Middle Mouse Drag** | Pan canvas |
+| **1-Finger Drag (Touch)** | Pan canvas (when *Draw with finger* is disabled) |
+| `Ctrl` / `Cmd` + **Scroll Wheel** | Smooth zoom centered on mouse cursor |
+| **2-Finger Trackpad Pinch** | Continuous zoom centered on mouse focal point |
+
+### Selection & Editing
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl/Cmd + Z` | Undo last stroke, shape, transform, or page deletion |
+| `Ctrl/Cmd + Y` *(or `Shift+Ctrl+Z`)* | Redo last undone action |
+| `Ctrl/Cmd + C` | Copy selected strokes, shapes, sticky notes, and text |
+| `Ctrl/Cmd + V` | Paste copied elements onto active page |
+| `Ctrl/Cmd + D` | Duplicate selection immediately |
+| `Delete` / `Backspace` | Delete active selection |
+
+### Page Management
+| Shortcut | Action |
+| :--- | :--- |
+| `A` | Add new page directly below the current page |
+| **Right-click Canvas** | Open Canvas Context Menu (Add page, insert text/sticky, rename) |
+| **Double-click Title** | Quick rename notebook modal |
 
 ---
 
-## Compatibility Matrix
+## ⚙️ Settings & Customization
 
-| Platform | Environment | Inking & Hardware Support | Status |
-| :--- | :--- | :--- | :--- |
-| **macOS** | Desktop (Apple Silicon / Intel) | Trackpad, Mouse, Wacom, Sidecar / Apple Pencil | Supported |
-| **Windows** | Desktop / Surface Tablets | Mouse, Touchpad, Microsoft Surface Pen, Wacom AES | Supported |
-| **Linux** | Desktop (X11 / Wayland) | Mouse, Touchpad, Wacom Intuos / Cintiq | Supported |
-| **iPadOS** | Obsidian Mobile (iPad) | Apple Pencil (1st/2nd Gen, USB-C, Pro), Touch Gestures | Supported |
-| **Android** | Obsidian Mobile (Tablets / Foldables) | Samsung S-Pen, Active Stylus, Multi-touch | Supported |
+Access settings via **Obsidian Settings → Community Plugins → NotePages**:
 
----
-
-## Installation & Setup
-
-### Via Obsidian Community Plugins (Once Approved)
-1. Open Obsidian **Settings** -> **Community Plugins**.
-2. Search for **NotePages** and click **Install**.
-3. Toggle the plugin to **Enable**.
-
-### Manual Installation
-1. Download the latest release assets (`main.js`, `manifest.json`, `styles.css`) from the [Releases](https://github.com/0xKurian/Obsinotes/releases) page.
-2. Create a folder named `notepages` in your vault's plugin directory:
-   `<Vault>/.obsidian/plugins/notepages/`
-3. Copy `main.js`, `manifest.json`, and `styles.css` into that folder.
-4. Reload Obsidian Community Plugins and enable **NotePages**.
+| Setting | Options | Description |
+| :--- | :--- | :--- |
+| **Default page size** | `A4`, `Letter` | Paper dimensions applied to newly created notebooks. |
+| **Default page orientation** | `Portrait`, `Landscape` | Vertical or horizontal page layout. |
+| **Default paper template** | `Ruled`, `Grid`, `Dotted`, `Cornell`, `Blank` | Pattern rendered onto page backgrounds. |
+| **Default paper background** | Color Picker (e.g. `#ffffff`, `#fefae0`) | Base stationery color for new pages. |
+| **Default line color** | Color Picker (e.g. `#94a3b8`) | Contrast color for rules, grids, and dots. |
+| **Default line spacing (pt)** | Slider / Number (12 to 64 pt) | Grid size or line distance between rules. |
+| **Draw with finger** | Toggle (`On` / `Off`) | Allow drawing with fingertips on touchscreens (disable for palm rejection). |
+| **Autosave interval (ms)** | Number (min 300ms) | Background debounce delay before writing changes to disk. |
+| **Custom feedback form URL** | Text URL | Custom URL for feedback. Defaults to the official survey. |
 
 ---
 
-## Development & Build
+## 📤 Multi-Format Export Engine
 
-### Requirements
-- Node.js v18 or newer
-- npm v9 or newer
+Export your work anytime without quality loss via **Toolbar → Export icon** or `Ctrl/Cmd + P` → `NotePages: Export notebook`:
 
-### Build Commands
+```
+┌────────────────────────────────────────────────────────┐
+│                   NotePages Exporter                   │
+├────────────────────────────────────────────────────────┤
+│ Format:      [ PDF Document ]  [ PNG Images ]  [ SVG ] │
+│ Resolution:  [ 1x (72 DPI)  ]  [ 2x (144) ]  [ 4x(300)]│
+│ Range:       (•) All Pages     ( ) Current   ( ) Custom│
+│ Destination: (•) Save to Vault ( ) Download to Disk    │
+└────────────────────────────────────────────────────────┘
+```
+
+- **Vector PDF**: Preserves crisp strokes and embeds original PDF backgrounds.
+- **Ultra HD PNG**: Export at 300 DPI (4x) for high-resolution printing or slide presentations.
+- **Vector SVG**: Exports pure SVG code for editing in Illustrator, Inkscape, or Figma.
+
+---
+
+## 💬 Feedback & Community
+
+Your feedback shapes the future of NotePages! We would love to hear your thoughts, feature requests, or bug reports:
+
+- 📝 **[User Feedback & Feature Survey](https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform)**: Quick 1-minute feedback form directly reviewed by the developer.
+- 💬 **[GitHub Discussions](https://github.com/0xKurian/Obsinotes/discussions)**: Share your notes, discuss workflows, or ask questions.
+- 🐛 **[GitHub Issue Tracker](https://github.com/0xKurian/Obsinotes/issues)**: Report bugs or technical issues with reproducible details.
+
+---
+
+## ❓ Frequently Asked Questions
+
+<details>
+<summary><b>Where are my drawings and notebooks stored?</b></summary>
+Everything is saved as plain JSON files with a <code>.gnote</code> extension directly in your Obsidian Vault. You can backup, sync (via Obsidian Sync, Git, or iCloud), and copy them just like standard markdown notes.
+</details>
+
+<details>
+<summary><b>Can I view the raw markdown / JSON data?</b></summary>
+Yes. Run <code>NotePages: Toggle between notebook and Markdown view</code> from the Command Palette to view or edit the underlying notebook schema.
+</details>
+
+<details>
+<summary><b>How does NotePages perform with notebooks containing 100+ pages?</b></summary>
+NotePages includes an automatic viewport virtualizer. Only pages currently visible in the scroll viewport (plus a 1-page safety buffer) keep their canvas contexts in memory. Off-screen canvases are deallocated, keeping memory consumption low even in massive documents.
+</details>
+
+<details>
+<summary><b>Does NotePages work on tablets (iPad / Android)?</b></summary>
+Yes! NotePages runs on Obsidian Mobile for iPadOS (with Apple Pencil pressure support) and Android tablets (with Samsung S-Pen support).
+</details>
+
+---
+
+## 🛠️ Development & Building
+
 ```bash
+# Clone the repository
+git clone https://github.com/0xKurian/Obsinotes.git
+cd Obsinotes
+
 # Install dependencies
 npm install
 
-# Run strict type checking
+# Run TypeScript type check
 npm run typecheck
 
-# Execute comprehensive automated test suite (138 unit & integration tests)
+# Run linter
+npm run lint
+
+# Run automated test suite (169 unit & integration tests)
 npm test
 
 # Build production bundle
@@ -113,6 +240,7 @@ npm run build
 
 ---
 
-## License
+## 📄 License
 
-MIT License. Developed by Vinh-Hung.
+This project is licensed under the [MIT License](LICENSE).  
+Created and maintained with ❤️ by **[Vinh-Hung](https://github.com/0xKurian)**.

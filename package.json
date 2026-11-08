@@ -1,6 +1,6 @@
 {
   "name": "notepages",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Create multi-page digital notebooks and whiteboards with stylus inking, paper templates, sticky notes, LaTeX math, and continuous scrolling.",
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "postinstall": "node -e \"const fs=require('fs'); const p='node_modules/obsidian/'; if(fs.existsSync(p)){ const pkg=JSON.parse(fs.readFileSync(p+'package.json','utf8')); pkg.main='index.js'; fs.writeFileSync(p+'package.json',JSON.stringify(pkg,null,2)); if(!fs.existsSync(p+'index.js')){ fs.writeFileSync(p+'index.js','class Notice{}; class TFile{}; class TFolder{}; class Modal{constructor(app){this.app=app;this.contentEl={empty(){},createEl(){return{}},createDiv(){return{}},createSpan(){return{}},addClass(){}};}open(){}close(){}}; function loadPdfJs(){return Promise.resolve(null);}; function normalizePath(p){return p;}; function setIcon(){}; module.exports={Notice,TFile,TFolder,Modal,loadPdfJs,normalizePath,setIcon};'); } }\""
+    "postinstall": "node -e \"const fs=require('fs'); const p='node_modules/obsidian/'; if(fs.existsSync(p)){ const pkg=JSON.parse(fs.readFileSync(p+'package.json','utf8')); pkg.main='index.js'; fs.writeFileSync(p+'package.json',JSON.stringify(pkg,null,2)); if(!fs.existsSync(p+'index.js')){ fs.writeFileSync(p+'index.js','class Notice{}; class TFile{}; class TFolder{}; class Modal{constructor(app){this.app=app;this.contentEl={empty(){},createEl(){return{}},createDiv(){return{}},createSpan(){return{}},addClass(){}};}open(){}close(){}}; class PluginSettingTab{constructor(app,plugin){this.app=app;this.plugin=plugin;this.containerEl={empty(){},createEl(){return{}}};}}; class Setting{constructor(containerEl){this.containerEl=containerEl;}setName(){return this;}setDesc(){return this;}setHeading(){return this;}addDropdown(){return this;}addColorPicker(){return this;}addText(){return this;}addToggle(){return this;}addButton(){return this;}}; function loadPdfJs(){return Promise.resolve(null);}; function normalizePath(p){return p;}; function setIcon(){}; module.exports={Notice,TFile,TFolder,Modal,PluginSettingTab,Setting,loadPdfJs,normalizePath,setIcon};'); } }\""
   },
   "keywords": [
     "obsidian",

@@ -274,6 +274,23 @@ export default class NotePagesPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "submit-feedback",
+      name: "Submit feedback or feature request",
+      callback: () => {
+        const url = this.settings.feedbackUrl || "https://github.com/0xKurian/Obsinotes/issues/new/choose";
+        window.open(url, "_blank");
+      }
+    });
+
+    this.addCommand({
+      id: "report-github-issue",
+      name: "Report an issue on GitHub",
+      callback: () => {
+        window.open("https://github.com/0xKurian/Obsinotes/issues/new", "_blank");
+      }
+    });
+
     this.addSettingTab(new NotePagesSettingTab(this.app, this));
   }
 

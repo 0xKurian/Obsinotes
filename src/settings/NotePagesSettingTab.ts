@@ -95,6 +95,14 @@ export class NotePagesSettingTab extends PluginSettingTab {
           min: 300,
         },
       },
+      {
+        name: "Custom feedback form URL",
+        desc: "Optional URL for user feedback. If blank, GitHub issues is opened.",
+        control: {
+          type: "text",
+          key: "feedbackUrl",
+        },
+      },
     ];
   }
 
@@ -119,6 +127,11 @@ export class NotePagesSettingTab extends PluginSettingTab {
         settings[key] = parsed;
         await this.plugin.saveSettings();
       }
+      return;
+    }
+    if (key === "feedbackUrl") {
+      settings[key] = typeof value === "string" ? value.trim() : "";
+      await this.plugin.saveSettings();
       return;
     }
     settings[key] = value;
@@ -237,6 +250,56 @@ export class NotePagesSettingTab extends PluginSettingTab {
               this.plugin.settings.autosaveIntervalMs = parsed;
               await this.plugin.saveSettings();
             }
+          });
+      });
+
+    new Setting(containerEl).setName("Community and feedback").setHeading();
+
+    new Setting(containerEl)
+      .setName("Submit feedback")
+      .setDesc("Share your feedback, ratings, or feature requests to help improve the plugin.")
+      .addButton((button) => {
+        button
+          .setButtonText("Open feedback form")
+          .setCta()
+          .onClick(() => {
+            const url = this.plugin.settings.feedbackUrl || "https://github.com/0xKurian/Obsinotes/issues/new/choose";
+            window.open(url, "_blank");
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Custom feedback form URL")
+      .setDesc("Optional URL to your feedback form. If blank, GitHub issues is opened.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Enter form URL...")
+          .setValue(this.plugin.settings.feedbackUrl || "")
+          .onChange(async (value) => {
+            this.plugin.settings.feedbackUrl = value.trim();
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Report an issue")
+      .setDesc("Encountered a bug or unexpected behavior? Submit an issue on GitHub.")
+      .addButton((button) => {
+        button
+          .setButtonText("Report bug")
+          .onClick(() => {
+            window.open("https://github.com/0xKurian/Obsinotes/issues/new", "_blank");
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("GitHub discussions")
+      .setDesc("Join discussions, ask questions, or see what others are creating.")
+      .addButton((button) => {
+        button
+          .setButtonText("Visit discussions")
+          .onClick(() => {
+            window.open("https://github.com/0xKurian/Obsinotes/discussions", "_blank");
           });
       });
   }

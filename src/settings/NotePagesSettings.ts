@@ -13,6 +13,7 @@ export interface NotePagesSettings {
   defaultLineColor: string;
   defaultLineSpacing: number;
   defaultPaperBackground: string;
+  feedbackUrl: string;
 }
 
 export const DEFAULT_SETTINGS: NotePagesSettings = {
@@ -23,5 +24,6 @@ export const DEFAULT_SETTINGS: NotePagesSettings = {
   autosaveIntervalMs: 1000,
   defaultLineColor: "#94a3b8",
   defaultLineSpacing: 24,
-  defaultPaperBackground: "#ffffff"
+  defaultPaperBackground: "#ffffff",
+  feedbackUrl: "https://docs.google.com/forms/d/e/1FAIpQLSeP3GLlOFJzvoTfJ4lVFXmvIGDNLdk_NyyQ909papxkeJXL9g/viewform"
 };
