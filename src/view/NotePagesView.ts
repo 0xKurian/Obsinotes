@@ -25,6 +25,7 @@ import {
   StrokeObject,
   ShapeObject,
   ShapeType,
+  SelectionSubMode,
   TextObject,
   ImageObject,
   StrokeBoundingBox,
@@ -116,6 +117,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   saveStatusResetTimer: number | null = null;
   inkingController: InkingController;
   selectionController: SelectionController;
+  selectionSubMode: SelectionSubMode = "lasso";
   historyManager: HistoryManager;
 
   rootContainerEl!: HTMLElement;
@@ -823,9 +825,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       { key: "h", tool: "highlighter" },
       { key: "e", tool: "eraser" },
       { key: "s", tool: "shape" },
-      { key: "l", tool: "connector" },
+      { key: "c", tool: "connector" },
       { key: "n", tool: "sticky" },
       { key: "t", tool: "text" },
+      { key: "l", tool: "lasso" },
       { key: "q", tool: "lasso" }
     ];
 
@@ -1233,6 +1236,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     return this.inkingController.eraserRadius;
   }
 
+  onSetSelectionSubMode(mode: SelectionSubMode): void {
+    this.selectionSubMode = mode;
+    this.rootContainerEl.toggleClass("is-tool-select", mode === "pan");
+    this.updateStatusDisplay();
+  }
+
+  getActiveSelectionSubMode(): SelectionSubMode {
+    return this.selectionSubMode;
+  }
+
   onDuplicateSelection(): void {
     this.duplicateActiveSelection();
   }
@@ -1457,7 +1470,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         if (this.textController.isEditing()) {
           this.textController.commitActiveEdit();
         }
-        if (this.isPanTrigger(e) || (this.inkingController.activeTool === "select" && e.button === 0)) {
+        if (
+          this.isPanTrigger(e) ||
+          (this.inkingController.activeTool === "select" && e.button === 0) ||
+          (this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan" && e.button === 0)
+        ) {
           this.startPan(e.clientX, e.clientY, this.scrollerEl, e.pointerId);
           e.preventDefault();
         }
@@ -1901,6 +1918,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return;
     }
 
+    if (tool === "select") {
+      tool = "lasso";
+      this.selectionSubMode = "pan";
+      if (this.toolbar && this.toolbar.setSelectionSubMode) {
+        this.toolbar.setSelectionSubMode("pan");
+      }
+    }
+
     if (this.inkingController.activeTool === "lasso" && tool !== "lasso") {
       this.clearActiveSelectionCanvas();
     }
@@ -1928,7 +1953,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       });
     }
 
-    this.rootContainerEl.toggleClass("is-tool-select", tool === "select");
+    this.rootContainerEl.toggleClass("is-tool-select", tool === "lasso" && this.selectionSubMode === "pan");
     this.rootContainerEl.toggleClass("is-tool-text", tool === "text");
     this.rootContainerEl.toggleClass("is-tool-sticky", tool === "sticky");
     this.rootContainerEl.toggleClass("is-tool-eraser", tool === "eraser");
@@ -3049,13 +3074,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.isSpacePressed) {
       return true;
     }
+    if (
+      this.inkingController.activeTool === "select" ||
+      (this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan")
+    ) {
+      return true;
+    }
     if (e.pointerType === "pen") {
       return false;
     }
     if (e.button === 1 || e.button === 2) {
-      return true;
-    }
-    if (this.inkingController.activeTool === "select") {
       return true;
     }
     return false;
@@ -3069,9 +3097,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.panScrollTop = this.scrollerEl.scrollTop;
     this.rootContainerEl.addClass("is-panning");
     this.scrollerEl.addClass("is-panning");
-    if (target && pointerId !== undefined) {
+    const captureTarget = target ?? this.scrollerEl;
+    if (pointerId !== undefined) {
       try {
-        target.setPointerCapture(pointerId);
+        captureTarget.setPointerCapture(pointerId);
       } catch (err) {
         void err;
       }
@@ -3116,6 +3145,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       let toolName = tool.toUpperCase();
       if (tool === "pen" || tool === "pressure" || tool === "fountain") toolName = "PEN";
       else if (tool === "select") toolName = "SELECT / PAN";
+      else if (tool === "lasso") toolName = this.selectionSubMode === "pan" ? "HAND / PAN" : "LASSO SELECT";
       else if (tool === "sticky") toolName = "STICKY NOTE";
       else if (tool === "connector") toolName = "LINE / CONNECTOR";
       else if (tool === "shape") toolName = `SHAPE (${this.currentShapeType.toUpperCase()})`;
@@ -3396,7 +3426,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         if (this.textController.isEditing()) {
           this.textController.commitActiveEdit();
         }
-        this.startPan(e.clientX, e.clientY, activeCanvas, e.pointerId);
+        this.startPan(e.clientX, e.clientY, this.scrollerEl, e.pointerId);
+        e.preventDefault();
         e.stopPropagation();
         return;
       }
@@ -3982,7 +4013,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.registerDomEvent(activeCanvas, "dblclick", (e: MouseEvent) => {
       const tool = this.inkingController.activeTool;
-      if (tool !== "select" && tool !== "text" && tool !== "sticky") {
+      if (tool !== "select" && tool !== "lasso" && tool !== "text" && tool !== "sticky") {
         return;
       }
 
@@ -4006,7 +4037,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         []
       );
       if (hit?.text) {
-        if (tool === "select" || (tool === "text" && !hit.text.isSticky) || (tool === "sticky" && hit.text.isSticky)) {
+        if (tool === "select" || tool === "lasso" || (tool === "text" && !hit.text.isSticky) || (tool === "sticky" && hit.text.isSticky)) {
           this.textController.startEditing(page, pageFrame, hit.text);
         }
       } else if (tool === "sticky") {

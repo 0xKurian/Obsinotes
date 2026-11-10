@@ -3,6 +3,7 @@ import {
   EraserMode,
   PageOrientation,
   PaperTemplateType,
+  SelectionSubMode,
   ShapeType,
   ToolType
 } from "../types";
@@ -19,6 +20,8 @@ export interface NotePagesToolbarDelegate {
   onSelectEraserMode(mode: EraserMode): void;
   onSelectEraserRadius?(radius: number): void;
   getActiveEraserRadius?(): number;
+  onSetSelectionSubMode?(mode: SelectionSubMode): void;
+  getActiveSelectionSubMode?(): SelectionSubMode;
   onDuplicateSelection(): void;
   onDeleteSelection(): void;
   onSelectPaperTemplate(type: PaperTemplateType): void;
@@ -103,6 +106,8 @@ export class NotePagesToolbar {
   precisionEraserBtn!: HTMLButtonElement;
   eraserSizeButtons: Map<number, HTMLElement> = new Map();
   selectionActionsContainer!: HTMLElement;
+  selectionLassoBtn!: HTMLButtonElement;
+  selectionPanBtn!: HTMLButtonElement;
   duplicateSelectionBtn!: HTMLButtonElement;
   deleteSelectionBtn!: HTMLButtonElement;
   paperTemplateButtons: Map<PaperTemplateType, HTMLElement> = new Map();
@@ -206,7 +211,7 @@ export class NotePagesToolbar {
 
     this.toolButtons.clear();
     const primaryTools: { type: ToolType; icon: string; title: string }[] = [
-      { type: "select", icon: "mouse-pointer", title: "Select / Pan (V)" },
+      { type: "lasso", icon: "lasso-select", title: "Select & Pan (L, V)" },
       { type: "pressure", icon: "pen-tool", title: "Pen (P)" },
       { type: "highlighter", icon: "highlighter", title: "Highlighter (H)" },
       { type: "eraser", icon: "eraser", title: "Eraser (E)" },
@@ -214,8 +219,7 @@ export class NotePagesToolbar {
       { type: "connector", icon: "arrow-up-right", title: "Line / Connector (C)" },
       { type: "sticky", icon: "sticky-note", title: "Sticky Note (N)" },
       { type: "text", icon: "type", title: "Text Box (T)" },
-      { type: "image", icon: "image", title: "Insert Image (I)" },
-      { type: "lasso", icon: "lasso-select", title: "Lasso Selection (L)" }
+      { type: "image", icon: "image", title: "Insert Image (I)" }
     ];
 
     const currentActiveTool = this.delegate.getActiveTool();
@@ -223,7 +227,9 @@ export class NotePagesToolbar {
       const isInitiallyActive =
         tool.type === "pressure"
           ? (currentActiveTool === "pen" || currentActiveTool === "pressure" || currentActiveTool === "fountain")
-          : tool.type === currentActiveTool;
+          : tool.type === "lasso"
+            ? (currentActiveTool === "lasso" || currentActiveTool === "select")
+            : tool.type === currentActiveTool;
 
       const btn = toolsGroup.createEl("button", {
         cls: isInitiallyActive ? "notepages-tool-button is-active" : "notepages-tool-button"
@@ -637,6 +643,24 @@ export class NotePagesToolbar {
     this.selectionActionsContainer.toggleClass("is-hidden", true);
     this.selectionActionsContainer.toggle(false);
 
+    this.selectionLassoBtn = this.selectionActionsContainer.createEl("button", {
+      cls: "notepages-tool-button is-active"
+    });
+    setIcon(this.selectionLassoBtn, "lasso-select");
+    this.selectionLassoBtn.setAttribute("title", "Lasso selection mode");
+    this.delegate.registerDomEvent(this.selectionLassoBtn, "click", () => {
+      this.setSelectionSubMode("lasso");
+    });
+
+    this.selectionPanBtn = this.selectionActionsContainer.createEl("button", {
+      cls: "notepages-tool-button"
+    });
+    setIcon(this.selectionPanBtn, "hand");
+    this.selectionPanBtn.setAttribute("title", "Pan / scroll page mode");
+    this.delegate.registerDomEvent(this.selectionPanBtn, "click", () => {
+      this.setSelectionSubMode("pan");
+    });
+
     this.duplicateSelectionBtn = this.selectionActionsContainer.createEl("button", {
       cls: "notepages-tool-button"
     });
@@ -886,6 +910,12 @@ export class NotePagesToolbar {
         } else {
           btn.removeClass("is-active");
         }
+      } else if (t === "lasso" || t === "select") {
+        if (tool === "lasso" || tool === "select") {
+          btn.addClass("is-active");
+        } else {
+          btn.removeClass("is-active");
+        }
       } else {
         if (t === tool) {
           btn.addClass("is-active");
@@ -910,9 +940,22 @@ export class NotePagesToolbar {
       this.eraserControlsContainer.toggle(tool === "eraser");
     }
     if (this.selectionActionsContainer) {
-      const showSelection = tool === "lasso" && hasSelection;
+      const showSelection = tool === "lasso" || tool === "select";
       this.selectionActionsContainer.toggleClass("is-hidden", !showSelection);
       this.selectionActionsContainer.toggle(showSelection);
+      if (this.duplicateSelectionBtn) {
+        this.duplicateSelectionBtn.toggle(hasSelection);
+      }
+      if (this.deleteSelectionBtn) {
+        this.deleteSelectionBtn.toggle(hasSelection);
+      }
+      const currentMode = this.delegate.getActiveSelectionSubMode ? this.delegate.getActiveSelectionSubMode() : "lasso";
+      if (this.selectionLassoBtn) {
+        this.selectionLassoBtn.toggleClass("is-active", currentMode === "lasso");
+      }
+      if (this.selectionPanBtn) {
+        this.selectionPanBtn.toggleClass("is-active", currentMode === "pan");
+      }
     }
     if (this.textControlsContainer) {
       this.textControlsContainer.toggleClass("is-hidden", tool !== "text");
@@ -940,7 +983,8 @@ export class NotePagesToolbar {
       tool === "text" ||
       tool === "sticky" ||
       tool === "eraser" ||
-      (tool === "lasso" && hasSelection);
+      tool === "lasso" ||
+      tool === "select";
 
     if (this.subToolbarEl) {
       const showSub = Boolean(needsSubToolbar && !this.isCollapsed);
@@ -1029,13 +1073,23 @@ export class NotePagesToolbar {
 
   updateSelectionUi(hasSelection: boolean): void {
     this.hasSelection = hasSelection;
-    if (this.selectionActionsContainer) {
-      this.selectionActionsContainer.toggleClass("is-hidden", !hasSelection);
-      this.selectionActionsContainer.toggle(hasSelection);
+    if (this.duplicateSelectionBtn) {
+      this.duplicateSelectionBtn.toggle(hasSelection);
     }
-    if (this.currentTool === "lasso" && this.subToolbarEl && !this.isCollapsed) {
-      this.subToolbarEl.toggleClass("is-hidden", !hasSelection);
-      this.subToolbarEl.toggle(hasSelection);
+    if (this.deleteSelectionBtn) {
+      this.deleteSelectionBtn.toggle(hasSelection);
+    }
+  }
+
+  setSelectionSubMode(mode: SelectionSubMode): void {
+    if (this.selectionLassoBtn) {
+      this.selectionLassoBtn.toggleClass("is-active", mode === "lasso");
+    }
+    if (this.selectionPanBtn) {
+      this.selectionPanBtn.toggleClass("is-active", mode === "pan");
+    }
+    if (this.delegate.onSetSelectionSubMode) {
+      this.delegate.onSetSelectionSubMode(mode);
     }
   }
 

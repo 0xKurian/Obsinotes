@@ -241,21 +241,25 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown for eraser tool");
     assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden for eraser tool");
 
-    toolbar.setActiveTool("select", "rectangle", false);
-    assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden for select pan tool");
-    assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden for select pan tool");
-
     toolbar.setActiveTool("image", "rectangle", false);
     assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden for image tool");
     assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden for image tool");
 
     toolbar.setActiveTool("lasso", "rectangle", false);
-    assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden for lasso without selection");
-    assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden for lasso without selection");
+    assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown for unified lasso select tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden for unified lasso select tool");
+
+    toolbar.setSelectionSubMode("pan");
+    assert.strictEqual((toolbar.selectionPanBtn as unknown as MockDomElement).hasClass("is-active"), true);
+    assert.strictEqual((toolbar.selectionLassoBtn as unknown as MockDomElement).hasClass("is-active"), false);
+
+    toolbar.setSelectionSubMode("lasso");
+    assert.strictEqual((toolbar.selectionLassoBtn as unknown as MockDomElement).hasClass("is-active"), true);
+    assert.strictEqual((toolbar.selectionPanBtn as unknown as MockDomElement).hasClass("is-active"), false);
 
     toolbar.updateSelectionUi(true);
-    assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown when lasso has active selection");
-    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden when lasso has active selection");
+    assert.strictEqual((toolbar.duplicateSelectionBtn as unknown as MockDomElement).isShown, true);
+    assert.strictEqual((toolbar.deleteSelectionBtn as unknown as MockDomElement).isShown, true);
   });
 
   test("toggleCollapse toggles dock collapse state and updates UI accordingly", () => {

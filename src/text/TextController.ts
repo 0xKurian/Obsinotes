@@ -449,7 +449,7 @@ export class TextController {
 
       box.addEventListener("dblclick", (e: MouseEvent) => {
         const curTool = this.callbacks.getActiveTool ? this.callbacks.getActiveTool() : "";
-        if (curTool !== "select" && curTool !== "text" && curTool !== "sticky") {
+        if (curTool !== "select" && curTool !== "lasso" && curTool !== "text" && curTool !== "sticky") {
           return;
         }
         if (curTool === "sticky" && !t.isSticky) {

@@ -7,6 +7,7 @@ export type PageSizePreset = "A4" | "Letter" | "Custom";
 export type PageOrientation = "portrait" | "landscape";
 export type ToolType = "select" | "pen" | "pressure" | "fountain" | "highlighter" | "eraser" | "lasso" | "shape" | "connector" | "sticky" | "text" | "image";
 export type EraserMode = "stroke" | "precision";
+export type SelectionSubMode = "lasso" | "pan";
 export type PaperTemplateType = "blank" | "ruled" | "grid" | "dotted" | "cornell";
 
 export interface PageDimensions {
