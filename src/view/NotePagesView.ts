@@ -1423,6 +1423,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.handleScroll();
     });
 
+    this.registerDomEvent(this.scrollerEl, "pointermove", (e: PointerEvent) => {
+      if (this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null) {
+        this.updateEraserCursorPosition(e.clientX, e.clientY);
+      }
+    });
+
+    this.registerDomEvent(this.scrollerEl, "pointerleave", () => {
+      this.hideEraserCursor();
+    });
+
     this.registerDomEvent(this.scrollerEl, "pointerdown", (e: PointerEvent) => {
       if (e.pointerType === "touch") {
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
@@ -1690,6 +1700,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       if (this.isDraggingSelection) {
         this.updateSelectionDrag(e.clientX, e.clientY);
       }
+      if (this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null) {
+        this.updateEraserCursorPosition(e.clientX, e.clientY);
+      }
     });
 
     this.registerDomEvent(window, "pointerup", (e: PointerEvent) => {
@@ -1756,6 +1769,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       if (this.isDraggingSelection) {
         this.cancelSelectionDrag();
       }
+    });
+
+    this.registerDomEvent(window, "pointerleave", () => {
+      this.hideEraserCursor();
     });
 
     this.registerDomEvent(window, "keydown", (e: KeyboardEvent) => {
@@ -2814,7 +2831,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   private updateEraserCursorPosition(clientX: number, clientY: number): void {
-    if (!this.eraserCursorEl) {
+    if (!this.eraserCursorEl || !this.rootContainerEl) {
       return;
     }
     const isEraser = this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null;
@@ -2822,13 +2839,42 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.eraserCursorEl.addClass("is-hidden");
       return;
     }
+
+    const rootRect = this.rootContainerEl.getBoundingClientRect ? this.rootContainerEl.getBoundingClientRect() : null;
+    if (rootRect) {
+      if (
+        clientX < rootRect.left ||
+        clientX > rootRect.right ||
+        clientY < rootRect.top ||
+        clientY > rootRect.bottom
+      ) {
+        this.eraserCursorEl.addClass("is-hidden");
+        return;
+      }
+    }
+
+    if (this.toolbar && this.toolbar.toolbarWrapperEl && this.toolbar.toolbarWrapperEl.getBoundingClientRect) {
+      const tbRect = this.toolbar.toolbarWrapperEl.getBoundingClientRect();
+      if (
+        clientX >= tbRect.left &&
+        clientX <= tbRect.right &&
+        clientY >= tbRect.top &&
+        clientY <= tbRect.bottom
+      ) {
+        this.eraserCursorEl.addClass("is-hidden");
+        return;
+      }
+    }
+
+    const relX = rootRect ? clientX - rootRect.left : clientX;
+    const relY = rootRect ? clientY - rootRect.top : clientY;
     const screenRadius = this.inkingController.eraserRadius * this.zoomLevel;
-    const diameter = screenRadius * 2;
+    const diameter = Math.round(screenRadius * 2);
+
     this.eraserCursorEl.setCssStyles({
       width: `${diameter}px`,
       height: `${diameter}px`,
-      left: `${clientX - screenRadius}px`,
-      top: `${clientY - screenRadius}px`
+      transform: `translate3d(${Math.round(relX - screenRadius)}px, ${Math.round(relY - screenRadius)}px, 0)`
     });
     this.eraserCursorEl.removeClass("is-hidden");
   }
@@ -3857,10 +3903,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
         this.hideEraserCursor();
       }
-    });
-
-    this.registerDomEvent(activeCanvas, "pointerleave", () => {
-      this.hideEraserCursor();
     });
 
     this.registerDomEvent(activeCanvas, "pointercancel", (e: PointerEvent) => {

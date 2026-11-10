@@ -481,14 +481,16 @@
 }
 
 .notepages-eraser-cursor {
-  position: fixed;
+  position: absolute;
+  top: 0;
+  left: 0;
   pointer-events: none;
   border-radius: 50%;
   border: 1.5px solid var(--text-accent);
   background-color: rgba(var(--text-accent-rgb, 100, 150, 255), 0.12);
   z-index: 1000;
   box-sizing: border-box;
-  transform: translateZ(0);
+  will-change: transform;
   transition: width 0.08s ease, height 0.08s ease;
 }
 
