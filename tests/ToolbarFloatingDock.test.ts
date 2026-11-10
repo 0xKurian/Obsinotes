@@ -227,27 +227,35 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
 
     toolbar.setActiveTool("pressure", "rectangle", false);
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown for pressure tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden for pressure tool");
 
     toolbar.setActiveTool("shape", "circle", false);
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown for shape tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden for shape tool");
 
     toolbar.setActiveTool("text", "rectangle", false);
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown for text tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden for text tool");
 
     toolbar.setActiveTool("eraser", "rectangle", false);
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown for eraser tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden for eraser tool");
 
     toolbar.setActiveTool("select", "rectangle", false);
     assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden for select pan tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden for select pan tool");
 
     toolbar.setActiveTool("image", "rectangle", false);
     assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden for image tool");
+    assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden for image tool");
 
     toolbar.setActiveTool("lasso", "rectangle", false);
     assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden for lasso without selection");
+    assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden for lasso without selection");
 
     toolbar.updateSelectionUi(true);
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be shown when lasso has active selection");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden when lasso has active selection");
   });
 
   test("toggleCollapse toggles dock collapse state and updates UI accordingly", () => {
@@ -266,11 +274,13 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(toolbar.isCollapsed, true);
     assert.strictEqual(wrapper.hasClass("is-dock-collapsed"), true);
     assert.strictEqual(subDock.isShown, false, "Sub-dock must be hidden when collapsed");
+    assert.strictEqual(subDock.hasClass("is-hidden"), true, "Sub-dock must have is-hidden when collapsed");
 
     toolbar.toggleCollapse();
     assert.strictEqual(toolbar.isCollapsed, false);
     assert.strictEqual(wrapper.hasClass("is-dock-collapsed"), false);
     assert.strictEqual(subDock.isShown, true, "Sub-dock must be restored for pressure tool upon expanding");
+    assert.strictEqual(subDock.hasClass("is-hidden"), false, "Sub-dock must not have is-hidden upon expanding");
   });
 
   test("togglePagePopover opens and closes popover modal cleanly", () => {

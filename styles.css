@@ -96,7 +96,7 @@
 
 .notepages-subtoolbar-float {
   pointer-events: auto;
-  display: none;
+  display: inline-flex;
   flex-direction: row;
   align-items: center;
   padding: 4px 12px;
@@ -115,6 +115,10 @@
   overflow-x: auto;
   overflow-y: hidden;
   animation: notepages-subdock-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.notepages-subtoolbar-float.is-hidden {
+  display: none !important;
 }
 
 .notepages-subtoolbar-float::-webkit-scrollbar {
@@ -137,7 +141,9 @@
   position: absolute;
   top: 56px;
   right: 28px;
-  min-width: 250px;
+  width: 290px;
+  min-width: 290px;
+  max-width: calc(100vw - 32px);
   background-color: var(--background-primary);
   background: var(--background-primary);
   backdrop-filter: blur(20px);
@@ -150,6 +156,7 @@
   flex-direction: column;
   gap: 10px;
   z-index: 60;
+  box-sizing: border-box;
   animation: notepages-popover-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -199,66 +206,95 @@
 .notepages-popover-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
+  gap: 6px;
 }
 
-.notepages-popover-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 4px;
-  border-radius: var(--button-radius, 6px);
+button.notepages-popover-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  padding: 8px 4px !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  max-height: 58px !important;
+  box-sizing: border-box !important;
+  border-radius: var(--button-radius, 8px) !important;
   border: 1px solid var(--divider-color);
   background-color: var(--background-secondary);
   color: var(--text-normal);
   cursor: pointer;
-  font-size: 11px;
+  overflow: hidden !important;
   transition: all 0.15s ease;
 }
 
-.notepages-popover-item:hover {
+button.notepages-popover-item:hover {
   background-color: var(--interactive-hover);
   border-color: var(--interactive-accent);
 }
 
-.notepages-popover-item.is-active {
+button.notepages-popover-item.is-active {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   border-color: var(--interactive-accent);
 }
 
+.notepages-popover-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 .notepages-popover-item-icon svg {
   width: 16px;
   height: 16px;
+  display: block;
 }
 
-.notepages-popover-row-btn,
-.notepages-popover-action-btn {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+.notepages-popover-item-text {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+  display: block;
+}
+
+button.notepages-popover-row-btn,
+button.notepages-popover-action-btn {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  padding: 8px 12px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
   border-radius: var(--button-radius, 6px);
   border: 1px solid var(--divider-color);
   background-color: var(--background-secondary);
   color: var(--text-normal);
-  font-size: 12px;
+  font-size: 12px !important;
   cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
   transition: all 0.15s ease;
 }
 
-.notepages-popover-row-btn:hover,
-.notepages-popover-action-btn:hover {
+button.notepages-popover-row-btn:hover,
+button.notepages-popover-action-btn:hover {
   background-color: var(--interactive-hover);
   border-color: var(--interactive-accent);
 }
 
-.notepages-popover-action-btn.notepages-danger-action:hover {
+button.notepages-popover-action-btn.notepages-danger-action:hover {
   background-color: var(--background-modifier-error);
   color: var(--text-on-accent);
   border-color: var(--background-modifier-error);
@@ -295,6 +331,10 @@
   gap: 4px;
   flex-wrap: nowrap;
   flex-shrink: 0;
+}
+
+.notepages-palette-group.is-hidden {
+  display: none !important;
 }
 
 .notepages-color-chip {

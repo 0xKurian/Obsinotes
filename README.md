@@ -5,7 +5,7 @@
 **The modern, high-performance digital notebook and handwritten whiteboard for [Obsidian](https://obsidian.md).**
 
 [![Obsidian Target](https://img.shields.io/badge/Obsidian-v1.5.12+-purple?logo=obsidian&style=flat-square)](https://obsidian.md)
-[![Version](https://img.shields.io/badge/Version-1.2.0-blue?style=flat-square)](https://github.com/0xKurian/Obsinotes/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1-blue?style=flat-square)](https://github.com/0xKurian/Obsinotes/releases)
 [![Tests](https://img.shields.io/badge/Tests-178%20Passed-brightgreen?style=flat-square)](https://github.com/0xKurian/Obsinotes)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)

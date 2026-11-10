@@ -315,6 +315,7 @@ export class NotePagesToolbar {
     this.textControlsContainer = this.subToolbarEl.createDiv({
       cls: "notepages-palette-group notepages-subdock-group"
     });
+    this.textControlsContainer.toggleClass("is-hidden", currentActiveTool !== "text");
     this.textControlsContainer.toggle(currentActiveTool === "text");
 
     const textOpts = this.delegate.getTextOptions();
@@ -393,6 +394,7 @@ export class NotePagesToolbar {
     this.shapeControlsContainer = this.subToolbarEl.createDiv({
       cls: "notepages-palette-group notepages-subdock-group"
     });
+    this.shapeControlsContainer.toggleClass("is-hidden", currentActiveTool !== "shape");
     this.shapeControlsContainer.toggle(currentActiveTool === "shape");
 
     this.shapeButtons.clear();
@@ -434,6 +436,7 @@ export class NotePagesToolbar {
     this.stickyControlsContainer = this.subToolbarEl.createDiv({
       cls: "notepages-palette-group notepages-subdock-group"
     });
+    this.stickyControlsContainer.toggleClass("is-hidden", currentActiveTool !== "sticky");
     this.stickyControlsContainer.toggle(currentActiveTool === "sticky");
 
     const pastelColors = [
@@ -569,6 +572,7 @@ export class NotePagesToolbar {
     this.eraserControlsContainer = this.subToolbarEl.createDiv({
       cls: "notepages-palette-group notepages-subdock-group"
     });
+    this.eraserControlsContainer.toggleClass("is-hidden", true);
     this.eraserControlsContainer.toggle(false);
 
     this.strokeEraserBtn = this.eraserControlsContainer.createEl("button", {
@@ -594,6 +598,7 @@ export class NotePagesToolbar {
     this.selectionActionsContainer = this.subToolbarEl.createDiv({
       cls: "notepages-palette-group notepages-subdock-group"
     });
+    this.selectionActionsContainer.toggleClass("is-hidden", true);
     this.selectionActionsContainer.toggle(false);
 
     this.duplicateSelectionBtn = this.selectionActionsContainer.createEl("button", {
@@ -786,6 +791,7 @@ export class NotePagesToolbar {
     if (this.isCollapsed) {
       this.closePagePopover();
       if (this.subToolbarEl) {
+        this.subToolbarEl.addClass("is-hidden");
         this.subToolbarEl.toggle(false);
       }
     } else {
@@ -855,21 +861,29 @@ export class NotePagesToolbar {
 
     const usesPenColors = isPen || tool === "shape" || tool === "connector" || tool === "highlighter" || tool === "text";
     if (this.colorPaletteContainer) {
+      this.colorPaletteContainer.toggleClass("is-hidden", !usesPenColors);
       this.colorPaletteContainer.toggle(usesPenColors);
     }
     if (this.widthSelectorContainer) {
-      this.widthSelectorContainer.toggle(isPen || tool === "shape" || tool === "connector" || tool === "highlighter");
+      const showWidth = isPen || tool === "shape" || tool === "connector" || tool === "highlighter";
+      this.widthSelectorContainer.toggleClass("is-hidden", !showWidth);
+      this.widthSelectorContainer.toggle(showWidth);
     }
     if (this.eraserControlsContainer) {
+      this.eraserControlsContainer.toggleClass("is-hidden", tool !== "eraser");
       this.eraserControlsContainer.toggle(tool === "eraser");
     }
     if (this.selectionActionsContainer) {
-      this.selectionActionsContainer.toggle(tool === "lasso" && hasSelection);
+      const showSelection = tool === "lasso" && hasSelection;
+      this.selectionActionsContainer.toggleClass("is-hidden", !showSelection);
+      this.selectionActionsContainer.toggle(showSelection);
     }
     if (this.textControlsContainer) {
+      this.textControlsContainer.toggleClass("is-hidden", tool !== "text");
       this.textControlsContainer.toggle(tool === "text");
     }
     if (this.shapeControlsContainer) {
+      this.shapeControlsContainer.toggleClass("is-hidden", tool !== "shape");
       this.shapeControlsContainer.toggle(tool === "shape");
     }
     if (tool === "shape") {
@@ -878,6 +892,7 @@ export class NotePagesToolbar {
       });
     }
     if (this.stickyControlsContainer) {
+      this.stickyControlsContainer.toggleClass("is-hidden", tool !== "sticky");
       this.stickyControlsContainer.toggle(tool === "sticky");
     }
 
@@ -892,7 +907,9 @@ export class NotePagesToolbar {
       (tool === "lasso" && hasSelection);
 
     if (this.subToolbarEl) {
-      this.subToolbarEl.toggle(Boolean(needsSubToolbar && !this.isCollapsed));
+      const showSub = Boolean(needsSubToolbar && !this.isCollapsed);
+      this.subToolbarEl.toggleClass("is-hidden", !showSub);
+      this.subToolbarEl.toggle(showSub);
     }
   }
 
@@ -967,9 +984,11 @@ export class NotePagesToolbar {
   updateSelectionUi(hasSelection: boolean): void {
     this.hasSelection = hasSelection;
     if (this.selectionActionsContainer) {
+      this.selectionActionsContainer.toggleClass("is-hidden", !hasSelection);
       this.selectionActionsContainer.toggle(hasSelection);
     }
     if (this.currentTool === "lasso" && this.subToolbarEl && !this.isCollapsed) {
+      this.subToolbarEl.toggleClass("is-hidden", !hasSelection);
       this.subToolbarEl.toggle(hasSelection);
     }
   }

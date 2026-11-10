@@ -1317,6 +1317,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   onSelectShapeType(shape: ShapeType): void {
     this.currentShapeType = shape;
+    this.updateStatusDisplay();
   }
 
   onToggleShapeFill(): boolean {
