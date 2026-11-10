@@ -54,7 +54,7 @@ export interface NotePagesToolbarDelegate {
     textAlign: "left" | "center" | "right";
   };
   registerDomEvent<K extends keyof HTMLElementEventMap>(
-    el: HTMLElement,
+    el: HTMLElement | Window,
     type: K,
     callback: (ev: HTMLElementEventMap[K]) => void
   ): void;
@@ -62,7 +62,17 @@ export interface NotePagesToolbarDelegate {
 
 export class NotePagesToolbar {
   private delegate: NotePagesToolbarDelegate;
+  toolbarWrapperEl!: HTMLElement;
   toolbarEl!: HTMLElement;
+  subToolbarEl!: HTMLElement;
+  pagePopoverEl!: HTMLElement;
+  collapseBtn!: HTMLButtonElement;
+  pageMenuBtn!: HTMLButtonElement;
+  isCollapsed: boolean = false;
+  isPagePopoverOpen: boolean = false;
+  private hasSelection: boolean = false;
+  private currentTool: ToolType = "pressure";
+
   undoBtn!: HTMLButtonElement;
   redoBtn!: HTMLButtonElement;
   toolButtons: Map<ToolType, HTMLElement> = new Map();
@@ -97,18 +107,45 @@ export class NotePagesToolbar {
   zoomResetBtn!: HTMLButtonElement;
   titleBtn!: HTMLButtonElement;
   titleTextEl!: HTMLElement;
+  addPageBtn!: HTMLButtonElement;
+  duplicatePageBtn!: HTMLButtonElement;
+  deletePageBtn!: HTMLButtonElement;
+  importPdfBtn!: HTMLButtonElement;
 
   constructor(delegate: NotePagesToolbarDelegate) {
     this.delegate = delegate;
   }
 
   build(parentEl: HTMLElement): void {
-    this.toolbarEl = parentEl.createDiv({
-      cls: "notepages-toolbar"
+    this.toolbarWrapperEl = parentEl.createDiv({
+      cls: "notepages-toolbar-float-wrapper"
     });
 
+    this.toolbarEl = this.toolbarWrapperEl.createDiv({
+      cls: "notepages-toolbar notepages-floating-dock"
+    });
+
+    this.subToolbarEl = this.toolbarWrapperEl.createDiv({
+      cls: "notepages-subtoolbar-float"
+    });
+
+    this.pagePopoverEl = this.toolbarWrapperEl.createDiv({
+      cls: "notepages-page-popover is-hidden"
+    });
+
+    this.buildMainDock();
+    this.buildSubDock();
+    this.buildPagePopover();
+    this.registerGlobalEvents();
+
+    const activeTool = this.delegate.getActiveTool();
+    this.currentTool = activeTool;
+    this.setActiveTool(activeTool, this.delegate.getCurrentShapeType(), false);
+  }
+
+  private buildMainDock(): void {
     const leftGroup = this.toolbarEl.createDiv({
-      cls: "notepages-toolbar-left"
+      cls: "notepages-dock-section notepages-dock-left"
     });
 
     const sidebarToggleBtn = leftGroup.createEl("button", {
@@ -136,10 +173,10 @@ export class NotePagesToolbar {
       this.delegate.onQuickRename();
     });
 
-    leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
+    leftGroup.createDiv({ cls: "notepages-toolbar-separator notepages-keep-collapsed" });
 
     this.undoBtn = leftGroup.createEl("button", {
-      cls: "notepages-icon-btn"
+      cls: "notepages-tool-button notepages-icon-btn"
     });
     setIcon(this.undoBtn, "undo");
     this.undoBtn.setAttribute("title", "Undo (Ctrl+Z)");
@@ -149,7 +186,7 @@ export class NotePagesToolbar {
     });
 
     this.redoBtn = leftGroup.createEl("button", {
-      cls: "notepages-icon-btn"
+      cls: "notepages-tool-button notepages-icon-btn"
     });
     setIcon(this.redoBtn, "redo");
     this.redoBtn.setAttribute("title", "Redo (Ctrl+Y)");
@@ -158,7 +195,11 @@ export class NotePagesToolbar {
       this.delegate.onRedo();
     });
 
-    leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
+    this.toolbarEl.createDiv({ cls: "notepages-toolbar-separator" });
+
+    const toolsGroup = this.toolbarEl.createDiv({
+      cls: "notepages-dock-section notepages-dock-tools"
+    });
 
     this.toolButtons.clear();
     const primaryTools: { type: ToolType; icon: string; title: string }[] = [
@@ -167,11 +208,11 @@ export class NotePagesToolbar {
       { type: "highlighter", icon: "highlighter", title: "Highlighter (H)" },
       { type: "eraser", icon: "eraser", title: "Eraser (E)" },
       { type: "shape", icon: "shapes", title: "Shapes (S)" },
-      { type: "connector", icon: "arrow-up-right", title: "Line / Connector (L)" },
+      { type: "connector", icon: "arrow-up-right", title: "Line / Connector (C)" },
       { type: "sticky", icon: "sticky-note", title: "Sticky Note (N)" },
       { type: "text", icon: "type", title: "Text Box (T)" },
       { type: "image", icon: "image", title: "Insert Image (I)" },
-      { type: "lasso", icon: "lasso-select", title: "Lasso Selection (Q)" }
+      { type: "lasso", icon: "lasso-select", title: "Lasso Selection (L)" }
     ];
 
     const currentActiveTool = this.delegate.getActiveTool();
@@ -181,7 +222,7 @@ export class NotePagesToolbar {
           ? (currentActiveTool === "pen" || currentActiveTool === "pressure" || currentActiveTool === "fountain")
           : tool.type === currentActiveTool;
 
-      const btn = leftGroup.createEl("button", {
+      const btn = toolsGroup.createEl("button", {
         cls: isInitiallyActive ? "notepages-tool-button is-active" : "notepages-tool-button"
       });
       setIcon(btn, tool.icon);
@@ -193,10 +234,86 @@ export class NotePagesToolbar {
       });
     }
 
-    leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
+    this.toolbarEl.createDiv({ cls: "notepages-toolbar-separator" });
 
-    this.textControlsContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    const rightGroup = this.toolbarEl.createDiv({
+      cls: "notepages-dock-section notepages-dock-right"
+    });
+
+    this.pageMenuBtn = rightGroup.createEl("button", {
+      cls: "notepages-tool-button notepages-dock-page-btn"
+    });
+    setIcon(this.pageMenuBtn, "layout-template");
+    this.pageMenuBtn.setAttribute("title", "Paper templates & page management");
+    this.delegate.registerDomEvent(this.pageMenuBtn, "click", (e: MouseEvent) => {
+      e.stopPropagation();
+      this.togglePagePopover();
+    });
+
+    const zoomGroup = rightGroup.createDiv({
+      cls: "notepages-dock-zoom-group"
+    });
+
+    const zoomOutBtn = zoomGroup.createEl("button", {
+      cls: "notepages-tool-button notepages-zoom-stepper-btn"
+    });
+    setIcon(zoomOutBtn, "zoom-out");
+    zoomOutBtn.setAttribute("title", "Zoom out (-)");
+    this.delegate.registerDomEvent(zoomOutBtn, "click", () => {
+      this.delegate.onChangeZoom(-0.1);
+    });
+
+    this.zoomResetBtn = zoomGroup.createEl("button", {
+      cls: "notepages-tool-button notepages-zoom-btn"
+    });
+    this.zoomResetBtn.setText(`${Math.round(this.delegate.getZoomLevel() * 100)}%`);
+    this.zoomResetBtn.setAttribute("title", "Reset zoom to 100% (0)");
+    this.delegate.registerDomEvent(this.zoomResetBtn, "click", () => {
+      this.delegate.onResetZoom();
+    });
+
+    const zoomInBtn = zoomGroup.createEl("button", {
+      cls: "notepages-tool-button notepages-zoom-stepper-btn"
+    });
+    setIcon(zoomInBtn, "zoom-in");
+    zoomInBtn.setAttribute("title", "Zoom in (+)");
+    this.delegate.registerDomEvent(zoomInBtn, "click", () => {
+      this.delegate.onChangeZoom(0.1);
+    });
+
+    const exportBtn = rightGroup.createEl("button", {
+      cls: "notepages-tool-button notepages-export-btn"
+    });
+    setIcon(exportBtn, "file-down");
+    exportBtn.setAttribute("title", "Export notebook (PDF / PNG / SVG)");
+    this.delegate.registerDomEvent(exportBtn, "click", () => {
+      this.delegate.onExportNotebook();
+    });
+
+    rightGroup.createDiv({ cls: "notepages-toolbar-separator notepages-keep-collapsed" });
+
+    this.collapseBtn = rightGroup.createEl("button", {
+      cls: "notepages-tool-button notepages-collapse-btn notepages-keep-collapsed"
+    });
+    setIcon(this.collapseBtn, "chevron-up");
+    this.collapseBtn.setAttribute("title", "Collapse toolbar (focus mode)");
+    this.delegate.registerDomEvent(this.collapseBtn, "click", () => {
+      this.toggleCollapse();
+    });
+
+    this.delegate.registerDomEvent(this.toolbarEl, "wheel", (e: WheelEvent) => {
+      if (e.deltaY !== 0 && !e.shiftKey && this.toolbarEl.scrollWidth > this.toolbarEl.clientWidth) {
+        this.toolbarEl.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    });
+  }
+
+  private buildSubDock(): void {
+    const currentActiveTool = this.delegate.getActiveTool();
+
+    this.textControlsContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
     this.textControlsContainer.toggle(currentActiveTool === "text");
 
@@ -273,8 +390,8 @@ export class NotePagesToolbar {
       this.delegate.onTextDone();
     });
 
-    this.shapeControlsContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    this.shapeControlsContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
     this.shapeControlsContainer.toggle(currentActiveTool === "shape");
 
@@ -314,8 +431,8 @@ export class NotePagesToolbar {
       this.shapeFillBtn.toggleClass("is-active", filled);
     });
 
-    this.stickyControlsContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    this.stickyControlsContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
     this.stickyControlsContainer.toggle(currentActiveTool === "sticky");
 
@@ -353,10 +470,8 @@ export class NotePagesToolbar {
       this.delegate.onTextDone();
     });
 
-    leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
-
-    this.colorPaletteContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    this.colorPaletteContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
 
     const colorPresets = [
@@ -397,10 +512,8 @@ export class NotePagesToolbar {
       this.delegate.onSelectColor(this.colorPickerInput.value);
     });
 
-    leftGroup.createDiv({ cls: "notepages-toolbar-separator" });
-
-    this.widthSelectorContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    this.widthSelectorContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
 
     const currentActiveWidth = this.delegate.getActiveWidth();
@@ -453,8 +566,8 @@ export class NotePagesToolbar {
       this.delegate.onSelectWidth(next);
     });
 
-    this.eraserControlsContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    this.eraserControlsContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
     this.eraserControlsContainer.toggle(false);
 
@@ -478,8 +591,8 @@ export class NotePagesToolbar {
       this.delegate.onSelectEraserMode("precision");
     });
 
-    this.selectionActionsContainer = leftGroup.createDiv({
-      cls: "notepages-palette-group"
+    this.selectionActionsContainer = this.subToolbarEl.createDiv({
+      cls: "notepages-palette-group notepages-subdock-group"
     });
     this.selectionActionsContainer.toggle(false);
 
@@ -493,51 +606,81 @@ export class NotePagesToolbar {
     });
 
     this.deleteSelectionBtn = this.selectionActionsContainer.createEl("button", {
-      cls: "notepages-tool-button"
+      cls: "notepages-tool-button notepages-danger-action"
     });
     setIcon(this.deleteSelectionBtn, "trash-2");
     this.deleteSelectionBtn.setAttribute("title", "Delete selection (del)");
     this.delegate.registerDomEvent(this.deleteSelectionBtn, "click", () => {
       this.delegate.onDeleteSelection();
     });
+  }
 
-    const rightGroup = this.toolbarEl.createDiv({
-      cls: "notepages-toolbar-right"
+  private buildPagePopover(): void {
+    const popoverHeader = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-header"
+    });
+    popoverHeader.createSpan({
+      cls: "notepages-popover-title",
+      text: "Paper & Layout"
     });
 
-    const pageFormatGroup = rightGroup.createDiv({
-      cls: "notepages-palette-group"
+    const templateSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    templateSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Paper Template"
+    });
+
+    const templateGrid = templateSection.createDiv({
+      cls: "notepages-popover-grid"
     });
 
     this.paperTemplateButtons.clear();
     const templateDefs: { type: PaperTemplateType; icon: string; title: string }[] = [
-      { type: "ruled", icon: "align-justify", title: "Ruled Paper" },
-      { type: "grid", icon: "grid", title: "Grid Paper" },
-      { type: "dotted", icon: "more-horizontal", title: "Dotted Paper" },
-      { type: "cornell", icon: "columns", title: "Cornell Paper" },
-      { type: "blank", icon: "file", title: "Blank Paper" }
+      { type: "ruled", icon: "align-justify", title: "Ruled" },
+      { type: "grid", icon: "grid", title: "Grid" },
+      { type: "dotted", icon: "more-horizontal", title: "Dotted" },
+      { type: "cornell", icon: "columns", title: "Cornell" },
+      { type: "blank", icon: "file", title: "Blank" }
     ];
 
     const currentTpl = this.delegate.getNotebookTemplate();
     for (const t of templateDefs) {
-      const btn = pageFormatGroup.createEl("button", {
-        cls: t.type === currentTpl.type ? "notepages-tool-button is-active" : "notepages-tool-button"
+      const btn = templateGrid.createEl("button", {
+        cls: t.type === currentTpl.type ? "notepages-popover-item is-active" : "notepages-popover-item"
       });
-      setIcon(btn, t.icon);
-      btn.setAttribute("title", t.title);
+      const iconSpan = btn.createSpan({ cls: "notepages-popover-item-icon" });
+      setIcon(iconSpan, t.icon);
+      btn.createSpan({ cls: "notepages-popover-item-text", text: t.title });
+      btn.setAttribute("title", `${t.title} paper`);
       this.paperTemplateButtons.set(t.type, btn);
 
       this.delegate.registerDomEvent(btn, "click", () => {
         this.delegate.onSelectPaperTemplate(t.type);
+        this.closePagePopover();
       });
     }
 
-    const currentOrient = this.delegate.getNotebookOrientation();
-    this.notebookOrientationBtn = pageFormatGroup.createEl("button", {
-      cls: "notepages-tool-button"
+    const orientationSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
     });
+    orientationSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Orientation"
+    });
+
+    const currentOrient = this.delegate.getNotebookOrientation();
+    this.notebookOrientationBtn = orientationSection.createEl("button", {
+      cls: "notepages-popover-row-btn"
+    });
+    const orientIconSpan = this.notebookOrientationBtn.createSpan({ cls: "notepages-popover-item-icon" });
     const orientIcon = currentOrient === "portrait" ? "smartphone" : "monitor";
-    setIcon(this.notebookOrientationBtn, orientIcon);
+    setIcon(orientIconSpan, orientIcon);
+    this.notebookOrientationBtn.createSpan({
+      cls: "notepages-popover-item-text",
+      text: `Orientation: ${currentOrient === "portrait" ? "Portrait" : "Landscape"}`
+    });
     this.notebookOrientationBtn.setAttribute(
       "title",
       `Rotate Page Orientation (R) - Currently ${currentOrient === "portrait" ? "Portrait" : "Landscape"}`
@@ -545,88 +688,143 @@ export class NotePagesToolbar {
 
     this.delegate.registerDomEvent(this.notebookOrientationBtn, "click", () => {
       this.delegate.onToggleOrientation();
+      this.closePagePopover();
     });
 
-    rightGroup.createDiv({ cls: "notepages-toolbar-separator" });
-
-    const zoomOutBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
+    const pageActionSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
     });
-    setIcon(zoomOutBtn, "zoom-out");
-    zoomOutBtn.setAttribute("title", "Zoom out (-)");
-    this.delegate.registerDomEvent(zoomOutBtn, "click", () => {
-      this.delegate.onChangeZoom(-0.1);
+    pageActionSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Page Actions"
     });
 
-    this.zoomResetBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button notepages-zoom-btn"
-    });
-    this.zoomResetBtn.setText(`${Math.round(this.delegate.getZoomLevel() * 100)}%`);
-    this.zoomResetBtn.setAttribute("title", "Reset zoom to 100% (0)");
-    this.delegate.registerDomEvent(this.zoomResetBtn, "click", () => {
-      this.delegate.onResetZoom();
+    const pageActionList = pageActionSection.createDiv({
+      cls: "notepages-popover-actions-list"
     });
 
-    const zoomInBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
+    this.addPageBtn = pageActionList.createEl("button", {
+      cls: "notepages-popover-action-btn"
     });
-    setIcon(zoomInBtn, "zoom-in");
-    zoomInBtn.setAttribute("title", "Zoom in (+)");
-    this.delegate.registerDomEvent(zoomInBtn, "click", () => {
-      this.delegate.onChangeZoom(0.1);
-    });
-
-    const importPdfBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
-    });
-    setIcon(importPdfBtn, "file-up");
-    importPdfBtn.setAttribute("title", "Import document (PDF / SVG)");
-    this.delegate.registerDomEvent(importPdfBtn, "click", () => {
-      this.delegate.onOpenPdfPicker();
-    });
-
-    const exportBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
-    });
-    setIcon(exportBtn, "file-down");
-    exportBtn.setAttribute("title", "Export notebook (PDF / PNG / SVG)");
-    this.delegate.registerDomEvent(exportBtn, "click", () => {
-      this.delegate.onExportNotebook();
-    });
-
-    const addPageBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
-    });
-    setIcon(addPageBtn, "file-plus");
-    addPageBtn.setAttribute("title", "Add new page (a)");
-    this.delegate.registerDomEvent(addPageBtn, "click", () => {
+    const addIconSpan = this.addPageBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(addIconSpan, "file-plus");
+    this.addPageBtn.createSpan({ text: "Add page below (A)" });
+    this.delegate.registerDomEvent(this.addPageBtn, "click", () => {
       this.delegate.onAddNewPage();
+      this.closePagePopover();
     });
 
-    const duplicatePageBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
+    this.duplicatePageBtn = pageActionList.createEl("button", {
+      cls: "notepages-popover-action-btn"
     });
-    setIcon(duplicatePageBtn, "copy");
-    duplicatePageBtn.setAttribute("title", "Duplicate current page");
-    this.delegate.registerDomEvent(duplicatePageBtn, "click", () => {
+    const dupIconSpan = this.duplicatePageBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(dupIconSpan, "copy");
+    this.duplicatePageBtn.createSpan({ text: "Duplicate current page" });
+    this.delegate.registerDomEvent(this.duplicatePageBtn, "click", () => {
       this.delegate.onDuplicateCurrentPage();
+      this.closePagePopover();
     });
 
-    const deletePageBtn = rightGroup.createEl("button", {
-      cls: "notepages-tool-button"
+    this.deletePageBtn = pageActionList.createEl("button", {
+      cls: "notepages-popover-action-btn notepages-danger-action"
     });
-    setIcon(deletePageBtn, "trash-2");
-    deletePageBtn.setAttribute("title", "Delete current page");
-    this.delegate.registerDomEvent(deletePageBtn, "click", () => {
+    const delIconSpan = this.deletePageBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(delIconSpan, "trash-2");
+    this.deletePageBtn.createSpan({ text: "Delete current page" });
+    this.delegate.registerDomEvent(this.deletePageBtn, "click", () => {
       this.delegate.onDeleteCurrentPage();
+      this.closePagePopover();
     });
 
-    this.delegate.registerDomEvent(this.toolbarEl, "wheel", (e: WheelEvent) => {
-      if (e.deltaY !== 0 && !e.shiftKey && this.toolbarEl.scrollWidth > this.toolbarEl.clientWidth) {
-        this.toolbarEl.scrollLeft += e.deltaY;
-        e.preventDefault();
+    const importSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    this.importPdfBtn = importSection.createEl("button", {
+      cls: "notepages-popover-action-btn"
+    });
+    const importIconSpan = this.importPdfBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(importIconSpan, "file-up");
+    this.importPdfBtn.createSpan({ text: "Import document (PDF / SVG)" });
+    this.delegate.registerDomEvent(this.importPdfBtn, "click", () => {
+      this.delegate.onOpenPdfPicker();
+      this.closePagePopover();
+    });
+  }
+
+  private registerGlobalEvents(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    this.delegate.registerDomEvent(window, "pointerdown", (e: PointerEvent) => {
+      if (this.isPagePopoverOpen) {
+        const target = e.target as Node;
+        if (
+          this.pagePopoverEl &&
+          !this.pagePopoverEl.contains(target) &&
+          this.pageMenuBtn &&
+          !this.pageMenuBtn.contains(target)
+        ) {
+          this.closePagePopover();
+        }
       }
     });
+  }
+
+  toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    if (this.toolbarWrapperEl) {
+      this.toolbarWrapperEl.toggleClass("is-dock-collapsed", this.isCollapsed);
+    }
+    if (this.collapseBtn) {
+      this.collapseBtn.empty();
+      setIcon(this.collapseBtn, this.isCollapsed ? "chevron-down" : "chevron-up");
+      this.collapseBtn.setAttribute(
+        "title",
+        this.isCollapsed ? "Expand toolbar (focus mode off)" : "Collapse toolbar (focus mode on)"
+      );
+    }
+    if (this.isCollapsed) {
+      this.closePagePopover();
+      if (this.subToolbarEl) {
+        this.subToolbarEl.toggle(false);
+      }
+    } else {
+      this.setActiveTool(this.currentTool, this.delegate.getCurrentShapeType(), this.hasSelection);
+    }
+  }
+
+  togglePagePopover(): void {
+    if (this.isPagePopoverOpen) {
+      this.closePagePopover();
+    } else {
+      this.openPagePopover();
+    }
+  }
+
+  openPagePopover(): void {
+    if (this.pagePopoverEl) {
+      this.pagePopoverEl.removeClass("is-hidden");
+      this.isPagePopoverOpen = true;
+      if (this.pageMenuBtn) {
+        this.pageMenuBtn.addClass("is-active");
+      }
+    }
+  }
+
+  closePagePopover(): void {
+    if (this.pagePopoverEl) {
+      this.pagePopoverEl.addClass("is-hidden");
+      this.isPagePopoverOpen = false;
+      if (this.pageMenuBtn) {
+        this.pageMenuBtn.removeClass("is-active");
+      }
+    }
+  }
+
+  setDrawingActive(isDrawing: boolean): void {
+    if (this.toolbarWrapperEl) {
+      this.toolbarWrapperEl.toggleClass("is-drawing", isDrawing);
+    }
   }
 
   updateTitle(newTitle: string): void {
@@ -636,6 +834,7 @@ export class NotePagesToolbar {
   }
 
   setActiveTool(tool: ToolType, currentShapeType: ShapeType, hasSelection: boolean): void {
+    this.currentTool = tool;
     const isPen = tool === "pen" || tool === "pressure" || tool === "fountain";
 
     this.toolButtons.forEach((btn, t) => {
@@ -680,6 +879,20 @@ export class NotePagesToolbar {
     }
     if (this.stickyControlsContainer) {
       this.stickyControlsContainer.toggle(tool === "sticky");
+    }
+
+    const needsSubToolbar =
+      isPen ||
+      tool === "shape" ||
+      tool === "connector" ||
+      tool === "highlighter" ||
+      tool === "text" ||
+      tool === "sticky" ||
+      tool === "eraser" ||
+      (tool === "lasso" && hasSelection);
+
+    if (this.subToolbarEl) {
+      this.subToolbarEl.toggle(Boolean(needsSubToolbar && !this.isCollapsed));
     }
   }
 
@@ -752,8 +965,12 @@ export class NotePagesToolbar {
   }
 
   updateSelectionUi(hasSelection: boolean): void {
+    this.hasSelection = hasSelection;
     if (this.selectionActionsContainer) {
-      this.selectionActionsContainer.style.display = hasSelection ? "flex" : "none";
+      this.selectionActionsContainer.toggle(hasSelection);
+    }
+    if (this.currentTool === "lasso" && this.subToolbarEl && !this.isCollapsed) {
+      this.subToolbarEl.toggle(hasSelection);
     }
   }
 
@@ -761,7 +978,12 @@ export class NotePagesToolbar {
     if (this.notebookOrientationBtn) {
       const iconName = orient === "portrait" ? "smartphone" : "monitor";
       this.notebookOrientationBtn.empty();
-      setIcon(this.notebookOrientationBtn, iconName);
+      const iconSpan = this.notebookOrientationBtn.createSpan({ cls: "notepages-popover-item-icon" });
+      setIcon(iconSpan, iconName);
+      this.notebookOrientationBtn.createSpan({
+        cls: "notepages-popover-item-text",
+        text: `Orientation: ${orient === "portrait" ? "Portrait" : "Landscape"}`
+      });
       this.notebookOrientationBtn.setAttribute(
         "title",
         `Rotate Page Orientation (R) - Currently ${orient === "portrait" ? "Portrait" : "Landscape"}`

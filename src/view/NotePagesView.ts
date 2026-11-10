@@ -1656,6 +1656,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(window, "pointerup", (e: PointerEvent) => {
+      this.toolbar.setDrawingActive(false);
       if (e && e.pointerType === "touch") {
         this.touchPointers.delete(e.pointerId);
         if (this.touchPointers.size < 2 && this.isTouchPinching) {
@@ -1674,6 +1675,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(window, "pointercancel", (e: PointerEvent) => {
+      this.toolbar.setDrawingActive(false);
       if (e && e.pointerType === "touch") {
         this.touchPointers.delete(e.pointerId);
         if (this.touchPointers.size < 2 && this.isTouchPinching) {
@@ -3235,6 +3237,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         return;
       }
 
+      this.toolbar.setDrawingActive(true);
       this.dragStartClientX = e.clientX;
       this.dragStartClientY = e.clientY;
 
@@ -3440,6 +3443,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(activeCanvas, "pointerup", (e: PointerEvent) => {
+      this.toolbar.setDrawingActive(false);
       if (this.isPanning) {
         this.finishPan();
         return;
