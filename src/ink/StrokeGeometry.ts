@@ -7,7 +7,7 @@ import {
 } from "../types";
 
 export class StrokeGeometry {
-  static getStrokeOptions(tool: ToolType, width: number): StrokeOptions {
+  static getStrokeOptions(tool: ToolType, width: number, simulatePressure: boolean = false): StrokeOptions {
     switch (tool) {
       case "pressure":
         return {
@@ -15,7 +15,7 @@ export class StrokeGeometry {
           thinning: 0.65,
           smoothing: 0.6,
           streamline: 0.55,
-          simulatePressure: false,
+          simulatePressure,
           start: {
             taper: 0,
             cap: true
@@ -32,7 +32,7 @@ export class StrokeGeometry {
           thinning: 0.35,
           smoothing: 0.45,
           streamline: 0.45,
-          simulatePressure: false,
+          simulatePressure,
           start: {
             taper: 0,
             cap: true
@@ -67,7 +67,7 @@ export class StrokeGeometry {
           thinning: 0.15,
           smoothing: 0.55,
           streamline: 0.5,
-          simulatePressure: false,
+          simulatePressure,
           start: {
             taper: 0,
             cap: true
@@ -140,6 +140,54 @@ export class StrokeGeometry {
     return circle;
   }
 
+  static hasVaryingPressure(points: PointSample[]): boolean {
+    if (points.length < 2) {
+      return false;
+    }
+    const firstPressure = points[0].pressure;
+    for (let i = 1; i < points.length; i++) {
+      if (Math.abs(points[i].pressure - firstPressure) > 0.01) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static straightenHighlighterPoints(points: PointSample[]): PointSample[] {
+    if (points.length < 2) {
+      return [...points];
+    }
+    const p0 = points[0];
+    const pn = points[points.length - 1];
+    const dx = pn.x - p0.x;
+    const dy = pn.y - p0.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 10) {
+      return [...points];
+    }
+    let targetX = pn.x;
+    let targetY = pn.y;
+    if (Math.abs(dy) / Math.max(1, Math.abs(dx)) < 0.2) {
+      targetY = p0.y;
+    } else if (Math.abs(dx) / Math.max(1, Math.abs(dy)) < 0.2) {
+      targetX = p0.x;
+    }
+    const count = Math.max(5, Math.min(30, Math.floor(dist / 15)));
+    const result: PointSample[] = [];
+    const t0 = p0.timestamp || Date.now();
+    const tn = pn.timestamp || (t0 + 100);
+    for (let i = 0; i <= count; i++) {
+      const t = i / count;
+      result.push({
+        x: p0.x + (targetX - p0.x) * t,
+        y: p0.y + (targetY - p0.y) * t,
+        pressure: 0.5,
+        timestamp: t0 + t * (tn - t0)
+      });
+    }
+    return result;
+  }
+
   static generateOutline(points: PointSample[], tool: ToolType, width: number): number[][] {
     if (points.length === 0) {
       return [];
@@ -149,8 +197,9 @@ export class StrokeGeometry {
       return this.generateDotOutline(points, tool, width);
     }
 
+    const shouldSimulate = tool !== "highlighter" && !this.hasVaryingPressure(points);
     const rawInput = points.map((p) => [p.x, p.y, Math.max(0.05, Math.min(1.0, p.pressure))]);
-    const options = this.getStrokeOptions(tool, width);
+    const options = this.getStrokeOptions(tool, width, shouldSimulate);
     const outline = getStroke(rawInput, options);
     if (outline.length < 2) {
       return this.generateDotOutline(points, tool, width);

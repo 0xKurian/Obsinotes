@@ -169,9 +169,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   zoomLevel: number = 1.0;
   private canvasResolutionTimeout: number | null = null;
   private touchPointers: Map<number, { clientX: number; clientY: number }> = new Map();
+  private touchStartCoords: Map<number, { x: number; y: number }> = new Map();
+  private touchTapCandidate: { maxCount: number; startTime: number; maxDistance: number } | null = null;
   private touchPinchDistance: number = 0;
   private touchPinchStartZoom: number = 1.0;
   private isTouchPinching: boolean = false;
+  private temporaryEraserTool: ToolType | null = null;
+  private eraserCursorEl!: HTMLElement;
   penWidth: number = 2.5;
   highlighterWidth: number = 14.0;
   isSidebarCollapsed: boolean = false;
@@ -688,6 +692,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       cls: "notepages-view-container"
     });
 
+    this.eraserCursorEl = this.rootContainerEl.createDiv({
+      cls: "notepages-eraser-cursor is-hidden"
+    });
+
     this.toolbar.build(this.rootContainerEl);
     this.buildMainArea();
     this.buildStatusArea();
@@ -975,6 +983,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.canvasResolutionTimeout = null;
     }
     this.touchPointers.clear();
+    this.touchStartCoords.clear();
+    this.touchTapCandidate = null;
+    this.temporaryEraserTool = null;
     this.isTouchPinching = false;
     if (this.saveStatusResetTimer !== null) {
       window.clearTimeout(this.saveStatusResetTimer);
@@ -1002,6 +1013,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.canvasResolutionTimeout = null;
     }
     this.touchPointers.clear();
+    this.touchStartCoords.clear();
+    this.touchTapCandidate = null;
+    this.temporaryEraserTool = null;
     this.isTouchPinching = false;
     this.pageIntersectionObserver?.disconnect();
     this.pageVirtualizer.destroy();
@@ -1211,6 +1225,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.setEraserMode(mode);
   }
 
+  onSelectEraserRadius(radius: number): void {
+    this.setEraserRadius(radius);
+  }
+
+  getActiveEraserRadius(): number {
+    return this.inkingController.eraserRadius;
+  }
+
   onDuplicateSelection(): void {
     this.duplicateActiveSelection();
   }
@@ -1404,6 +1426,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.registerDomEvent(this.scrollerEl, "pointerdown", (e: PointerEvent) => {
       if (e.pointerType === "touch") {
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+        this.touchStartCoords.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (!this.touchTapCandidate) {
+          this.touchTapCandidate = { maxCount: 1, startTime: Date.now(), maxDistance: 0 };
+        } else {
+          this.touchTapCandidate.maxCount = Math.max(this.touchTapCandidate.maxCount, this.touchPointers.size);
+        }
         if (this.touchPointers.size === 2) {
           if (this.isPanning) {
             this.finishPan();
@@ -1427,7 +1455,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(this.scrollerEl, "contextmenu", (e: MouseEvent) => {
-      if (this.isPanning) {
+      if (this.isPanning || (e as PointerEvent).pointerType === "pen") {
         e.preventDefault();
         return;
       }
@@ -1635,7 +1663,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.registerDomEvent(window, "pointermove", (e: PointerEvent) => {
       if (e.pointerType === "touch" && this.touchPointers.has(e.pointerId)) {
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+        const start = this.touchStartCoords.get(e.pointerId);
+        if (start && this.touchTapCandidate) {
+          const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+          if (dist > this.touchTapCandidate.maxDistance) {
+            this.touchTapCandidate.maxDistance = dist;
+          }
+        }
         if (this.touchPointers.size === 2 && this.isTouchPinching && this.touchPinchDistance > 10) {
+          this.touchTapCandidate = null;
           const [p1, p2] = Array.from(this.touchPointers.values());
           const currentDist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
           const factor = currentDist / this.touchPinchDistance;
@@ -1658,8 +1694,27 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.registerDomEvent(window, "pointerup", (e: PointerEvent) => {
       this.toolbar.setDrawingActive(false);
+      if (this.temporaryEraserTool !== null) {
+        const revertTool = this.temporaryEraserTool;
+        this.temporaryEraserTool = null;
+        this.inkingController.setTool(revertTool);
+        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
+        this.hideEraserCursor();
+      }
       if (e && e.pointerType === "touch") {
+        if (this.touchTapCandidate && !this.isTouchPinching) {
+          const duration = Date.now() - this.touchTapCandidate.startTime;
+          if (duration < 280 && this.touchTapCandidate.maxDistance < 20) {
+            if (this.touchTapCandidate.maxCount === 2) {
+              this.onUndo();
+            } else if (this.touchTapCandidate.maxCount === 3) {
+              this.onRedo();
+            }
+          }
+          this.touchTapCandidate = null;
+        }
         this.touchPointers.delete(e.pointerId);
+        this.touchStartCoords.delete(e.pointerId);
         if (this.touchPointers.size < 2 && this.isTouchPinching) {
           this.isTouchPinching = false;
           this.touchPinchDistance = 0;
@@ -1677,8 +1732,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.registerDomEvent(window, "pointercancel", (e: PointerEvent) => {
       this.toolbar.setDrawingActive(false);
+      if (this.temporaryEraserTool !== null) {
+        const revertTool = this.temporaryEraserTool;
+        this.temporaryEraserTool = null;
+        this.inkingController.setTool(revertTool);
+        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
+        this.hideEraserCursor();
+      }
       if (e && e.pointerType === "touch") {
+        this.touchTapCandidate = null;
         this.touchPointers.delete(e.pointerId);
+        this.touchStartCoords.delete(e.pointerId);
         if (this.touchPointers.size < 2 && this.isTouchPinching) {
           this.isTouchPinching = false;
           this.touchPinchDistance = 0;
@@ -1850,8 +1914,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.rootContainerEl.toggleClass("is-tool-select", tool === "select");
     this.rootContainerEl.toggleClass("is-tool-text", tool === "text");
     this.rootContainerEl.toggleClass("is-tool-sticky", tool === "sticky");
+    this.rootContainerEl.toggleClass("is-tool-eraser", tool === "eraser");
     this.toolbar.setActiveTool(tool, this.currentShapeType, this.selectionController.hasSelection());
     this.updateStatusDisplay();
+    if (tool !== "eraser" && this.temporaryEraserTool === null) {
+      this.hideEraserCursor();
+    }
   }
 
   private setActiveColor(color: string): void {
@@ -2727,6 +2795,50 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.toolbar.setEraserMode(mode);
   }
 
+  private setEraserRadius(radius: number): void {
+    this.inkingController.setEraserRadius(radius);
+    this.toolbar.setEraserRadius(radius);
+    this.updateEraserCursorSize();
+  }
+
+  private updateEraserCursorSize(): void {
+    if (!this.eraserCursorEl) {
+      return;
+    }
+    const screenRadius = this.inkingController.eraserRadius * this.zoomLevel;
+    const diameter = screenRadius * 2;
+    this.eraserCursorEl.setCssStyles({
+      width: `${diameter}px`,
+      height: `${diameter}px`
+    });
+  }
+
+  private updateEraserCursorPosition(clientX: number, clientY: number): void {
+    if (!this.eraserCursorEl) {
+      return;
+    }
+    const isEraser = this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null;
+    if (!isEraser) {
+      this.eraserCursorEl.addClass("is-hidden");
+      return;
+    }
+    const screenRadius = this.inkingController.eraserRadius * this.zoomLevel;
+    const diameter = screenRadius * 2;
+    this.eraserCursorEl.setCssStyles({
+      width: `${diameter}px`,
+      height: `${diameter}px`,
+      left: `${clientX - screenRadius}px`,
+      top: `${clientY - screenRadius}px`
+    });
+    this.eraserCursorEl.removeClass("is-hidden");
+  }
+
+  private hideEraserCursor(): void {
+    if (this.eraserCursorEl) {
+      this.eraserCursorEl.addClass("is-hidden");
+    }
+  }
+
   private toggleSidebar(): void {
     this.isSidebarCollapsed = !this.isSidebarCollapsed;
     this.sidebar.toggle();
@@ -2818,6 +2930,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.toolbar.updateZoomDisplay(this.zoomLevel);
     this.updateStatusDisplay();
 
+    this.updateEraserCursorSize();
+
     if (isContinuous) {
       this.scheduleCanvasResolutionUpdate(180);
     } else {
@@ -2886,10 +3000,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   private isPanTrigger(e: PointerEvent): boolean {
-    if (e.button === 1 || e.button === 2) {
+    if (this.isSpacePressed) {
       return true;
     }
-    if (this.isSpacePressed) {
+    if (e.pointerType === "pen") {
+      return false;
+    }
+    if (e.button === 1 || e.button === 2) {
       return true;
     }
     if (this.inkingController.activeTool === "select") {
@@ -3207,6 +3324,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
       if (e.pointerType === "touch") {
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
+        this.touchStartCoords.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (!this.touchTapCandidate) {
+          this.touchTapCandidate = { maxCount: 1, startTime: Date.now(), maxDistance: 0 };
+        } else {
+          this.touchTapCandidate.maxCount = Math.max(this.touchTapCandidate.maxCount, this.touchPointers.size);
+        }
         if (this.touchPointers.size === 2) {
           if (this.inkingController.isCurrentlyDrawing()) {
             this.inkingController.handlePointerCancel(e);
@@ -3230,6 +3353,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.startPan(e.clientX, e.clientY, activeCanvas, e.pointerId);
         e.stopPropagation();
         return;
+      }
+
+      const isPenEraser = e.pointerType === "pen" && (e.button === 2 || e.button === 5 || (e.buttons & 32) !== 0 || (e.buttons & 2) !== 0);
+      if (isPenEraser && this.temporaryEraserTool === null) {
+        this.temporaryEraserTool = this.inkingController.activeTool;
+        this.inkingController.setTool("eraser");
+        this.toolbar.setActiveTool("eraser", this.currentShapeType, false);
       }
 
       if (this.imageController.getSelectedImageId()) {
@@ -3358,6 +3488,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(activeCanvas, "pointermove", (e: PointerEvent) => {
+      this.updateEraserCursorPosition(e.clientX, e.clientY);
       if (this.isPanning) {
         this.updatePan(e.clientX, e.clientY);
         return;
@@ -3718,6 +3849,18 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       } else {
         this.inkingController.handlePointerUp(e);
       }
+
+      if (this.temporaryEraserTool !== null) {
+        const revertTool = this.temporaryEraserTool;
+        this.temporaryEraserTool = null;
+        this.inkingController.setTool(revertTool);
+        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
+        this.hideEraserCursor();
+      }
+    });
+
+    this.registerDomEvent(activeCanvas, "pointerleave", () => {
+      this.hideEraserCursor();
     });
 
     this.registerDomEvent(activeCanvas, "pointercancel", (e: PointerEvent) => {
@@ -3784,6 +3927,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.selectionController.clearSelection(activeCanvas);
       } else {
         this.inkingController.handlePointerCancel(e);
+      }
+
+      if (this.temporaryEraserTool !== null) {
+        const revertTool = this.temporaryEraserTool;
+        this.temporaryEraserTool = null;
+        this.inkingController.setTool(revertTool);
+        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
+        this.hideEraserCursor();
       }
     });
 

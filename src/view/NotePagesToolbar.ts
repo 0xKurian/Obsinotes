@@ -17,6 +17,8 @@ export interface NotePagesToolbarDelegate {
   onSelectColor(color: string): void;
   onSelectWidth(width: number): void;
   onSelectEraserMode(mode: EraserMode): void;
+  onSelectEraserRadius?(radius: number): void;
+  getActiveEraserRadius?(): number;
   onDuplicateSelection(): void;
   onDeleteSelection(): void;
   onSelectPaperTemplate(type: PaperTemplateType): void;
@@ -99,6 +101,7 @@ export class NotePagesToolbar {
   eraserControlsContainer!: HTMLElement;
   strokeEraserBtn!: HTMLButtonElement;
   precisionEraserBtn!: HTMLButtonElement;
+  eraserSizeButtons: Map<number, HTMLElement> = new Map();
   selectionActionsContainer!: HTMLElement;
   duplicateSelectionBtn!: HTMLButtonElement;
   deleteSelectionBtn!: HTMLButtonElement;
@@ -600,6 +603,34 @@ export class NotePagesToolbar {
       this.delegate.onSelectEraserMode("precision");
     });
 
+    const sizeWrapper = this.eraserControlsContainer.createDiv({
+      cls: "notepages-eraser-size-group"
+    });
+
+    const eraserSizes: { label: string; radius: number; title: string }[] = [
+      { label: "S", radius: 6, title: "Small eraser (6px)" },
+      { label: "M", radius: 12, title: "Medium eraser (12px)" },
+      { label: "L", radius: 24, title: "Large eraser (24px)" }
+    ];
+
+    const currentRadius = this.delegate.getActiveEraserRadius ? this.delegate.getActiveEraserRadius() : 12;
+    this.eraserSizeButtons = new Map();
+
+    for (const size of eraserSizes) {
+      const btn = sizeWrapper.createEl("button", {
+        cls: size.radius === currentRadius ? "notepages-eraser-size-btn is-active" : "notepages-eraser-size-btn",
+        text: size.label
+      });
+      btn.setAttribute("title", size.title);
+      this.eraserSizeButtons.set(size.radius, btn);
+      this.delegate.registerDomEvent(btn, "click", () => {
+        if (this.delegate.onSelectEraserRadius) {
+          this.delegate.onSelectEraserRadius(size.radius);
+        }
+        this.setEraserRadius(size.radius);
+      });
+    }
+
     this.selectionActionsContainer = this.subToolbarEl.createDiv({
       cls: "notepages-palette-group notepages-subdock-group"
     });
@@ -957,6 +988,15 @@ export class NotePagesToolbar {
     }
     if (this.precisionEraserBtn) {
       this.precisionEraserBtn.toggleClass("is-active", mode === "precision");
+    }
+  }
+
+  setEraserRadius(radius: number): void {
+    if (!this.eraserSizeButtons) {
+      return;
+    }
+    for (const [r, btn] of this.eraserSizeButtons.entries()) {
+      btn.toggleClass("is-active", r === radius);
     }
   }
 

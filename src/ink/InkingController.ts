@@ -234,6 +234,9 @@ export class InkingController {
     }
 
     const holdDuration = Date.now() - this.lastMoveTimestamp;
+    if (this.activeTool === "highlighter" && holdDuration >= 300) {
+      this.currentPoints = StrokeGeometry.straightenHighlighterPoints(this.currentPoints);
+    }
     const opacity = this.activeTool === "highlighter" ? 0.35 : this.currentOpacity;
     const stroke: StrokeObject = {
       id: `stroke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,

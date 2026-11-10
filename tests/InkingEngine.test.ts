@@ -100,6 +100,48 @@ describe("InkingEngine & StrokeGeometry", () => {
     assert.ok(w2 >= 2.5, `Two-point dot width (${w2}) must be at least 2.5px, not collapsed`);
     assert.ok(h2 >= 2.5, `Two-point dot height (${h2}) must be at least 2.5px, not collapsed`);
   });
+
+  test("hasVaryingPressure detects constant vs varying stylus pressure", () => {
+    const flatPoints: PointSample[] = [
+      { x: 10, y: 10, pressure: 0.5, timestamp: 1 },
+      { x: 20, y: 20, pressure: 0.5, timestamp: 2 },
+      { x: 30, y: 30, pressure: 0.5, timestamp: 3 }
+    ];
+    assert.strictEqual(StrokeGeometry.hasVaryingPressure(flatPoints), false);
+
+    const varyingPoints: PointSample[] = [
+      { x: 10, y: 10, pressure: 0.3, timestamp: 1 },
+      { x: 20, y: 20, pressure: 0.7, timestamp: 2 }
+    ];
+    assert.strictEqual(StrokeGeometry.hasVaryingPressure(varyingPoints), true);
+  });
+
+  test("straightenHighlighterPoints straightens nearly horizontal highlight strokes", () => {
+    const wobblyPoints: PointSample[] = [
+      { x: 50, y: 100, pressure: 0.5, timestamp: 10 },
+      { x: 80, y: 102, pressure: 0.5, timestamp: 20 },
+      { x: 120, y: 98, pressure: 0.5, timestamp: 30 },
+      { x: 200, y: 101, pressure: 0.5, timestamp: 40 }
+    ];
+
+    const straightened = StrokeGeometry.straightenHighlighterPoints(wobblyPoints);
+    assert.ok(straightened.length >= 5);
+    const startY = straightened[0].y;
+    for (const pt of straightened) {
+      assert.strictEqual(pt.y, startY);
+    }
+    assert.strictEqual(straightened[0].x, 50);
+    assert.strictEqual(straightened[straightened.length - 1].x, 200);
+  });
+
+  test("straightenHighlighterPoints preserves short micro-strokes under 10px", () => {
+    const shortPoints: PointSample[] = [
+      { x: 50, y: 50, pressure: 0.5, timestamp: 10 },
+      { x: 54, y: 53, pressure: 0.5, timestamp: 20 }
+    ];
+    const unchanged = StrokeGeometry.straightenHighlighterPoints(shortPoints);
+    assert.deepStrictEqual(unchanged, shortPoints);
+  });
 });
 
 describe("EraserEngine", () => {

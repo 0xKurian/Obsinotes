@@ -372,4 +372,33 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(ruledBtn.hasClass("is-active"), false);
     assert.strictEqual(gridBtn.hasClass("is-active"), true);
   });
+
+  test("eraser size buttons allow switching between S, M, L radius presets", () => {
+    let selectedRadius: number | null = null;
+    const root = createMockElement("div", "notepages-view-container");
+    const delegate = createMockDelegate({
+      getActiveEraserRadius: () => 12,
+      onSelectEraserRadius: (r: number) => {
+        selectedRadius = r;
+      }
+    });
+    const toolbar = new NotePagesToolbar(delegate);
+
+    toolbar.build(root as unknown as HTMLElement);
+
+    const btnSmall = toolbar.eraserSizeButtons.get(6) as unknown as MockDomElement;
+    const btnMedium = toolbar.eraserSizeButtons.get(12) as unknown as MockDomElement;
+    const btnLarge = toolbar.eraserSizeButtons.get(24) as unknown as MockDomElement;
+
+    assert.ok(btnSmall, "Small eraser size button must exist");
+    assert.ok(btnMedium, "Medium eraser size button must exist");
+    assert.ok(btnLarge, "Large eraser size button must exist");
+
+    assert.strictEqual(btnMedium.hasClass("is-active"), true);
+    assert.strictEqual(btnSmall.hasClass("is-active"), false);
+
+    toolbar.setEraserRadius(24);
+    assert.strictEqual(btnLarge.hasClass("is-active"), true);
+    assert.strictEqual(btnMedium.hasClass("is-active"), false);
+  });
 });
