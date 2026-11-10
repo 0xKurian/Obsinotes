@@ -935,14 +935,15 @@ export class NotePagesToolbar {
   }
 
   setActiveWidth(width: number): void {
+    const rounded = Math.round(width * 10) / 10;
     if (this.widthSliderInput) {
-      this.widthSliderInput.value = String(width);
+      this.widthSliderInput.value = String(rounded);
     }
     if (this.widthValueBadge) {
-      this.widthValueBadge.setText(`${width} pt`);
+      this.widthValueBadge.setText(`${rounded} pt`);
     }
     if (this.widthPreviewDot) {
-      const previewSize = Math.min(18, Math.max(2, width));
+      const previewSize = Math.min(18, Math.max(2, rounded));
       this.widthPreviewDot.setCssStyles({
         width: `${previewSize}px`,
         height: `${previewSize}px`

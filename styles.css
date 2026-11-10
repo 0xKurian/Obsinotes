@@ -380,25 +380,40 @@ button.notepages-popover-action-btn.notepages-danger-action:hover {
   align-items: center;
   gap: 6px;
   margin-left: 4px;
+  width: 142px;
+  min-width: 142px;
+  max-width: 142px;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .notepages-width-slider {
   width: 60px;
+  min-width: 60px;
+  max-width: 60px;
   height: 4px;
   cursor: pointer;
   accent-color: var(--interactive-accent);
   background: var(--background-modifier-border);
   border-radius: 2px;
   outline: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .notepages-width-badge {
   font-size: 11px;
   font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  min-width: 32px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
   text-align: right;
   user-select: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .notepages-width-preview-wrapper {
@@ -406,11 +421,17 @@ button.notepages-popover-action-btn.notepages-danger-action:hover {
   align-items: center;
   justify-content: center;
   width: 22px;
+  min-width: 22px;
+  max-width: 22px;
   height: 22px;
+  min-height: 22px;
+  max-height: 22px;
   border: 1px solid var(--divider-color);
   border-radius: 50%;
   background-color: var(--background-primary);
   margin-left: 2px;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .notepages-width-preview-dot {
@@ -418,7 +439,7 @@ button.notepages-popover-action-btn.notepages-danger-action:hover {
   background-color: var(--text-normal);
   max-width: 18px;
   max-height: 18px;
-  transition: width 0.1s ease, height 0.1s ease, background-color 0.1s ease;
+  transition: background-color 0.15s ease;
 }
 
 .notepages-tool-button {
@@ -488,15 +509,21 @@ button.notepages-popover-action-btn.notepages-danger-action:hover {
   height: 13px;
 }
 
-@container (max-width: 980px) {
+@container (max-width: 520px) {
+  .notepages-width-slider-wrapper {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+
   .notepages-width-badge {
     display: none;
   }
-}
 
-@container (max-width: 920px) {
   .notepages-width-slider {
     width: 44px;
+    min-width: 44px;
+    max-width: 44px;
   }
 }
 
