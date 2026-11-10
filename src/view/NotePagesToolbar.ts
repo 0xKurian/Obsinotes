@@ -560,6 +560,11 @@ export class NotePagesToolbar {
       this.delegate.onSelectWidth(val);
     });
 
+    this.delegate.registerDomEvent(this.widthSliderInput, "change", () => {
+      const val = Math.round(Number(this.widthSliderInput.value) * 10) / 10;
+      this.delegate.onSelectWidth(val);
+    });
+
     this.delegate.registerDomEvent(sliderWrapper, "wheel", (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();

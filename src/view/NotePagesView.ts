@@ -1832,6 +1832,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     } else if (tool === "pen" || tool === "pressure" || tool === "fountain") {
       this.inkingController.setWidth(this.penWidth);
       this.toolbar.setActiveWidth(this.penWidth);
+    } else if (tool === "shape" || tool === "connector") {
+      this.inkingController.setWidth(this.penWidth);
+      this.toolbar.setActiveWidth(this.penWidth);
     }
 
     if (this.document && this.pageManager) {
