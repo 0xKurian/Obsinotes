@@ -32,9 +32,10 @@
   pointer-events: none;
 }
 
-.notepages-toolbar-float-wrapper:hover {
-  opacity: 1 !important;
-  pointer-events: auto !important;
+.notepages-toolbar-float-wrapper:hover,
+.notepages-toolbar-float-wrapper.is-drawing:hover {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .notepages-floating-dock {
@@ -117,8 +118,8 @@
   animation: notepages-subdock-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.notepages-subtoolbar-float.is-hidden {
-  display: none !important;
+.notepages-toolbar-float-wrapper .notepages-subtoolbar-float.is-hidden {
+  display: none;
 }
 
 .notepages-subtoolbar-float::-webkit-scrollbar {
@@ -160,8 +161,8 @@
   animation: notepages-popover-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.notepages-page-popover.is-hidden {
-  display: none !important;
+.notepages-toolbar-float-wrapper .notepages-page-popover.is-hidden {
+  display: none;
 }
 
 @keyframes notepages-popover-in {
@@ -209,32 +210,32 @@
   gap: 6px;
 }
 
-button.notepages-popover-item {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 5px !important;
-  padding: 8px 4px !important;
-  height: 58px !important;
-  min-height: 58px !important;
-  max-height: 58px !important;
-  box-sizing: border-box !important;
-  border-radius: var(--button-radius, 8px) !important;
+.notepages-page-popover .notepages-popover-grid button.notepages-popover-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 4px;
+  height: 58px;
+  min-height: 58px;
+  max-height: 58px;
+  box-sizing: border-box;
+  border-radius: var(--button-radius, 8px);
   border: 1px solid var(--divider-color);
   background-color: var(--background-secondary);
   color: var(--text-normal);
   cursor: pointer;
-  overflow: hidden !important;
+  overflow: hidden;
   transition: all 0.15s ease;
 }
 
-button.notepages-popover-item:hover {
+.notepages-page-popover button.notepages-popover-item:hover {
   background-color: var(--interactive-hover);
   border-color: var(--interactive-accent);
 }
 
-button.notepages-popover-item.is-active {
+.notepages-page-popover button.notepages-popover-item.is-active {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   border-color: var(--interactive-accent);
@@ -267,34 +268,34 @@ button.notepages-popover-item.is-active {
   display: block;
 }
 
-button.notepages-popover-row-btn,
-button.notepages-popover-action-btn {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  gap: 10px !important;
-  padding: 8px 12px !important;
-  height: 36px !important;
-  min-height: 36px !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
+.notepages-page-popover button.notepages-popover-row-btn,
+.notepages-page-popover button.notepages-popover-action-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  height: 36px;
+  min-height: 36px;
+  width: 100%;
+  box-sizing: border-box;
   border-radius: var(--button-radius, 6px);
   border: 1px solid var(--divider-color);
   background-color: var(--background-secondary);
   color: var(--text-normal);
-  font-size: 12px !important;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-button.notepages-popover-row-btn:hover,
-button.notepages-popover-action-btn:hover {
+.notepages-page-popover button.notepages-popover-row-btn:hover,
+.notepages-page-popover button.notepages-popover-action-btn:hover {
   background-color: var(--interactive-hover);
   border-color: var(--interactive-accent);
 }
 
-button.notepages-popover-action-btn.notepages-danger-action:hover {
+.notepages-page-popover button.notepages-popover-action-btn.notepages-danger-action:hover {
   background-color: var(--background-modifier-error);
   color: var(--text-on-accent);
   border-color: var(--background-modifier-error);
@@ -317,11 +318,11 @@ button.notepages-popover-action-btn.notepages-danger-action:hover {
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-export-btn,
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-title-btn,
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-toolbar-separator:not(.notepages-keep-collapsed) {
-  display: none !important;
+  display: none;
 }
 
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-subtoolbar-float {
-  display: none !important;
+  display: none;
 }
 
 .notepages-palette-group {
@@ -333,8 +334,8 @@ button.notepages-popover-action-btn.notepages-danger-action:hover {
   flex-shrink: 0;
 }
 
-.notepages-palette-group.is-hidden {
-  display: none !important;
+.notepages-subtoolbar-float .notepages-palette-group.is-hidden {
+  display: none;
 }
 
 .notepages-color-chip {
