@@ -3,8 +3,9 @@ export const NOTE_PAGES_EXTENSION = "gnote";
 export const NOTE_PAGES_FRONTMATTER_KEY = "notepages-plugin";
 export const CURRENT_SCHEMA_VERSION = 1;
 
-export type PageSizePreset = "A4" | "Letter" | "Custom";
+export type PageSizePreset = "A4" | "A3" | "A5" | "B5" | "Letter" | "16:9" | "Square" | "Custom";
 export type PageOrientation = "portrait" | "landscape";
+export type ToolbarPlacement = "top" | "bottom" | "left" | "right" | "floating";
 export type ToolType = "select" | "pen" | "pressure" | "fountain" | "highlighter" | "eraser" | "lasso" | "shape" | "connector" | "sticky" | "text" | "image";
 export type EraserMode = "stroke" | "precision";
 export type SelectionSubMode = "lasso" | "pan";
@@ -22,9 +23,34 @@ export const PAGE_DIMENSION_PRESETS: Record<Exclude<PageSizePreset, "Custom">, P
     height: 841.89,
     unit: "pt"
   },
+  A3: {
+    width: 841.89,
+    height: 1190.55,
+    unit: "pt"
+  },
+  A5: {
+    width: 419.53,
+    height: 595.28,
+    unit: "pt"
+  },
+  B5: {
+    width: 498.9,
+    height: 708.66,
+    unit: "pt"
+  },
   Letter: {
     width: 612.0,
     height: 792.0,
+    unit: "pt"
+  },
+  "16:9": {
+    width: 960.0,
+    height: 540.0,
+    unit: "pt"
+  },
+  Square: {
+    width: 700.0,
+    height: 700.0,
     unit: "pt"
   }
 };

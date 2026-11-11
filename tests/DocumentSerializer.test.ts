@@ -314,4 +314,22 @@ ${JSON.stringify(futureDoc)}
       assert.strictEqual(result.document.pages[0].strokes.length, 1000);
     }
   });
+
+  it("validates and serializes all new page size presets (A3, A5, B5, 16:9, Square, Custom)", () => {
+    const doc = createSampleDocument();
+    const presets = ["A3", "A5", "B5", "16:9", "Square", "Custom"] as const;
+
+    for (const preset of presets) {
+      doc.metadata.defaultPageSize = preset;
+      const valResult = DocumentSerializer.validateDocument(doc);
+      assert.strictEqual(valResult.valid, true, `Validation failed for preset ${preset}: ${valResult.errors.join(", ")}`);
+
+      const serialized = DocumentSerializer.serializeDocument(doc);
+      const deserialized = DocumentSerializer.deserializeDocument(serialized);
+      assert.strictEqual(deserialized.success, true);
+      if (deserialized.success) {
+        assert.strictEqual(deserialized.document.metadata.defaultPageSize, preset);
+      }
+    }
+  });
 });

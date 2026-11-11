@@ -2,9 +2,11 @@ import { setIcon } from "obsidian";
 import {
   EraserMode,
   PageOrientation,
+  PageSizePreset,
   PaperTemplateType,
   SelectionSubMode,
   ShapeType,
+  ToolbarPlacement,
   ToolType
 } from "../types";
 
@@ -33,6 +35,15 @@ export interface NotePagesToolbarDelegate {
   onAddNewPage(): void;
   onDuplicateCurrentPage(): void;
   onDeleteCurrentPage(): void;
+  onOpenPageSizeModal?(): void;
+  onSelectPagePreset?(preset: PageSizePreset): void;
+  onSelectPaperColor?(color: string): void;
+  onSelectLineColor?(color: string): void;
+  getNotebookPaperColor?(): string | undefined;
+  getNotebookLineColor?(): string | undefined;
+  getNotebookPageSize?(): PageSizePreset;
+  onSetToolbarPlacement?(placement: ToolbarPlacement): void;
+  getToolbarPlacement?(): ToolbarPlacement;
   onTextSizeChanged(size: number): void;
   onTextBoldToggled(): void;
   onTextItalicToggled(): void;
@@ -77,6 +88,13 @@ export class NotePagesToolbar {
   isPagePopoverOpen: boolean = false;
   private hasSelection: boolean = false;
   private currentTool: ToolType = "pressure";
+
+  currentPlacement: ToolbarPlacement = "top";
+  private isDraggingDock: boolean = false;
+  private dragDockStartX: number = 0;
+  private dragDockStartY: number = 0;
+  private dragDockInitLeft: number = 0;
+  private dragDockInitTop: number = 0;
 
   undoBtn!: HTMLButtonElement;
   redoBtn!: HTMLButtonElement;
@@ -141,6 +159,9 @@ export class NotePagesToolbar {
       cls: "notepages-page-popover is-hidden"
     });
 
+    const initPlacement = this.delegate.getToolbarPlacement ? this.delegate.getToolbarPlacement() || "top" : "top";
+    this.setPlacement(initPlacement);
+
     this.buildMainDock();
     this.buildSubDock();
     this.buildPagePopover();
@@ -155,6 +176,13 @@ export class NotePagesToolbar {
     const leftGroup = this.toolbarEl.createDiv({
       cls: "notepages-dock-section notepages-dock-left"
     });
+
+    const dragHandle = leftGroup.createDiv({
+      cls: "notepages-dock-drag-handle",
+      title: "Drag to reposition toolbar"
+    });
+    setIcon(dragHandle, "grip-vertical");
+    this.setupToolbarDrag(dragHandle);
 
     const sidebarToggleBtn = leftGroup.createEl("button", {
       cls: "notepages-tool-button"
@@ -814,6 +842,236 @@ export class NotePagesToolbar {
       this.delegate.onOpenPdfPicker();
       this.closePagePopover();
     });
+
+    const sizeSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    sizeSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Page Size"
+    });
+
+    const sizeGrid = sizeSection.createDiv({
+      cls: "notepages-popover-grid notepages-popover-size-grid"
+    });
+
+    const sizePresets: PageSizePreset[] = ["A4", "A3", "A5", "B5", "Letter", "16:9", "Square"];
+    const currentSize = this.delegate.getNotebookPageSize ? this.delegate.getNotebookPageSize() : "A4";
+
+    for (const preset of sizePresets) {
+      const btn = sizeGrid.createEl("button", {
+        cls: preset === currentSize ? "notepages-popover-item is-active" : "notepages-popover-item"
+      });
+      btn.createSpan({ cls: "notepages-popover-item-text", text: preset });
+      btn.setAttribute("title", `Set size to ${preset}`);
+      this.delegate.registerDomEvent(btn, "click", () => {
+        if (this.delegate.onSelectPagePreset) {
+          this.delegate.onSelectPagePreset(preset);
+        }
+        this.closePagePopover();
+      });
+    }
+
+    const customSizeBtn = sizeSection.createEl("button", {
+      cls: "notepages-popover-row-btn"
+    });
+    const customIconSpan = customSizeBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(customIconSpan, "sliders");
+    customSizeBtn.createSpan({
+      cls: "notepages-popover-item-text",
+      text: "Custom Dimensions & Scope..."
+    });
+    customSizeBtn.setAttribute("title", "Configure custom page dimensions and application scope");
+    this.delegate.registerDomEvent(customSizeBtn, "click", () => {
+      this.closePagePopover();
+      if (this.delegate.onOpenPageSizeModal) {
+        this.delegate.onOpenPageSizeModal();
+      }
+    });
+
+    const colorThemeSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    colorThemeSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Paper Theme & Color"
+    });
+
+    const paperColors = [
+      { name: "White", color: "#ffffff" },
+      { name: "Warm Sepia", color: "#fbf0d9" },
+      { name: "Dark Slate", color: "#1e1e2e" },
+      { name: "Chalkboard", color: "#1b3323" },
+      { name: "Blueprint", color: "#1a2a44" }
+    ];
+
+    const paperColorRow = colorThemeSection.createDiv({
+      cls: "notepages-popover-color-row"
+    });
+    paperColorRow.createSpan({ cls: "notepages-popover-sublabel", text: "Paper:" });
+
+    const activePaperColor = this.delegate.getNotebookPaperColor ? this.delegate.getNotebookPaperColor() : "#ffffff";
+    for (const p of paperColors) {
+      const swatch = paperColorRow.createEl("button", {
+        cls: p.color.toLowerCase() === (activePaperColor || "#ffffff").toLowerCase()
+          ? "notepages-paper-swatch is-active"
+          : "notepages-paper-swatch",
+        title: p.name
+      });
+      swatch.setCssStyles({ backgroundColor: p.color });
+      this.delegate.registerDomEvent(swatch, "click", () => {
+        if (this.delegate.onSelectPaperColor) {
+          this.delegate.onSelectPaperColor(p.color);
+        }
+        this.closePagePopover();
+      });
+    }
+
+    const customPaperInput = paperColorRow.createEl("input", {
+      cls: "notepages-color-picker-input",
+      title: "Pick custom paper color"
+    });
+    customPaperInput.type = "color";
+    customPaperInput.value = activePaperColor || "#ffffff";
+    this.delegate.registerDomEvent(customPaperInput, "change", () => {
+      if (this.delegate.onSelectPaperColor) {
+        this.delegate.onSelectPaperColor(customPaperInput.value);
+      }
+      this.closePagePopover();
+    });
+
+    const dockSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    dockSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Toolbar Position"
+    });
+
+    const dockGrid = dockSection.createDiv({
+      cls: "notepages-popover-grid notepages-popover-dock-grid"
+    });
+
+    const dockPositions: Array<{ pos: ToolbarPlacement; label: string; icon: string }> = [
+      { pos: "top", label: "Top", icon: "arrow-up" },
+      { pos: "bottom", label: "Bottom", icon: "arrow-down" },
+      { pos: "left", label: "Left", icon: "arrow-left" },
+      { pos: "right", label: "Right", icon: "arrow-right" },
+      { pos: "floating", label: "Free", icon: "move" }
+    ];
+
+    for (const dp of dockPositions) {
+      const btn = dockGrid.createEl("button", {
+        cls: dp.pos === this.currentPlacement ? "notepages-popover-item is-active" : "notepages-popover-item"
+      });
+      const iconSpan = btn.createSpan({ cls: "notepages-popover-item-icon" });
+      setIcon(iconSpan, dp.icon);
+      btn.createSpan({ cls: "notepages-popover-item-text", text: dp.label });
+      btn.setAttribute("title", `Dock toolbar to ${dp.label}`);
+      this.delegate.registerDomEvent(btn, "click", () => {
+        this.setPlacement(dp.pos);
+        this.closePagePopover();
+      });
+    }
+  }
+
+  setPlacement(placement: ToolbarPlacement): void {
+    this.currentPlacement = placement;
+    if (!this.toolbarWrapperEl) {
+      return;
+    }
+    this.toolbarWrapperEl.removeClass("is-position-top");
+    this.toolbarWrapperEl.removeClass("is-position-bottom");
+    this.toolbarWrapperEl.removeClass("is-position-left");
+    this.toolbarWrapperEl.removeClass("is-position-right");
+    this.toolbarWrapperEl.removeClass("is-position-floating");
+
+    if (placement !== "floating") {
+      this.toolbarWrapperEl.setCssStyles({
+        left: "",
+        top: "",
+        right: "",
+        bottom: "",
+        transform: ""
+      });
+    }
+
+    this.toolbarWrapperEl.addClass(`is-position-${placement}`);
+    if (this.delegate.onSetToolbarPlacement) {
+      this.delegate.onSetToolbarPlacement(placement);
+    }
+  }
+
+  private setupToolbarDrag(handleEl: HTMLElement): void {
+    this.delegate.registerDomEvent(handleEl, "pointerdown", (e: PointerEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.isDraggingDock = true;
+      this.dragDockStartX = e.clientX;
+      this.dragDockStartY = e.clientY;
+      const rect = this.toolbarWrapperEl.getBoundingClientRect();
+      const parentRect = this.toolbarWrapperEl.parentElement?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      this.dragDockInitLeft = rect.left - parentRect.left;
+      this.dragDockInitTop = rect.top - parentRect.top;
+
+      this.toolbarWrapperEl.addClass("is-dock-dragging");
+      try {
+        handleEl.setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback
+      }
+    });
+
+    this.delegate.registerDomEvent(handleEl, "pointermove", (e: PointerEvent) => {
+      if (!this.isDraggingDock) {
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
+
+      const dx = e.clientX - this.dragDockStartX;
+      const dy = e.clientY - this.dragDockStartY;
+      const newLeft = Math.max(0, this.dragDockInitLeft + dx);
+      const newTop = Math.max(0, this.dragDockInitTop + dy);
+
+      this.setPlacement("floating");
+      this.toolbarWrapperEl.setCssStyles({
+        left: `${newLeft}px`,
+        top: `${newTop}px`
+      });
+    });
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!this.isDraggingDock) {
+        return;
+      }
+      this.isDraggingDock = false;
+      this.toolbarWrapperEl.removeClass("is-dock-dragging");
+      try {
+        handleEl.releasePointerCapture(e.pointerId);
+      } catch {
+        // Fallback
+      }
+
+      const rect = this.toolbarWrapperEl.getBoundingClientRect();
+      const winW = typeof window !== "undefined" ? window.innerWidth : 1000;
+      const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+
+      if (rect.top < 45) {
+        this.setPlacement("top");
+      } else if (winH - rect.bottom < 45) {
+        this.setPlacement("bottom");
+      } else if (rect.left < 45) {
+        this.setPlacement("left");
+      } else if (winW - rect.right < 45) {
+        this.setPlacement("right");
+      } else {
+        this.setPlacement("floating");
+      }
+    };
+
+    this.delegate.registerDomEvent(handleEl, "pointerup", onPointerUp);
+    this.delegate.registerDomEvent(handleEl, "pointercancel", onPointerUp);
   }
 
   private registerGlobalEvents(): void {

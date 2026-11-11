@@ -18,6 +18,9 @@ import {
   CURRENT_SCHEMA_VERSION,
   NotebookDocument,
   PageData,
+  PageDimensions,
+  PageSizePreset,
+  ToolbarPlacement,
   getEffectivePageDimensions,
   ToolType,
   PaperTemplateType,
@@ -52,7 +55,8 @@ import {
   ModifyTextCommand,
   AddImageCommand,
   ModifyImageCommand,
-  DeletePageCommand
+  DeletePageCommand,
+  ResizePageCommand
 } from "../history/HistoryManager";
 import { DocumentSerializer } from "../storage/DocumentSerializer";
 import { StorageManager } from "../storage/StorageManager";
@@ -62,6 +66,8 @@ import { PdfBackgroundManager } from "../pdf/PdfBackgroundManager";
 import { NotePagesImportHandler, NotePagesImportDelegate } from "./NotePagesImportHandler";
 import { NotePagesSidebar, NotePagesSidebarDelegate } from "./NotePagesSidebar";
 import { NotePagesToolbar, NotePagesToolbarDelegate } from "./NotePagesToolbar";
+import { NotePagesMinimap, NotePagesMinimapDelegate } from "./NotePagesMinimap";
+import { PageSizeModal, PageSizeModalResult } from "../modal/PageSizeModal";
 import { ExportModal } from "../modal/ExportModal";
 import { QuickRenameModal } from "../modal/QuickRenameModal";
 import { ExportEngine } from "../export/ExportEngine";
@@ -100,11 +106,14 @@ class ConfirmResetModal extends Modal {
   }
 }
 
-export class NotePagesView extends TextFileView implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate {
+export class NotePagesView extends TextFileView implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate, NotePagesMinimapDelegate {
   plugin: NotePagesPlugin;
   importHandler: NotePagesImportHandler;
   sidebar: NotePagesSidebar;
   toolbar: NotePagesToolbar;
+  minimap!: NotePagesMinimap;
+  toolbarPlacement: ToolbarPlacement = "top";
+  savedPlacementKey: string = "notepages-toolbar-placement";
   document: NotebookDocument | null = null;
   pageManager: PageManager | null = null;
   storageManager: StorageManager;
@@ -699,6 +708,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.toolbar.build(this.rootContainerEl);
+    this.minimap = new NotePagesMinimap(this);
+    this.minimap.build(this.rootContainerEl);
     this.buildMainArea();
     this.buildStatusArea();
     this.registerKeyboardShortcuts();
@@ -999,6 +1010,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pageIntersectionObserver = null;
     this.pageVirtualizer.destroy();
     this.sidebar.destroy();
+    this.minimap?.destroy();
     this.selectionController?.destroy();
     this.pdfBackgroundManager.destroy();
     this.document = null;
@@ -1027,6 +1039,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pageVirtualizer.destroy();
     this.selectionController?.destroy();
     this.sidebar.clear();
+    this.minimap?.destroy();
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
@@ -1310,6 +1323,203 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   onDeleteCurrentPage(): void {
     this.deleteCurrentPage();
+  }
+
+  onOpenPageSizeModal(): void {
+    if (!this.pageManager) {
+      return;
+    }
+    const currentPage = this.pageManager.getPageByNumber(this.currentPageNumber);
+    if (!currentPage) {
+      return;
+    }
+
+    const modal = new PageSizeModal(
+      this.app,
+      this.currentPageNumber,
+      this.pageManager.getDocument().metadata.defaultPageSize,
+      currentPage.dimensions,
+      currentPage.orientation,
+      (result) => {
+        this.applyPageSizeChange(result);
+      }
+    );
+    modal.open();
+  }
+
+  onSelectPagePreset(preset: PageSizePreset): void {
+    if (!this.pageManager) {
+      return;
+    }
+    const currentPage = this.pageManager.getPageByNumber(this.currentPageNumber);
+    if (!currentPage) {
+      return;
+    }
+
+    const newDimensions = getEffectivePageDimensions(preset, currentPage.orientation);
+    this.applyPageSizeChange({
+      preset,
+      dimensions: newDimensions,
+      orientation: currentPage.orientation,
+      applyToAll: false
+    });
+  }
+
+  onSelectPaperColor(color: string): void {
+    if (!this.pageManager) {
+      return;
+    }
+    const tpl = this.pageManager.getNotebookTemplate();
+    this.pageManager.updateAllPagesTemplate({
+      ...tpl,
+      backgroundColor: color
+    });
+    this.renderDocument();
+    this.requestSave();
+    if (this.minimap) {
+      this.minimap.update(true);
+    }
+    new Notice(`Updated paper color`);
+  }
+
+  onSelectLineColor(color: string): void {
+    if (!this.pageManager) {
+      return;
+    }
+    const tpl = this.pageManager.getNotebookTemplate();
+    this.pageManager.updateAllPagesTemplate({
+      ...tpl,
+      lineColor: color
+    });
+    this.renderDocument();
+    this.requestSave();
+    new Notice(`Updated line color`);
+  }
+
+  getNotebookPaperColor(): string | undefined {
+    return this.pageManager?.getNotebookTemplate().backgroundColor;
+  }
+
+  getNotebookLineColor(): string | undefined {
+    return this.pageManager?.getNotebookTemplate().lineColor;
+  }
+
+  getNotebookPageSize(): PageSizePreset {
+    return this.pageManager?.getDocument().metadata.defaultPageSize ?? "A4";
+  }
+
+  onSetToolbarPlacement(placement: ToolbarPlacement): void {
+    this.toolbarPlacement = placement;
+    try {
+      window.localStorage.setItem(this.savedPlacementKey, placement);
+    } catch {
+      // Ignore
+    }
+  }
+
+  getToolbarPlacement(): ToolbarPlacement {
+    try {
+      const saved = window.localStorage.getItem(this.savedPlacementKey);
+      if (saved === "top" || saved === "bottom" || saved === "left" || saved === "right" || saved === "floating") {
+        return saved;
+      }
+    } catch {
+      // Ignore
+    }
+    return "top";
+  }
+
+  private applyPageSizeChange(result: PageSizeModalResult): void {
+    if (!this.pageManager) {
+      return;
+    }
+
+    if (result.applyToAll) {
+      this.pageManager.resizeAllPages(result.preset, result.preset === "Custom" ? result.dimensions : undefined, result.orientation);
+      this.renderDocument();
+      this.requestSave();
+      if (this.minimap) {
+        this.minimap.update(true);
+      }
+      new Notice(`Applied ${result.preset} size to all pages`);
+    } else {
+      const currentPage = this.pageManager.getPageByNumber(this.currentPageNumber);
+      if (!currentPage) {
+        return;
+      }
+
+      const prevDim = { ...currentPage.dimensions };
+      const prevOrient = currentPage.orientation;
+
+      const cmd = new ResizePageCommand(
+        currentPage,
+        prevDim,
+        result.dimensions,
+        (_page) => {
+          this.renderDocument();
+          this.requestSave();
+          if (this.minimap) {
+            this.minimap.update(true);
+          }
+        },
+        prevOrient,
+        result.orientation
+      );
+      this.historyManager.execute(cmd);
+      new Notice(`Resized page ${this.currentPageNumber} to ${result.preset}`);
+    }
+  }
+
+  // NotePagesMinimapDelegate
+  getCurrentPageDimensions(): PageDimensions | undefined {
+    return this.pageManager?.getPageByNumber(this.currentPageNumber)?.dimensions;
+  }
+
+  getPageElement(pageNumber: number): HTMLElement | undefined {
+    return this.pageElements.get(pageNumber);
+  }
+
+  getCommittedCanvas(pageId: string): HTMLCanvasElement | undefined {
+    return this.committedCanvasMap.get(pageId);
+  }
+
+  getCurrentPageId(): string | undefined {
+    return this.pageManager?.getPageByNumber(this.currentPageNumber)?.id;
+  }
+
+  getScrollerEl(): HTMLElement | undefined {
+    return this.scrollerEl;
+  }
+
+  scrollBy(deltaX: number, deltaY: number): void {
+    if (this.scrollerEl) {
+      this.scrollerEl.scrollLeft += deltaX;
+      this.scrollerEl.scrollTop += deltaY;
+    }
+  }
+
+  scrollToPagePoint(pageNumber: number, xRatio: number, yRatio: number): void {
+    const pageFrame = this.pageElements.get(pageNumber);
+    if (!pageFrame || !this.scrollerEl) {
+      return;
+    }
+
+    const pageRect = pageFrame.getBoundingClientRect();
+    const scrollerRect = this.scrollerEl.getBoundingClientRect();
+
+    const targetScreenX = pageRect.left + xRatio * pageRect.width;
+    const targetScreenY = pageRect.top + yRatio * pageRect.height;
+
+    const currentCenterScreenX = scrollerRect.left + scrollerRect.width / 2;
+    const currentCenterScreenY = scrollerRect.top + scrollerRect.height / 2;
+
+    const diffX = targetScreenX - currentCenterScreenX;
+    const diffY = targetScreenY - currentCenterScreenY;
+
+    if (Number.isFinite(diffX) && Number.isFinite(diffY)) {
+      this.scrollerEl.scrollLeft += diffX;
+      this.scrollerEl.scrollTop += diffY;
+    }
   }
 
   onTextSizeChanged(size: number): void {
@@ -2974,7 +3184,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   setZoomLevel(targetZoom: number, anchorClientX?: number, anchorClientY?: number, isContinuous: boolean = false): void {
-    const clampedZoom = Math.min(3.0, Math.max(0.4, targetZoom));
+    const clampedZoom = Math.min(5.0, Math.max(0.2, targetZoom));
     if (Math.abs(clampedZoom - this.zoomLevel) < 0.0005) {
       return;
     }
@@ -3017,6 +3227,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.toolbar.updateZoomDisplay(this.zoomLevel);
     this.updateStatusDisplay();
 
+    if (this.minimap) {
+      this.minimap.onZoomChanged(this.zoomLevel);
+    }
+
     this.updateEraserCursorSize();
 
     if (isContinuous) {
@@ -3027,12 +3241,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   zoomByFactor(factor: number, anchorClientX?: number, anchorClientY?: number): void {
-    const nextZoom = Math.min(3.0, Math.max(0.4, this.zoomLevel * factor));
+    const nextZoom = Math.min(5.0, Math.max(0.2, this.zoomLevel * factor));
     this.setZoomLevel(Math.round(nextZoom * 1000) / 1000, anchorClientX, anchorClientY, true);
   }
 
   private changeZoom(delta: number, anchorClientX?: number, anchorClientY?: number): void {
-    const nextZoom = Math.min(3.0, Math.max(0.4, Math.round((this.zoomLevel + delta) * 10) / 10));
+    const nextZoom = Math.min(5.0, Math.max(0.2, Math.round((this.zoomLevel + delta) * 10) / 10));
     this.setZoomLevel(nextZoom, anchorClientX, anchorClientY, false);
   }
 
@@ -4403,11 +4617,18 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.ensurePageCanvasesMounted(pageNumber);
     this.sidebar.updateActivePage(pageNumber);
     this.updateStatusDisplay();
+    if (this.minimap) {
+      this.minimap.update(true);
+    }
   }
 
   private handleScroll(): void {
     if (!this.scrollerEl || this.pageElements.size === 0) {
       return;
+    }
+
+    if (this.minimap) {
+      this.minimap.scheduleViewfinderUpdate();
     }
 
     const scrollerRect = this.scrollerEl.getBoundingClientRect();

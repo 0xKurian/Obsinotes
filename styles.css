@@ -1798,6 +1798,300 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   gap: 10px;
 }
 
+/* ==========================================================================
+   Minimap & Viewfinder Navigation
+   ========================================================================== */
+
+.notepages-minimap-container {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 85;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  box-shadow: var(--shadow-l);
+  border: 1px solid var(--background-modifier-border);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  user-select: none;
+}
+
+.notepages-minimap-container.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92);
+}
+
+.notepages-minimap-container.is-collapsed .notepages-minimap-body {
+  display: none;
+}
+
+.notepages-minimap-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--background-secondary-alt);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  gap: 6px;
+}
+
+.notepages-minimap-page-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notepages-minimap-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.notepages-minimap-btn {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.notepages-minimap-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.notepages-minimap-btn.is-active {
+  color: var(--interactive-accent);
+  background: var(--background-modifier-active-hover);
+}
+
+.notepages-minimap-body {
+  padding: 6px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--background-primary);
+}
+
+.notepages-minimap-preview {
+  position: relative;
+  border: 1px solid var(--background-modifier-border-focus);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: #ffffff;
+}
+
+.notepages-minimap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.notepages-minimap-viewfinder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 2px solid var(--interactive-accent);
+  background: rgba(var(--interactive-accent-rgb, 120, 120, 255), 0.22);
+  border-radius: 2px;
+  cursor: grab;
+  box-sizing: border-box;
+  pointer-events: auto;
+  z-index: 2;
+  transition: box-shadow 0.15s ease;
+}
+
+.notepages-minimap-viewfinder.is-hidden {
+  display: none;
+}
+
+.notepages-minimap-viewfinder:hover {
+  box-shadow: 0 0 6px var(--interactive-accent);
+}
+
+.notepages-minimap-viewfinder.is-dragging {
+  cursor: grabbing;
+  background: rgba(var(--interactive-accent-rgb, 120, 120, 255), 0.38);
+  box-shadow: 0 0 8px var(--interactive-accent);
+}
+
+/* ==========================================================================
+   Toolbar Drag Handle & Placements
+   ========================================================================== */
+
+.notepages-dock-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 28px;
+  cursor: grab;
+  color: var(--text-faint);
+  margin-right: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.notepages-dock-drag-handle:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.notepages-dock-drag-handle:active {
+  cursor: grabbing;
+}
+
+.notepages-toolbar-float-wrapper.is-dock-dragging {
+  transition: none !important;
+  opacity: 0.95;
+  cursor: grabbing;
+}
+
+.notepages-toolbar-float-wrapper.is-position-bottom {
+  top: auto;
+  bottom: 12px;
+  flex-direction: column-reverse;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left {
+  top: 50%;
+  left: 14px;
+  right: auto;
+  transform: translateY(-50%);
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-floating-dock {
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-dock-section {
+  flex-direction: column;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-subtoolbar-float {
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.notepages-toolbar-float-wrapper.is-position-right {
+  top: 50%;
+  right: 14px;
+  left: auto;
+  transform: translateY(-50%);
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  padding: 0;
+}
+
+.notepages-toolbar-float-wrapper.is-position-right .notepages-floating-dock {
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.notepages-toolbar-float-wrapper.is-position-right .notepages-dock-section {
+  flex-direction: column;
+}
+
+.notepages-toolbar-float-wrapper.is-position-right .notepages-subtoolbar-float {
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.notepages-toolbar-float-wrapper.is-position-floating {
+  right: auto;
+  padding: 0;
+  transform: none;
+}
+
+/* ==========================================================================
+   Page Size & Theme Styles in Popover
+   ========================================================================== */
+
+.notepages-popover-size-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.notepages-popover-dock-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.notepages-popover-color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.notepages-popover-sublabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  min-width: 44px;
+}
+
+.notepages-paper-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.notepages-paper-swatch:hover {
+  transform: scale(1.15);
+}
+
+.notepages-paper-swatch.is-active {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+.notepages-color-picker-input {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+}
+
 
 
 

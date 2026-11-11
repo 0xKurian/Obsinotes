@@ -4,11 +4,23 @@ import {
   NotebookDocument,
   NotebookMetadata,
   PageData,
+  PageSizePreset,
   ShapeObject,
   StrokeObject,
   ValidationResult,
   NOTE_PAGES_FRONTMATTER_KEY
 } from "../types";
+
+const VALID_PAGE_SIZES: ReadonlySet<string> = new Set<PageSizePreset>([
+  "A4",
+  "A3",
+  "A5",
+  "B5",
+  "Letter",
+  "16:9",
+  "Square",
+  "Custom"
+]);
 
 export class DocumentSerializer {
   static fastValidateDocumentForSave(data: unknown): ValidationResult {
@@ -36,8 +48,8 @@ export class DocumentSerializer {
       if (typeof meta.schemaVersion !== "number" || !Number.isFinite(meta.schemaVersion)) {
         errors.push("metadata.schemaVersion must be a valid number");
       }
-      if (meta.defaultPageSize !== "A4" && meta.defaultPageSize !== "Letter" && meta.defaultPageSize !== "Custom") {
-        errors.push("metadata.defaultPageSize must be 'A4', 'Letter', or 'Custom'");
+      if (typeof meta.defaultPageSize !== "string" || !VALID_PAGE_SIZES.has(meta.defaultPageSize)) {
+        errors.push("metadata.defaultPageSize must be a valid PageSizePreset ('A4', 'A3', 'A5', 'B5', 'Letter', '16:9', 'Square', 'Custom')");
       }
       if (meta.defaultOrientation !== "portrait" && meta.defaultOrientation !== "landscape") {
         errors.push("metadata.defaultOrientation must be 'portrait' or 'landscape'");
@@ -111,8 +123,8 @@ export class DocumentSerializer {
       if (typeof meta.schemaVersion !== "number" || !Number.isFinite(meta.schemaVersion)) {
         errors.push("metadata.schemaVersion must be a valid number");
       }
-      if (meta.defaultPageSize !== "A4" && meta.defaultPageSize !== "Letter" && meta.defaultPageSize !== "Custom") {
-        errors.push("metadata.defaultPageSize must be 'A4', 'Letter', or 'Custom'");
+      if (typeof meta.defaultPageSize !== "string" || !VALID_PAGE_SIZES.has(meta.defaultPageSize)) {
+        errors.push("metadata.defaultPageSize must be a valid PageSizePreset ('A4', 'A3', 'A5', 'B5', 'Letter', '16:9', 'Square', 'Custom')");
       }
       if (meta.defaultOrientation !== "portrait" && meta.defaultOrientation !== "landscape") {
         errors.push("metadata.defaultOrientation must be 'portrait' or 'landscape'");
@@ -428,7 +440,9 @@ export class DocumentSerializer {
       createdAt: typeof existingMeta.createdAt === "number" ? existingMeta.createdAt : now,
       updatedAt: typeof existingMeta.updatedAt === "number" ? existingMeta.updatedAt : now,
       schemaVersion: CURRENT_SCHEMA_VERSION,
-      defaultPageSize: existingMeta.defaultPageSize === "Letter" ? "Letter" : "A4",
+      defaultPageSize: typeof existingMeta.defaultPageSize === "string" && VALID_PAGE_SIZES.has(existingMeta.defaultPageSize)
+        ? (existingMeta.defaultPageSize as PageSizePreset)
+        : "A4",
       defaultOrientation: existingMeta.defaultOrientation === "landscape" ? "landscape" : "portrait",
       defaultTemplate: typeof existingMeta.defaultTemplate === "string" ? existingMeta.defaultTemplate as NotebookMetadata["defaultTemplate"] : undefined,
       defaultPaperBackground: typeof existingMeta.defaultPaperBackground === "string" ? existingMeta.defaultPaperBackground : undefined,

@@ -4,6 +4,7 @@ import {
   PaperTemplateConfig,
   PageOrientation,
   PageDimensions,
+  PageSizePreset,
   getEffectivePageDimensions,
   StrokeObject,
   ShapeObject,
@@ -268,6 +269,45 @@ export class PageManager {
 
     this.document.metadata.updatedAt = Date.now();
     return true;
+  }
+
+  resizePage(pageId: string, dimensions: PageDimensions, orientation?: PageOrientation): boolean {
+    const page = this.getPage(pageId);
+    if (!page) {
+      return false;
+    }
+    page.dimensions = { ...dimensions };
+    if (orientation) {
+      page.orientation = orientation;
+    }
+    this.document.metadata.updatedAt = Date.now();
+    return true;
+  }
+
+  resizeAllPages(preset: PageSizePreset, dimensions?: PageDimensions, orientation?: PageOrientation): void {
+    for (const page of this.document.pages) {
+      const pageOrient = orientation ?? page.orientation;
+      const effDim = dimensions
+        ? { ...dimensions }
+        : getEffectivePageDimensions(preset, pageOrient);
+      page.dimensions = effDim;
+      if (orientation) {
+        page.orientation = orientation;
+      }
+    }
+    this.document.metadata.defaultPageSize = preset;
+    if (orientation) {
+      this.document.metadata.defaultOrientation = orientation;
+    }
+    this.document.metadata.updatedAt = Date.now();
+  }
+
+  setNotebookDefaultPageSize(preset: PageSizePreset, orientation?: PageOrientation): void {
+    this.document.metadata.defaultPageSize = preset;
+    if (orientation) {
+      this.document.metadata.defaultOrientation = orientation;
+    }
+    this.document.metadata.updatedAt = Date.now();
   }
 
   private renumberPages(): void {

@@ -9,7 +9,8 @@ import {
   HistoryManager,
   TransformElementsCommand,
   MoveElementsAcrossPagesCommand,
-  DeletePageCommand
+  DeletePageCommand,
+  ResizePageCommand
 } from "../src/history/HistoryManager";
 import { PageData, ShapeObject, StrokeObject, TextObject, ImageObject } from "../src/types";
 
@@ -428,5 +429,43 @@ describe("HistoryManager", () => {
     assert.strictEqual(pages.length, 2);
     assert.strictEqual(pages[1].id, "page_3");
     assert.strictEqual(pages[1].pageNumber, 2);
+  });
+
+  test("ResizePageCommand resizes page dimensions and orientation, undoes and redoes cleanly", () => {
+    const page = createSamplePage();
+    const history = new HistoryManager();
+
+    let mutateCallCount = 0;
+    const initialDim = { ...page.dimensions };
+    const newDim = { width: 842, height: 1191, unit: "pt" as const };
+
+    const cmd = new ResizePageCommand(
+      page,
+      initialDim,
+      newDim,
+      () => {
+        mutateCallCount++;
+      },
+      "portrait",
+      "landscape"
+    );
+
+    history.execute(cmd);
+    assert.strictEqual(page.dimensions.width, 842);
+    assert.strictEqual(page.dimensions.height, 1191);
+    assert.strictEqual(page.orientation, "landscape");
+    assert.strictEqual(mutateCallCount, 1);
+
+    history.undo();
+    assert.strictEqual(page.dimensions.width, 595);
+    assert.strictEqual(page.dimensions.height, 842);
+    assert.strictEqual(page.orientation, "portrait");
+    assert.strictEqual(mutateCallCount, 2);
+
+    history.redo();
+    assert.strictEqual(page.dimensions.width, 842);
+    assert.strictEqual(page.dimensions.height, 1191);
+    assert.strictEqual(page.orientation, "landscape");
+    assert.strictEqual(mutateCallCount, 3);
   });
 });

@@ -1,4 +1,4 @@
-import { PageData, ShapeObject, StrokeObject, TextObject, ImageObject } from "../types";
+import { PageData, PageDimensions, PageOrientation, ShapeObject, StrokeObject, TextObject, ImageObject } from "../types";
 
 export interface HistoryCommand {
   id: string;
@@ -740,6 +740,54 @@ export class DeletePageCommand implements HistoryCommand {
       }
       this.onRestoreSync(this.deletedPage, insertIdx);
     }
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class ResizePageCommand implements HistoryCommand {
+  id: string;
+  description: string = "Resize page";
+  private page: PageData;
+  private prevDimensions: PageDimensions;
+  private newDimensions: PageDimensions;
+  private prevOrientation?: PageOrientation;
+  private newOrientation?: PageOrientation;
+  private onMutate: (page: PageData) => void;
+
+  constructor(
+    page: PageData,
+    prevDimensions: PageDimensions,
+    newDimensions: PageDimensions,
+    onMutate: (page: PageData) => void,
+    prevOrientation?: PageOrientation,
+    newOrientation?: PageOrientation
+  ) {
+    this.id = `cmd_resize_${page.id}_${Date.now()}`;
+    this.page = page;
+    this.prevDimensions = { ...prevDimensions };
+    this.newDimensions = { ...newDimensions };
+    this.prevOrientation = prevOrientation;
+    this.newOrientation = newOrientation;
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    this.page.dimensions = { ...this.newDimensions };
+    if (this.newOrientation) {
+      this.page.orientation = this.newOrientation;
+    }
+    this.onMutate(this.page);
+  }
+
+  undo(): void {
+    this.page.dimensions = { ...this.prevDimensions };
+    if (this.prevOrientation) {
+      this.page.orientation = this.prevOrientation;
+    }
+    this.onMutate(this.page);
   }
 
   redo(): void {
