@@ -114,7 +114,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   toolbar: NotePagesToolbar;
   minimap!: NotePagesMinimap;
   toolbarPlacement: ToolbarPlacement = "top";
-  savedPlacementKey: string = "notepages-toolbar-placement";
   document: NotebookDocument | null = null;
   pageManager: PageManager | null = null;
   storageManager: StorageManager;
@@ -1418,13 +1417,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.plugin.settings.toolbarPlacement = placement;
       void this.plugin.saveSettings();
     }
-    if (typeof window !== "undefined" && typeof window.localStorage !== "undefined") {
-      try {
-        window.localStorage.setItem(this.savedPlacementKey, placement);
-      } catch (err) {
-        console.warn("Failed to persist toolbar placement in localStorage", err);
-      }
-    }
     this.syncScrollerTopPadding();
   }
 
@@ -1435,17 +1427,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (isPlacement(settingPlacement)) {
       return settingPlacement;
     }
-    if (typeof window !== "undefined" && typeof window.localStorage !== "undefined") {
-      try {
-        const saved = window.localStorage.getItem(this.savedPlacementKey);
-        if (isPlacement(saved)) {
-          return saved;
-        }
-      } catch (err) {
-        console.warn("Failed to read toolbar placement from localStorage", err);
-      }
-    }
-    return "top";
+    return isPlacement(this.toolbarPlacement) ? this.toolbarPlacement : "top";
   }
 
   getToolbarLayoutConfig(): ToolbarLayoutConfig {

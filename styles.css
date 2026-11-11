@@ -2018,7 +2018,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
 
 .notepages-toolbar-float-wrapper.is-dock-dragging,
 .notepages-toolbar-float-wrapper.is-dock-resizing {
-  transition: none !important;
+  transition: none;
   opacity: 0.96;
 }
 
@@ -2038,8 +2038,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   justify-content: center;
   border-radius: calc(16px * var(--np-toolbar-scale));
   padding: calc(5px * var(--np-toolbar-scale)) calc(20px * var(--np-toolbar-scale)) calc(5px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
-  row-gap: calc(3px * var(--np-toolbar-scale));
-  column-gap: calc(5px * var(--np-toolbar-scale));
+  gap: calc(3px * var(--np-toolbar-scale)) calc(5px * var(--np-toolbar-scale));
   overflow-x: visible;
 }
 
