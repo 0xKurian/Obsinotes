@@ -227,28 +227,6 @@ export class PngExporter {
     ctx: CanvasRenderingContext2D,
     stroke: StrokeObject
   ): void {
-    const outline = StrokeGeometry.generateOutline(stroke.points, stroke.tool, stroke.width);
-    if (outline.length === 0) {
-      return;
-    }
-
-    ctx.save();
-    ctx.fillStyle = stroke.color;
-
-    if (stroke.tool === "highlighter") {
-      ctx.globalAlpha = 0.35;
-      ctx.globalCompositeOperation = "multiply";
-    } else {
-      ctx.globalAlpha = stroke.opacity ?? 1;
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(outline[0][0], outline[0][1]);
-    for (let i = 1; i < outline.length; i++) {
-      ctx.lineTo(outline[i][0], outline[i][1]);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    StrokeGeometry.renderStroke(ctx, stroke);
   }
 }

@@ -42,6 +42,19 @@ export class InkingController {
   private isRafScheduled: boolean = false;
   private performanceMonitor?: PerformanceMonitor;
 
+  private eraserSession: {
+    pageId: string;
+    initialStrokes: StrokeObject[];
+    initialShapes: ShapeObject[];
+    currentStrokes: StrokeObject[];
+    currentShapes: ShapeObject[];
+    hasChanges: boolean;
+    committedCanvas: HTMLCanvasElement;
+    dimensions: PageDimensions;
+  } | null = null;
+  private eraserRafId: number | null = null;
+  private isEraserRafScheduled: boolean = false;
+
   constructor(callbacks: InkingControllerCallbacks) {
     this.callbacks = callbacks;
   }
@@ -91,7 +104,8 @@ export class InkingController {
     committedCanvas: HTMLCanvasElement,
     pageCoords: { x: number; y: number },
     existingStrokes: StrokeObject[],
-    existingShapes: ShapeObject[] = []
+    existingShapes: ShapeObject[] = [],
+    pageDimensions?: PageDimensions
   ): void {
     if (e.pointerType === "pen") {
       this.lastPenTimestamp = Date.now();
@@ -130,7 +144,22 @@ export class InkingController {
 
     if (this.activeTool === "eraser") {
       this.isDrawing = true;
-      this.executeEraser(pageId, pageCoords.x, pageCoords.y, existingStrokes, existingShapes);
+      const dims: PageDimensions = pageDimensions || {
+        width: Number(committedCanvas.dataset?.pageWidth) || committedCanvas.clientWidth || committedCanvas.width || 595.28,
+        height: Number(committedCanvas.dataset?.pageHeight) || committedCanvas.clientHeight || committedCanvas.height || 841.89,
+        unit: "pt"
+      };
+      this.eraserSession = {
+        pageId,
+        initialStrokes: [...existingStrokes],
+        initialShapes: [...existingShapes],
+        currentStrokes: [...existingStrokes],
+        currentShapes: [...existingShapes],
+        hasChanges: false,
+        committedCanvas,
+        dimensions: dims
+      };
+      this.processEraserPoints([{ x: pageCoords.x, y: pageCoords.y }]);
       return;
     }
 
@@ -164,8 +193,8 @@ export class InkingController {
     this.lastMoveTimestamp = Date.now();
 
     if (this.activeTool === "eraser") {
-      for (const pt of pageCoordsList) {
-        this.executeEraser(this.activePageId, pt.x, pt.y, existingStrokes, existingShapes);
+      if (this.eraserSession) {
+        this.processEraserPoints(pageCoordsList);
       }
       return;
     }
@@ -175,6 +204,21 @@ export class InkingController {
 
     for (let i = 0; i < pageCoordsList.length; i++) {
       const pt = pageCoordsList[i];
+      const lastPoint = this.currentPoints[this.currentPoints.length - 1];
+      if (lastPoint) {
+        const dx = pt.x - lastPoint.x;
+        const dy = pt.y - lastPoint.y;
+        const distSq = dx * dx + dy * dy;
+        const isPressureSignificant = Math.abs(basePressure - (lastPoint.pressure || 0.5)) > 0.05;
+        // Deduplicate micro-movement jitter (< 0.5px) unless pressure changed significantly
+        if (distSq < 0.25 && !isPressureSignificant) {
+          lastPoint.timestamp = baseTime + i;
+          lastPoint.tiltX = e.tiltX;
+          lastPoint.tiltY = e.tiltY;
+          continue;
+        }
+      }
+
       const sample: PointSample = {
         x: pt.x,
         y: pt.y,
@@ -207,7 +251,11 @@ export class InkingController {
       this.clearCanvas(this.activeCanvas);
     }
 
-    this.commitCurrentStroke();
+    if (this.activeTool === "eraser") {
+      this.commitEraserSession();
+    } else {
+      this.commitCurrentStroke();
+    }
     this.finalizeStrokeDrawing();
   }
 
@@ -221,8 +269,12 @@ export class InkingController {
       this.clearCanvas(this.activeCanvas);
     }
 
-    if (this.isDrawing && this.activePageId && this.currentPoints.length > 0 && this.activeTool !== "eraser") {
-      this.commitCurrentStroke();
+    if (this.isDrawing && this.activePageId) {
+      if (this.activeTool === "eraser") {
+        this.commitEraserSession();
+      } else if (this.currentPoints.length > 0) {
+        this.commitCurrentStroke();
+      }
     }
 
     this.finalizeStrokeDrawing();
@@ -320,8 +372,14 @@ export class InkingController {
       window.cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    if (this.eraserRafId !== null && typeof window !== "undefined" && typeof window.cancelAnimationFrame !== "undefined") {
+      window.cancelAnimationFrame(this.eraserRafId);
+      this.eraserRafId = null;
+    }
     this.isRafScheduled = false;
+    this.isEraserRafScheduled = false;
     this.isDrawing = false;
+    this.eraserSession = null;
     this.activePageId = null;
     this.activeCanvas = null;
     this.committedCanvas = null;
@@ -363,35 +421,93 @@ export class InkingController {
     StrokeGeometry.renderStroke(ctx, tempStroke);
   }
 
-  private executeEraser(
-    pageId: string,
-    x: number,
-    y: number,
-    existingStrokes: StrokeObject[],
-    existingShapes: ShapeObject[] = []
-  ): void {
-    const shapeResult = EraserEngine.eraseShapes(existingShapes, x, y, this.eraserRadius);
-    const shapesErased = shapeResult.deletedIds.length > 0;
+  private processEraserPoints(coordsList: { x: number; y: number }[]): void {
+    if (!this.eraserSession || coordsList.length === 0) {
+      return;
+    }
+
+    let changed = false;
+    let strokes = this.eraserSession.currentStrokes;
+    let shapes = this.eraserSession.currentShapes;
+
+    const shapeResult = EraserEngine.eraseShapesTrajectory(shapes, coordsList, this.eraserRadius);
+    if (shapeResult.deletedIds.length > 0) {
+      shapes = shapeResult.remaining;
+      changed = true;
+    }
 
     if (this.eraserMode === "stroke") {
-      const result = EraserEngine.eraseByStroke(existingStrokes, x, y, this.eraserRadius);
-      if (result.deletedIds.length > 0 || shapesErased) {
-        this.callbacks.onStrokesErased(
-          pageId,
-          result.remaining,
-          shapesErased ? shapeResult.remaining : undefined
-        );
+      const strokeResult = EraserEngine.eraseByStrokeTrajectory(strokes, coordsList, this.eraserRadius);
+      if (strokeResult.deletedIds.length > 0) {
+        strokes = strokeResult.remaining;
+        changed = true;
       }
     } else {
-      const result = EraserEngine.erasePrecision(existingStrokes, x, y, this.eraserRadius);
-      if (result.changed || shapesErased) {
-        this.callbacks.onStrokesErased(
-          pageId,
-          result.updatedStrokes,
-          shapesErased ? shapeResult.remaining : undefined
-        );
+      for (const pt of coordsList) {
+        const precisionResult = EraserEngine.erasePrecision(strokes, pt.x, pt.y, this.eraserRadius);
+        if (precisionResult.changed) {
+          strokes = precisionResult.updatedStrokes;
+          changed = true;
+        }
       }
     }
+
+    if (changed) {
+      this.eraserSession.currentStrokes = strokes;
+      this.eraserSession.currentShapes = shapes;
+      this.eraserSession.hasChanges = true;
+      this.scheduleEraserVisualRedraw();
+    }
+  }
+
+  private scheduleEraserVisualRedraw(): void {
+    if (this.isEraserRafScheduled) {
+      return;
+    }
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame === "undefined") {
+      this.renderEraserVisual();
+      return;
+    }
+    this.isEraserRafScheduled = true;
+    this.eraserRafId = window.requestAnimationFrame(() => {
+      this.isEraserRafScheduled = false;
+      this.eraserRafId = null;
+      this.renderEraserVisual();
+    });
+  }
+
+  private renderEraserVisual(): void {
+    if (!this.eraserSession) {
+      return;
+    }
+    this.redrawCommittedStrokes(
+      this.eraserSession.committedCanvas,
+      this.eraserSession.dimensions,
+      this.eraserSession.currentStrokes,
+      this.eraserSession.currentShapes
+    );
+  }
+
+  private commitEraserSession(): void {
+    if (!this.eraserSession) {
+      return;
+    }
+
+    if (this.eraserRafId !== null && typeof window !== "undefined" && typeof window.cancelAnimationFrame !== "undefined") {
+      window.cancelAnimationFrame(this.eraserRafId);
+      this.eraserRafId = null;
+    }
+    this.isEraserRafScheduled = false;
+
+    if (this.eraserSession.hasChanges) {
+      this.renderEraserVisual();
+      this.callbacks.onStrokesErased(
+        this.eraserSession.pageId,
+        this.eraserSession.currentStrokes,
+        this.eraserSession.currentShapes
+      );
+    }
+    this.eraserSession = null;
   }
 
   clearCanvas(canvas: HTMLCanvasElement): void {

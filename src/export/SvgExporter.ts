@@ -208,7 +208,8 @@ export function renderShapeToSvg(shape: ShapeObject): string {
 }
 
 export function renderStrokeToSvg(stroke: StrokeObject): string {
-  const outline = StrokeGeometry.generateOutline(stroke.points, stroke.tool, stroke.width);
+  const cached = StrokeGeometry.getCachedGeometry(stroke);
+  const outline = cached ? cached.outline : StrokeGeometry.generateOutline(stroke.points, stroke.tool, stroke.width);
   if (outline.length === 0) {
     return "";
   }

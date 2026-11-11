@@ -13,9 +13,10 @@ export class AddStrokeCommand implements HistoryCommand {
   description: string = "Add stroke";
   private page: PageData;
   private stroke: StrokeObject;
-  private onMutate: () => void;
+  private onMutate: (isInitial?: boolean) => void;
+  private isInitial: boolean = true;
 
-  constructor(page: PageData, stroke: StrokeObject, onMutate: () => void) {
+  constructor(page: PageData, stroke: StrokeObject, onMutate: (isInitial?: boolean) => void) {
     this.id = `cmd_add_${stroke.id}`;
     this.page = page;
     this.stroke = stroke;
@@ -25,7 +26,8 @@ export class AddStrokeCommand implements HistoryCommand {
   execute(): void {
     if (!this.page.strokes.some((s) => s.id === this.stroke.id)) {
       this.page.strokes.push(this.stroke);
-      this.onMutate();
+      this.onMutate(this.isInitial);
+      this.isInitial = false;
     }
   }
 
@@ -33,7 +35,7 @@ export class AddStrokeCommand implements HistoryCommand {
     const idx = this.page.strokes.findIndex((s) => s.id === this.stroke.id);
     if (idx !== -1) {
       this.page.strokes.splice(idx, 1);
-      this.onMutate();
+      this.onMutate(false);
     }
   }
 
@@ -46,10 +48,10 @@ export class EraseStrokesCommand implements HistoryCommand {
   id: string;
   description: string = "Erase strokes";
   private page: PageData;
-  private previousStrokes: StrokeObject[];
-  private nextStrokes: StrokeObject[];
-  private previousShapes: ShapeObject[];
-  private nextShapes: ShapeObject[];
+  private deletedStrokes: { index: number; stroke: StrokeObject }[] = [];
+  private addedStrokes: StrokeObject[] = [];
+  private deletedShapes: { index: number; shape: ShapeObject }[] = [];
+  private addedShapes: ShapeObject[] = [];
   private onMutate: () => void;
 
   constructor(
@@ -62,22 +64,81 @@ export class EraseStrokesCommand implements HistoryCommand {
   ) {
     this.id = `cmd_erase_${Date.now()}`;
     this.page = page;
-    this.previousStrokes = [...previousStrokes];
-    this.nextStrokes = [...nextStrokes];
-    this.previousShapes = previousShapes ? [...previousShapes] : [...page.shapes];
-    this.nextShapes = nextShapes ? [...nextShapes] : [...page.shapes];
     this.onMutate = onMutate;
+
+    const prevShapesArr = previousShapes ? previousShapes : page.shapes;
+    const nextShapesArr = nextShapes ? nextShapes : page.shapes;
+
+    const nextStrokeIds = new Set(nextStrokes.map((s) => s.id));
+    const prevStrokeIds = new Set(previousStrokes.map((s) => s.id));
+
+    for (let i = 0; i < previousStrokes.length; i++) {
+      const s = previousStrokes[i];
+      if (!nextStrokeIds.has(s.id)) {
+        this.deletedStrokes.push({ index: i, stroke: s });
+      }
+    }
+    for (const s of nextStrokes) {
+      if (!prevStrokeIds.has(s.id)) {
+        this.addedStrokes.push(s);
+      }
+    }
+
+    const nextShapeIds = new Set(nextShapesArr.map((sh) => sh.id));
+    const prevShapeIds = new Set(prevShapesArr.map((sh) => sh.id));
+
+    for (let i = 0; i < prevShapesArr.length; i++) {
+      const sh = prevShapesArr[i];
+      if (!nextShapeIds.has(sh.id)) {
+        this.deletedShapes.push({ index: i, shape: sh });
+      }
+    }
+    for (const sh of nextShapesArr) {
+      if (!prevShapeIds.has(sh.id)) {
+        this.addedShapes.push(sh);
+      }
+    }
   }
 
   execute(): void {
-    this.page.strokes = [...this.nextStrokes];
-    this.page.shapes = [...this.nextShapes];
+    const deletedStrokeIds = new Set(this.deletedStrokes.map((d) => d.stroke.id));
+    this.page.strokes = this.page.strokes.filter((s) => !deletedStrokeIds.has(s.id));
+    for (const s of this.addedStrokes) {
+      if (!this.page.strokes.some((existing) => existing.id === s.id)) {
+        this.page.strokes.push(s);
+      }
+    }
+
+    const deletedShapeIds = new Set(this.deletedShapes.map((d) => d.shape.id));
+    this.page.shapes = this.page.shapes.filter((sh) => !deletedShapeIds.has(sh.id));
+    for (const sh of this.addedShapes) {
+      if (!this.page.shapes.some((existing) => existing.id === sh.id)) {
+        this.page.shapes.push(sh);
+      }
+    }
+
     this.onMutate();
   }
 
   undo(): void {
-    this.page.strokes = [...this.previousStrokes];
-    this.page.shapes = [...this.previousShapes];
+    const addedStrokeIds = new Set(this.addedStrokes.map((s) => s.id));
+    this.page.strokes = this.page.strokes.filter((s) => !addedStrokeIds.has(s.id));
+    for (const item of this.deletedStrokes) {
+      const idx = Math.min(Math.max(0, item.index), this.page.strokes.length);
+      if (!this.page.strokes.some((existing) => existing.id === item.stroke.id)) {
+        this.page.strokes.splice(idx, 0, item.stroke);
+      }
+    }
+
+    const addedShapeIds = new Set(this.addedShapes.map((sh) => sh.id));
+    this.page.shapes = this.page.shapes.filter((sh) => !addedShapeIds.has(sh.id));
+    for (const item of this.deletedShapes) {
+      const idx = Math.min(Math.max(0, item.index), this.page.shapes.length);
+      if (!this.page.shapes.some((existing) => existing.id === item.shape.id)) {
+        this.page.shapes.splice(idx, 0, item.shape);
+      }
+    }
+
     this.onMutate();
   }
 

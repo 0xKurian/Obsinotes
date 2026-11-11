@@ -17,6 +17,7 @@ import {
 } from "../src/export/SvgExporter";
 import { PdfExporter } from "../src/export/PdfExporter";
 import { ExportEngine, toArrayBuffer } from "../src/export/ExportEngine";
+import { StrokeGeometry } from "../src/ink/StrokeGeometry";
 import {
   NotebookDocument,
   PageData,
@@ -215,6 +216,35 @@ describe("SvgExporter - Template and Element Rendering", () => {
     };
     const hlSvg = renderStrokeToSvg(hlStroke);
     assert.ok(hlSvg.includes("mix-blend-mode: multiply"));
+  });
+
+  it("renderStrokeToSvg seamlessly re-uses pre-calculated StrokeGeometry cache", () => {
+    const cachedStroke: StrokeObject = {
+      id: "st-cached-1",
+      tool: "pen",
+      color: "#ff0000",
+      width: 4,
+      opacity: 0.9,
+      points: [
+        { x: 10, y: 10, pressure: 0.5, timestamp: 100 },
+        { x: 50, y: 50, pressure: 0.5, timestamp: 120 }
+      ],
+      bounds: { minX: 8, minY: 8, maxX: 52, maxY: 52 },
+      createdAt: 100
+    };
+
+    // Pre-populate geometry cache (as would happen during inking or rendering on canvas)
+    const customOutline = [[10, 10], [50, 50], [10, 50]];
+    StrokeGeometry.setCachedGeometry(cachedStroke, {
+      outline: customOutline
+    });
+
+    // SvgExporter should use the cached outline directly
+    const svg = renderStrokeToSvg(cachedStroke);
+    assert.ok(svg.includes("<path"));
+    assert.ok(svg.includes('fill="#ff0000"'));
+    assert.ok(svg.includes('fill-opacity="0.9"'));
+    assert.ok(svg.includes("M 10.00 10.00"));
   });
 
   it("renders text and sticky notes with correct styling", () => {

@@ -11,6 +11,81 @@ import {
 } from "../types";
 
 export class DocumentSerializer {
+  static fastValidateDocumentForSave(data: unknown): ValidationResult {
+    const errors: string[] = [];
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return { valid: false, errors: ["Document payload must be a non-null object"] };
+    }
+
+    const obj = data as Record<string, unknown>;
+
+    if (!obj.metadata || typeof obj.metadata !== "object" || Array.isArray(obj.metadata)) {
+      errors.push("Missing or invalid 'metadata' object");
+    } else {
+      const meta = obj.metadata as Record<string, unknown>;
+      if (typeof meta.title !== "string") {
+        errors.push("metadata.title must be a string");
+      }
+      if (typeof meta.createdAt !== "number" || !Number.isFinite(meta.createdAt)) {
+        errors.push("metadata.createdAt must be a valid number");
+      }
+      if (typeof meta.updatedAt !== "number" || !Number.isFinite(meta.updatedAt)) {
+        errors.push("metadata.updatedAt must be a valid number");
+      }
+      if (typeof meta.schemaVersion !== "number" || !Number.isFinite(meta.schemaVersion)) {
+        errors.push("metadata.schemaVersion must be a valid number");
+      }
+      if (meta.defaultPageSize !== "A4" && meta.defaultPageSize !== "Letter" && meta.defaultPageSize !== "Custom") {
+        errors.push("metadata.defaultPageSize must be 'A4', 'Letter', or 'Custom'");
+      }
+      if (meta.defaultOrientation !== "portrait" && meta.defaultOrientation !== "landscape") {
+        errors.push("metadata.defaultOrientation must be 'portrait' or 'landscape'");
+      }
+    }
+
+    if (!Array.isArray(obj.pages)) {
+      errors.push("Document 'pages' must be an array");
+    } else {
+      for (let index = 0; index < obj.pages.length; index++) {
+        const page = obj.pages[index] as Record<string, unknown>;
+        const prefix = `Page[${index}]`;
+        if (!page || typeof page !== "object" || Array.isArray(page)) {
+          errors.push(`${prefix} must be a valid object`);
+          continue;
+        }
+        if (typeof page.id !== "string" || page.id.trim() === "") {
+          errors.push(`${prefix}.id must be a non-empty string`);
+        }
+        if (typeof page.pageNumber !== "number" || page.pageNumber < 1) {
+          errors.push(`${prefix}.pageNumber must be a positive integer`);
+        }
+        if (!page.dimensions || typeof page.dimensions !== "object") {
+          errors.push(`${prefix}.dimensions must be an object`);
+        } else {
+          const dim = page.dimensions as Record<string, unknown>;
+          if (typeof dim.width !== "number" || dim.width <= 0) {
+            errors.push(`${prefix}.dimensions.width must be a positive number`);
+          }
+          if (typeof dim.height !== "number" || dim.height <= 0) {
+            errors.push(`${prefix}.dimensions.height must be a positive number`);
+          }
+        }
+        if (page.orientation !== "portrait" && page.orientation !== "landscape") {
+          errors.push(`${prefix}.orientation must be 'portrait' or 'landscape'`);
+        }
+        if (!Array.isArray(page.strokes)) {
+          errors.push(`${prefix}.strokes must be an array`);
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+
   static validateDocument(data: unknown): ValidationResult {
     const errors: string[] = [];
 

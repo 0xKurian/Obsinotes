@@ -211,4 +211,44 @@ describe("SelectionEngine", () => {
     assert.strictEqual(SelectionEngine.isTextSelectedByLasso(textInside, squarePolygon), true);
     assert.strictEqual(SelectionEngine.isTextSelectedByLasso(textOutside, squarePolygon), false);
   });
+
+  test("isStrokeSelectedByLasso and elements accept and respect precomputedLassoBounds", () => {
+    const precomputedBounds = SelectionEngine.computePolygonBoundingBox(squarePolygon);
+    assert.deepStrictEqual(precomputedBounds, { minX: 10, minY: 10, maxX: 100, maxY: 100 });
+
+    const stroke: StrokeObject = {
+      id: "s_fast",
+      tool: "pen",
+      color: "#000000",
+      width: 2,
+      opacity: 1,
+      points: [
+        { x: 30, y: 30, pressure: 0.5, timestamp: 1 },
+        { x: 40, y: 40, pressure: 0.5, timestamp: 2 }
+      ],
+      bounds: { minX: 28, minY: 28, maxX: 42, maxY: 42 },
+      createdAt: 1
+    };
+
+    assert.strictEqual(
+      SelectionEngine.isStrokeSelectedByLasso(stroke, squarePolygon, 0.5, precomputedBounds),
+      true
+    );
+
+    const outsideStroke: StrokeObject = {
+      id: "s_out",
+      tool: "pen",
+      color: "#000",
+      width: 2,
+      opacity: 1,
+      points: [{ x: 500, y: 500, pressure: 0.5, timestamp: 1 }],
+      bounds: { minX: 498, minY: 498, maxX: 502, maxY: 502 },
+      createdAt: 2
+    };
+
+    assert.strictEqual(
+      SelectionEngine.isStrokeSelectedByLasso(outsideStroke, squarePolygon, 0.5, precomputedBounds),
+      false
+    );
+  });
 });

@@ -144,13 +144,16 @@ export class TemplateRenderer {
     const spacing = Math.max(8, template.spacing);
     const dotRadius = 1.2;
 
+    ctx.beginPath();
     for (let x = spacing; x < width; x += spacing) {
+      const cx = Math.floor(x) + 0.5;
       for (let y = spacing; y < height; y += spacing) {
-        ctx.beginPath();
-        ctx.arc(Math.floor(x) + 0.5, Math.floor(y) + 0.5, dotRadius, 0, Math.PI * 2);
-        ctx.fill();
+        const cy = Math.floor(y) + 0.5;
+        ctx.moveTo(cx + dotRadius, cy);
+        ctx.arc(cx, cy, dotRadius, 0, Math.PI * 2);
       }
     }
+    ctx.fill();
   }
 
   private static renderCornell(

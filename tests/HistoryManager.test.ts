@@ -76,6 +76,48 @@ describe("HistoryManager", () => {
     assert.strictEqual(mutateCount, 3);
   });
 
+  test("AddStrokeCommand supplies isInitial=true on first execute and false on undo/redo", () => {
+    const page = createSamplePage();
+    const history = new HistoryManager();
+    const stroke = createStroke("s1");
+
+    const initialHistory: (boolean | undefined)[] = [];
+    const cmd = new AddStrokeCommand(page, stroke, (isInitial) => {
+      initialHistory.push(isInitial);
+    });
+
+    history.execute(cmd);
+    assert.deepStrictEqual(initialHistory, [true]);
+
+    history.undo();
+    assert.deepStrictEqual(initialHistory, [true, false]);
+
+    history.redo();
+    assert.deepStrictEqual(initialHistory, [true, false, false]);
+  });
+
+  test("EraseStrokesCommand restores elements at their original indices on undo", () => {
+    const page = createSamplePage();
+    const history = new HistoryManager();
+    const s1 = createStroke("s1");
+    const s2 = createStroke("s2");
+    const s3 = createStroke("s3");
+    page.strokes = [s1, s2, s3];
+
+    const cmd = new EraseStrokesCommand(page, [s1, s2, s3], [s1, s3], () => {});
+    history.execute(cmd);
+    assert.strictEqual(page.strokes.length, 2);
+    assert.deepStrictEqual(page.strokes.map(s => s.id), ["s1", "s3"]);
+
+    history.undo();
+    assert.strictEqual(page.strokes.length, 3);
+    assert.deepStrictEqual(page.strokes.map(s => s.id), ["s1", "s2", "s3"]);
+
+    history.redo();
+    assert.strictEqual(page.strokes.length, 2);
+    assert.deepStrictEqual(page.strokes.map(s => s.id), ["s1", "s3"]);
+  });
+
   test("EraseStrokesCommand restores deleted strokes upon undo", () => {
     const page = createSamplePage();
     const history = new HistoryManager();

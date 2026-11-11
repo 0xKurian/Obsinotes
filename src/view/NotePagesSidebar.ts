@@ -32,6 +32,7 @@ export class NotePagesSidebar {
   thumbnailCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   thumbnailIntersectionObserver: IntersectionObserver | null = null;
   draggedPageIndex: number | null = null;
+  dirtyPageThumbnails: Set<string> = new Set();
 
   constructor(delegate: NotePagesSidebarDelegate) {
     this.delegate = delegate;
@@ -80,8 +81,26 @@ export class NotePagesSidebar {
     if (this.sidebarEl) {
       if (this.sidebarEl.hasClass("is-collapsed")) {
         this.sidebarEl.removeClass("is-collapsed");
+        this.refreshDirtyThumbnails();
       } else {
         this.sidebarEl.addClass("is-collapsed");
+      }
+    }
+  }
+
+  refreshDirtyThumbnails(): void {
+    if (this.dirtyPageThumbnails.size === 0) {
+      return;
+    }
+    const pm = this.delegate.getPageManager();
+    if (!pm) return;
+
+    const pageIds = Array.from(this.dirtyPageThumbnails);
+    this.dirtyPageThumbnails.clear();
+    for (const pageId of pageIds) {
+      const page = pm.getPage(pageId);
+      if (page) {
+        this.updateThumbnailStrokes(page);
       }
     }
   }
@@ -246,6 +265,11 @@ export class NotePagesSidebar {
   }
 
   updateThumbnailStrokes(page: PageData): void {
+    if (this.sidebarEl && this.sidebarEl.hasClass("is-collapsed")) {
+      this.dirtyPageThumbnails.add(page.id);
+      return;
+    }
+
     const previewCanvas = this.thumbnailCanvasMap.get(page.id);
     if (!previewCanvas) {
       return;
@@ -403,6 +427,7 @@ export class NotePagesSidebar {
   }
 
   removeThumbnail(pageId: string): void {
+    this.dirtyPageThumbnails.delete(pageId);
     const thumbCard = this.sidebarListEl?.querySelector<HTMLElement>(`[data-page-id="${pageId}"]`);
     if (thumbCard && this.thumbnailIntersectionObserver) {
       this.thumbnailIntersectionObserver.unobserve(thumbCard);
@@ -451,6 +476,7 @@ export class NotePagesSidebar {
   }
 
   clear(): void {
+    this.dirtyPageThumbnails.clear();
     this.thumbnailCanvasMap.forEach((c) => {
       c.width = 1;
       c.height = 1;

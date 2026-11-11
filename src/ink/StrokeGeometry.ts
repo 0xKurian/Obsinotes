@@ -6,7 +6,63 @@ import {
   ToolType
 } from "../types";
 
+export interface CachedStrokeGeometry {
+  outline: number[][];
+  path?: Path2D;
+}
+
+const strokeGeometryCache = new WeakMap<StrokeObject, CachedStrokeGeometry>();
+
 export class StrokeGeometry {
+  static getCachedGeometry(stroke: StrokeObject): CachedStrokeGeometry | null {
+    if (stroke.points.length === 0) {
+      return null;
+    }
+    let cached = strokeGeometryCache.get(stroke);
+    if (!cached) {
+      const outline = this.generateOutline(stroke.points, stroke.tool, stroke.width);
+      if (outline.length < 2) {
+        return null;
+      }
+      cached = { outline };
+      if (typeof Path2D !== "undefined") {
+        cached.path = this.createPath2D(outline);
+      }
+      if (stroke.id !== "active") {
+        strokeGeometryCache.set(stroke, cached);
+      }
+    }
+    return cached;
+  }
+
+  static invalidateStrokeCache(stroke: StrokeObject): void {
+    strokeGeometryCache.delete(stroke);
+  }
+
+  static setCachedGeometry(stroke: StrokeObject, geometry: CachedStrokeGeometry): void {
+    strokeGeometryCache.set(stroke, geometry);
+  }
+
+  static createPath2D(outline: number[][]): Path2D | undefined {
+    if (typeof Path2D === "undefined" || outline.length < 2) {
+      return undefined;
+    }
+    try {
+      const path = new Path2D();
+      path.moveTo(outline[0][0], outline[0][1]);
+      for (let i = 1; i < outline.length - 1; i++) {
+        const xc = (outline[i][0] + outline[i + 1][0]) / 2;
+        const yc = (outline[i][1] + outline[i + 1][1]) / 2;
+        path.quadraticCurveTo(outline[i][0], outline[i][1], xc, yc);
+      }
+      const last = outline[outline.length - 1];
+      path.lineTo(last[0], last[1]);
+      path.closePath();
+      return path;
+    } catch {
+      return undefined;
+    }
+  }
   static getStrokeOptions(tool: ToolType, width: number, simulatePressure: boolean = false): StrokeOptions {
     switch (tool) {
       case "pressure":
@@ -257,8 +313,8 @@ export class StrokeGeometry {
       return;
     }
 
-    const outline = this.generateOutline(stroke.points, stroke.tool, stroke.width);
-    if (outline.length < 2) {
+    const geometry = this.getCachedGeometry(stroke);
+    if (!geometry || geometry.outline.length < 2) {
       return;
     }
 
@@ -273,7 +329,11 @@ export class StrokeGeometry {
       ctx.globalCompositeOperation = "source-over";
     }
 
-    this.drawOutlinePath(ctx, outline);
+    if (geometry.path && typeof ctx.fill === "function") {
+      ctx.fill(geometry.path);
+    } else {
+      this.drawOutlinePath(ctx, geometry.outline);
+    }
     ctx.restore();
   }
 }

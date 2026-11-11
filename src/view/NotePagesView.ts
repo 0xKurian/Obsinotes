@@ -377,8 +377,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         const page = this.pageManager.getPage(pageId);
         if (page) {
           this.historyManager.execute(
-            new AddStrokeCommand(page, stroke, () => {
-              this.handleMutation(page);
+            new AddStrokeCommand(page, stroke, (isInitial) => {
+              this.handleMutation(page, { redrawCanvas: !isInitial, debounceThumbnail: true });
             })
           );
         }
@@ -411,7 +411,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
               prevStrokes,
               remainingStrokes,
               () => {
-                this.handleMutation(page);
+                this.handleMutation(page, { redrawCanvas: true, debounceThumbnail: true });
               },
               prevShapes,
               nextShapes
@@ -583,7 +583,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         return page ? this.inkingController.isCurrentlyDrawing(page.id) : false;
       }
     }, {
-      virtualizationThreshold: 15,
+      virtualizationThreshold: 4,
       bufferPages: 2
     });
 
@@ -985,6 +985,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       window.clearTimeout(this.canvasResolutionTimeout);
       this.canvasResolutionTimeout = null;
     }
+    this.clearThumbnailDebounceTimers();
     this.touchPointers.clear();
     this.touchStartCoords.clear();
     this.touchTapCandidate = null;
@@ -998,6 +999,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pageIntersectionObserver = null;
     this.pageVirtualizer.destroy();
     this.sidebar.destroy();
+    this.selectionController?.destroy();
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
@@ -1015,6 +1017,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       window.clearTimeout(this.canvasResolutionTimeout);
       this.canvasResolutionTimeout = null;
     }
+    this.clearThumbnailDebounceTimers();
     this.touchPointers.clear();
     this.touchStartCoords.clear();
     this.touchTapCandidate = null;
@@ -1022,6 +1025,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.isTouchPinching = false;
     this.pageIntersectionObserver?.disconnect();
     this.pageVirtualizer.destroy();
+    this.selectionController?.destroy();
     this.sidebar.clear();
     this.pdfBackgroundManager.destroy();
     this.document = null;
@@ -2081,12 +2085,24 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     );
   }
 
-  handleMutation(page: PageData): void {
+  handleMutation(
+    page: PageData,
+    options?: { redrawCanvas?: boolean; debounceThumbnail?: boolean; skipThumbnail?: boolean }
+  ): void {
     if (this.document) {
       this.document.metadata.updatedAt = Date.now();
     }
-    this.redrawCommittedCanvas(page.id);
-    this.updateThumbnailStrokes(page);
+    const shouldRedraw = options?.redrawCanvas !== false;
+    if (shouldRedraw) {
+      this.redrawCommittedCanvas(page.id);
+    }
+    if (!options?.skipThumbnail) {
+      if (options?.debounceThumbnail) {
+        this.debouncedUpdateThumbnail(page);
+      } else {
+        this.updateThumbnailStrokes(page);
+      }
+    }
     this.requestSave();
   }
 
@@ -3035,8 +3051,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       return;
     }
     const scale = this.getCanvasScale();
+    const mountedList = this.pageVirtualizer?.getMountedPages?.() || [];
+    const mountedPageNumbers = mountedList.length > 0
+      ? new Set(mountedList)
+      : new Set([this.currentPageNumber, 1, 2, 3]);
+
     const pages = this.pageManager.getPages();
     for (const page of pages) {
+      if (!mountedPageNumbers.has(page.pageNumber)) {
+        continue;
+      }
+
       const targetW = Math.round(page.dimensions.width * scale);
       const targetH = Math.round(page.dimensions.height * scale);
 
@@ -3245,7 +3270,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const targetH = Math.round(page.dimensions.height * scale);
 
     const totalPages = this.pageManager ? this.pageManager.getPages().length : 1;
-    const shouldInitialMount = totalPages <= 15 || page.pageNumber <= 4 || page.pageNumber === this.currentPageNumber;
+    const shouldInitialMount = totalPages <= 4 || page.pageNumber <= 3 || page.pageNumber === this.currentPageNumber;
     const initialW = shouldInitialMount ? targetW : 1;
     const initialH = shouldInitialMount ? targetH : 1;
 
@@ -3559,7 +3584,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           committedCanvas,
           { x: pageX, y: pageY },
           page.strokes,
-          page.shapes
+          page.shapes,
+          page.dimensions
         );
       }
     });
@@ -4323,7 +4349,33 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.sidebar.appendDeleteButtonToThumbnail(actionsEl, pageId);
   }
 
+  private thumbnailDebounceTimers: Map<string, number> = new Map();
+
+  debouncedUpdateThumbnail(page: PageData, delayMs: number = 600): void {
+    const existing = this.thumbnailDebounceTimers.get(page.id);
+    if (existing !== undefined) {
+      window.clearTimeout(existing);
+    }
+    const timer = window.setTimeout(() => {
+      this.thumbnailDebounceTimers.delete(page.id);
+      this.updateThumbnailStrokes(page);
+    }, delayMs);
+    this.thumbnailDebounceTimers.set(page.id, timer);
+  }
+
+  private clearThumbnailDebounceTimers(): void {
+    for (const timer of this.thumbnailDebounceTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    this.thumbnailDebounceTimers.clear();
+  }
+
   updateThumbnailStrokes(page: PageData): void {
+    const existing = this.thumbnailDebounceTimers.get(page.id);
+    if (existing !== undefined) {
+      window.clearTimeout(existing);
+      this.thumbnailDebounceTimers.delete(page.id);
+    }
     this.sidebar.updateThumbnailStrokes(page);
   }
 

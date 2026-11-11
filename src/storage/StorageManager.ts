@@ -49,7 +49,7 @@ export class StorageManager {
       throw new Error("Saving blocked: file is corrupted and protected from overwrite.");
     }
 
-    const validation = DocumentSerializer.validateDocument(doc);
+    const validation = DocumentSerializer.fastValidateDocumentForSave(doc);
     if (!validation.valid) {
       const serialized = DocumentSerializer.serializeDocument(doc);
       await this.createEmergencyBackup(file, serialized);

@@ -124,6 +124,35 @@ describe("DocumentSerializer", () => {
     const validation = DocumentSerializer.validateDocument(doc);
     assert.strictEqual(validation.valid, true);
     assert.strictEqual(validation.errors.length, 0);
+
+    const fastValidation = DocumentSerializer.fastValidateDocumentForSave(doc);
+    assert.strictEqual(fastValidation.valid, true);
+    assert.strictEqual(fastValidation.errors.length, 0);
+  });
+
+  it("fastValidateDocumentForSave catches structural flaws without iterating points", () => {
+    const invalidDoc = {
+      metadata: {
+        title: 123,
+        createdAt: "invalid",
+        schemaVersion: "1",
+        defaultPageSize: "UnknownSize",
+        defaultOrientation: "upside-down"
+      },
+      pages: [
+        {
+          id: "",
+          pageNumber: 0,
+          dimensions: { width: -10, height: 0 },
+          orientation: "diagonal",
+          strokes: "not-an-array"
+        }
+      ]
+    };
+
+    const result = DocumentSerializer.fastValidateDocumentForSave(invalidDoc);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.length >= 6);
   });
 
   it("detects invalid metadata and malformed pages in validateDocument", () => {

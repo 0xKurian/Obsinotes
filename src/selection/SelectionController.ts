@@ -71,10 +71,40 @@ export class SelectionController {
   private activeHandle: SelectionHandle | null = null;
   private dragStartPoint: { x: number; y: number } | null = null;
   private currentPreviewCanvas: HTMLCanvasElement | null = null;
+  private previewRafId: number | null = null;
+  private pendingPreviewAction: (() => void) | null = null;
   private callbacks: SelectionControllerCallbacks;
 
   constructor(callbacks: SelectionControllerCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  private schedulePreview(action: () => void): void {
+    this.pendingPreviewAction = action;
+    if (this.previewRafId === null && typeof requestAnimationFrame === "function") {
+      this.previewRafId = requestAnimationFrame(() => {
+        this.previewRafId = null;
+        if (this.pendingPreviewAction) {
+          const act = this.pendingPreviewAction;
+          this.pendingPreviewAction = null;
+          act();
+        }
+      });
+    } else if (typeof requestAnimationFrame !== "function") {
+      action();
+    }
+  }
+
+  private flushPreview(): void {
+    if (this.previewRafId !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(this.previewRafId);
+      this.previewRafId = null;
+    }
+    if (this.pendingPreviewAction) {
+      const act = this.pendingPreviewAction;
+      this.pendingPreviewAction = null;
+      act();
+    }
   }
 
   hasSelection(): boolean {
@@ -111,6 +141,7 @@ export class SelectionController {
   }
 
   clearSelection(activeCanvas?: HTMLCanvasElement): void {
+    this.flushPreview();
     const prevPageId = this.activePageId;
     this.selectedStrokes = [];
     this.selectedShapes = [];
@@ -297,22 +328,24 @@ export class SelectionController {
         maxY: clampedMinY + boxHeight
       };
 
-      this.applyPreviewTransform(targetBox, 0);
+      this.schedulePreview(() => {
+        this.applyPreviewTransform(targetBox, 0);
 
-      if (this.currentPreviewCanvas && this.currentPreviewCanvas !== effCanvas) {
-        const prevCtx = this.currentPreviewCanvas.getContext("2d");
-        prevCtx?.clearRect(0, 0, this.currentPreviewCanvas.width, this.currentPreviewCanvas.height);
-      }
-      if (activeCanvas !== effCanvas) {
-        const srcCtx = activeCanvas.getContext("2d");
-        srcCtx?.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-      }
-      this.currentPreviewCanvas = effCanvas;
+        if (this.currentPreviewCanvas && this.currentPreviewCanvas !== effCanvas) {
+          const prevCtx = this.currentPreviewCanvas.getContext("2d");
+          prevCtx?.clearRect(0, 0, this.currentPreviewCanvas.width, this.currentPreviewCanvas.height);
+        }
+        if (activeCanvas !== effCanvas) {
+          const srcCtx = activeCanvas.getContext("2d");
+          srcCtx?.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        }
+        this.currentPreviewCanvas = effCanvas;
 
-      const effCtx = effCanvas.getContext("2d");
-      if (effCtx) {
-        this.renderSelectionOverlay(effCtx, effCanvas, targetBox);
-      }
+        const effCtx = effCanvas.getContext("2d");
+        if (effCtx) {
+          this.renderSelectionOverlay(effCtx, effCanvas, targetBox);
+        }
+      });
       return;
     }
 
@@ -332,8 +365,10 @@ export class SelectionController {
         pageHeight
       );
 
-      this.applyPreviewTransform(targetBox, 0);
-      this.renderSelectionOverlay(ctx, activeCanvas, targetBox);
+      this.schedulePreview(() => {
+        this.applyPreviewTransform(targetBox, 0);
+        this.renderSelectionOverlay(ctx, activeCanvas, targetBox);
+      });
       return;
     }
 
@@ -346,8 +381,10 @@ export class SelectionController {
       const currentAngle = Math.atan2(pageCoords.y - cy, pageCoords.x - cx);
       const angleDelta = currentAngle - startAngle;
 
-      this.applyPreviewTransform(this.initialBounds, angleDelta);
-      this.renderSelectionOverlay(ctx, activeCanvas, this.initialBounds);
+      this.schedulePreview(() => {
+        this.applyPreviewTransform(this.initialBounds!, angleDelta);
+        this.renderSelectionOverlay(ctx, activeCanvas, this.initialBounds!);
+      });
       return;
     }
   }
@@ -359,6 +396,7 @@ export class SelectionController {
     targetPage?: PageData,
     targetCanvas?: HTMLCanvasElement
   ): void {
+    this.flushPreview();
     try {
       activeCanvas.releasePointerCapture(e.pointerId);
     } catch (err) {
@@ -437,20 +475,21 @@ export class SelectionController {
           this.clearSelection(activeCanvas);
         }
       } else if (this.lassoPoints.length >= 3) {
+        const lassoBounds = SelectionEngine.computePolygonBoundingBox(this.lassoPoints);
         const selectedStrokes = page.strokes.filter((s) =>
-          SelectionEngine.isStrokeSelectedByLasso(s, this.lassoPoints, 0.45)
+          SelectionEngine.isStrokeSelectedByLasso(s, this.lassoPoints, 0.45, lassoBounds)
         );
         const selectedShapes = page.shapes.filter((sh) =>
-          SelectionEngine.isShapeSelectedByLasso(sh, this.lassoPoints)
+          SelectionEngine.isShapeSelectedByLasso(sh, this.lassoPoints, lassoBounds)
         );
         const selectedImages = page.images
           ? page.images.filter((img) =>
-              SelectionEngine.isImageSelectedByLasso(img, this.lassoPoints)
+              SelectionEngine.isImageSelectedByLasso(img, this.lassoPoints, lassoBounds)
             )
           : [];
         const selectedTexts = page.texts
           ? page.texts.filter((t) =>
-              SelectionEngine.isTextSelectedByLasso(t, this.lassoPoints)
+              SelectionEngine.isTextSelectedByLasso(t, this.lassoPoints, lassoBounds)
             )
           : [];
 
@@ -1010,6 +1049,7 @@ export class SelectionController {
   }
 
   cancelMove(): void {
+    this.flushPreview();
     if (this.mode === "moving") {
       this.mode = "idle";
       this.activeHandle = null;
@@ -1100,5 +1140,10 @@ export class SelectionController {
     }
 
     this.renderSelectionDashedBox(ctx, bounds);
+  }
+
+  destroy(): void {
+    this.flushPreview();
+    this.clearSelection();
   }
 }

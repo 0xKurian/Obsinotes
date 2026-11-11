@@ -73,13 +73,14 @@ export class SelectionEngine {
   static isStrokeSelectedByLasso(
     stroke: StrokeObject,
     lassoPolygon: { x: number; y: number }[],
-    containmentRatioThreshold: number = 0.5
+    containmentRatioThreshold: number = 0.5,
+    precomputedLassoBounds?: StrokeBoundingBox
   ): boolean {
     if (stroke.points.length === 0 || lassoPolygon.length < 3) {
       return false;
     }
 
-    const lassoBounds = this.computePolygonBoundingBox(lassoPolygon);
+    const lassoBounds = precomputedLassoBounds ?? this.computePolygonBoundingBox(lassoPolygon);
     if (!this.doBoundingBoxesIntersect(stroke.bounds, lassoBounds)) {
       return false;
     }
@@ -96,9 +97,10 @@ export class SelectionEngine {
 
   static isShapeSelectedByLasso(
     shape: ShapeObject,
-    lassoPolygon: { x: number; y: number }[]
+    lassoPolygon: { x: number; y: number }[],
+    precomputedLassoBounds?: StrokeBoundingBox
   ): boolean {
-    const lassoBounds = this.computePolygonBoundingBox(lassoPolygon);
+    const lassoBounds = precomputedLassoBounds ?? this.computePolygonBoundingBox(lassoPolygon);
     if (!this.doBoundingBoxesIntersect(shape.bounds, lassoBounds)) {
       return false;
     }
@@ -124,7 +126,8 @@ export class SelectionEngine {
 
   static isImageSelectedByLasso(
     image: ImageObject,
-    lassoPolygon: { x: number; y: number }[]
+    lassoPolygon: { x: number; y: number }[],
+    precomputedLassoBounds?: StrokeBoundingBox
   ): boolean {
     const imgBounds: StrokeBoundingBox = {
       minX: image.x,
@@ -132,7 +135,7 @@ export class SelectionEngine {
       maxX: image.x + image.width,
       maxY: image.y + image.height
     };
-    const lassoBounds = this.computePolygonBoundingBox(lassoPolygon);
+    const lassoBounds = precomputedLassoBounds ?? this.computePolygonBoundingBox(lassoPolygon);
     if (!this.doBoundingBoxesIntersect(imgBounds, lassoBounds)) {
       return false;
     }
@@ -157,7 +160,8 @@ export class SelectionEngine {
 
   static isTextSelectedByLasso(
     text: TextObject,
-    lassoPolygon: { x: number; y: number }[]
+    lassoPolygon: { x: number; y: number }[],
+    precomputedLassoBounds?: StrokeBoundingBox
   ): boolean {
     const w = text.width || 100;
     const h = text.height || 30;
@@ -167,7 +171,7 @@ export class SelectionEngine {
       maxX: text.x + w,
       maxY: text.y + h
     };
-    const lassoBounds = this.computePolygonBoundingBox(lassoPolygon);
+    const lassoBounds = precomputedLassoBounds ?? this.computePolygonBoundingBox(lassoPolygon);
     if (!this.doBoundingBoxesIntersect(textBounds, lassoBounds)) {
       return false;
     }

@@ -12,7 +12,7 @@ export interface EraseShapesResult {
 }
 
 export class EraserEngine {
-  static distanceToSegment(
+  static distanceToSegmentSq(
     px: number,
     py: number,
     x1: number,
@@ -27,7 +27,7 @@ export class EraserEngine {
     if (lengthSq === 0) {
       const sx = px - x1;
       const sy = py - y1;
-      return Math.sqrt(sx * sx + sy * sy);
+      return sx * sx + sy * sy;
     }
 
     let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq;
@@ -38,7 +38,18 @@ export class EraserEngine {
     const diffX = px - projX;
     const diffY = py - projY;
 
-    return Math.sqrt(diffX * diffX + diffY * diffY);
+    return diffX * diffX + diffY * diffY;
+  }
+
+  static distanceToSegment(
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): number {
+    return Math.sqrt(this.distanceToSegmentSq(px, py, x1, y1, x2, y2));
   }
 
   static hitTestStroke(
@@ -58,20 +69,21 @@ export class EraserEngine {
     }
 
     const effectiveRadius = radius + Math.max(1, stroke.width / 2);
+    const effectiveRadiusSq = effectiveRadius * effectiveRadius;
     const points = stroke.points;
 
     if (points.length === 1) {
       const p = points[0];
       const dx = eraserX - p.x;
       const dy = eraserY - p.y;
-      return Math.sqrt(dx * dx + dy * dy) <= effectiveRadius;
+      return dx * dx + dy * dy <= effectiveRadiusSq;
     }
 
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
-      const dist = this.distanceToSegment(eraserX, eraserY, p1.x, p1.y, p2.x, p2.y);
-      if (dist <= effectiveRadius) {
+      const distSq = this.distanceToSegmentSq(eraserX, eraserY, p1.x, p1.y, p2.x, p2.y);
+      if (distSq <= effectiveRadiusSq) {
         return true;
       }
     }
@@ -90,6 +102,63 @@ export class EraserEngine {
 
     for (const stroke of strokes) {
       if (this.hitTestStroke(stroke, eraserX, eraserY, radius)) {
+        deletedIds.push(stroke.id);
+      } else {
+        remaining.push(stroke);
+      }
+    }
+
+    return { remaining, deletedIds };
+  }
+
+  static eraseByStrokeTrajectory(
+    strokes: StrokeObject[],
+    points: { x: number; y: number }[],
+    radius: number
+  ): EraseResult {
+    if (points.length === 0) {
+      return { remaining: strokes, deletedIds: [] };
+    }
+    if (points.length === 1) {
+      return this.eraseByStroke(strokes, points[0].x, points[0].y, radius);
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const chunkMinX = minX - radius;
+    const chunkMinY = minY - radius;
+    const chunkMaxX = maxX + radius;
+    const chunkMaxY = maxY + radius;
+
+    const remaining: StrokeObject[] = [];
+    const deletedIds: string[] = [];
+
+    for (const stroke of strokes) {
+      const b = stroke.bounds;
+      if (
+        chunkMaxX < b.minX ||
+        chunkMinX > b.maxX ||
+        chunkMaxY < b.minY ||
+        chunkMinY > b.maxY
+      ) {
+        remaining.push(stroke);
+        continue;
+      }
+
+      let hit = false;
+      for (const p of points) {
+        if (this.hitTestStroke(stroke, p.x, p.y, radius)) {
+          hit = true;
+          break;
+        }
+      }
+
+      if (hit) {
         deletedIds.push(stroke.id);
       } else {
         remaining.push(stroke);
@@ -307,6 +376,63 @@ export class EraserEngine {
 
     for (const shape of shapes) {
       if (this.hitTestShape(shape, eraserX, eraserY, radius)) {
+        deletedIds.push(shape.id);
+      } else {
+        remaining.push(shape);
+      }
+    }
+
+    return { remaining, deletedIds };
+  }
+
+  static eraseShapesTrajectory(
+    shapes: ShapeObject[],
+    points: { x: number; y: number }[],
+    radius: number
+  ): EraseShapesResult {
+    if (points.length === 0) {
+      return { remaining: shapes, deletedIds: [] };
+    }
+    if (points.length === 1) {
+      return this.eraseShapes(shapes, points[0].x, points[0].y, radius);
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const chunkMinX = minX - radius;
+    const chunkMinY = minY - radius;
+    const chunkMaxX = maxX + radius;
+    const chunkMaxY = maxY + radius;
+
+    const remaining: ShapeObject[] = [];
+    const deletedIds: string[] = [];
+
+    for (const shape of shapes) {
+      const b = shape.bounds;
+      if (
+        chunkMaxX < b.minX ||
+        chunkMinX > b.maxX ||
+        chunkMaxY < b.minY ||
+        chunkMinY > b.maxY
+      ) {
+        remaining.push(shape);
+        continue;
+      }
+
+      let hit = false;
+      for (const p of points) {
+        if (this.hitTestShape(shape, p.x, p.y, radius)) {
+          hit = true;
+          break;
+        }
+      }
+
+      if (hit) {
         deletedIds.push(shape.id);
       } else {
         remaining.push(shape);
