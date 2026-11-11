@@ -145,12 +145,12 @@
 .notepages-page-popover {
   pointer-events: auto;
   position: absolute;
-  top: calc(44px * var(--np-toolbar-scale) + 10px);
+  top: calc(100% + 6px);
   right: 28px;
   width: 296px;
   min-width: 280px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 140px);
   overflow-y: auto;
   background-color: var(--background-primary);
   background: var(--background-primary);
@@ -166,6 +166,13 @@
   z-index: 60;
   box-sizing: border-box;
   animation: notepages-popover-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.notepages-page-popover.notepages-toolbar-popover {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  animation: none;
 }
 
 .notepages-toolbar-float-wrapper .notepages-page-popover.is-hidden {
@@ -750,7 +757,7 @@
   display: flex;
   flex-direction: column;
   align-items: safe center;
-  padding: 96px 32px 48px 32px;
+  padding: var(--np-scroller-padding-top, 96px) 32px 48px 32px;
   background-color: var(--background-primary-alt, var(--background-secondary));
 }
 
@@ -1806,10 +1813,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   gap: 10px;
 }
 
-/* ==========================================================================
-   Minimap & Viewfinder Navigation
-   ========================================================================== */
-
 .notepages-minimap-container {
   position: absolute;
   bottom: 16px;
@@ -1901,7 +1904,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
-  background-color: #ffffff;
+  background-color: var(--background-primary);
 }
 
 .notepages-minimap-canvas {
@@ -1939,10 +1942,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   box-shadow: 0 0 8px var(--interactive-accent);
 }
 
-/* ==========================================================================
-   Toolbar Drag Handle & Placements
-   ========================================================================== */
-
 .notepages-dock-drag-handle {
   display: flex;
   align-items: center;
@@ -1961,8 +1960,9 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   height: calc(14px * var(--np-toolbar-scale));
 }
 
-.notepages-dock-drag-handle:hover {
-  color: var(--text-normal);
+.notepages-dock-drag-handle:hover,
+.notepages-dock-drag-handle.is-active {
+  color: var(--interactive-accent);
   background: var(--background-modifier-hover);
 }
 
@@ -2036,9 +2036,29 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   max-height: none;
   flex-wrap: wrap;
   justify-content: center;
-  border-radius: calc(18px * var(--np-toolbar-scale));
-  padding: calc(6px * var(--np-toolbar-scale)) calc(12px * var(--np-toolbar-scale));
+  border-radius: calc(16px * var(--np-toolbar-scale));
+  padding: calc(5px * var(--np-toolbar-scale)) calc(20px * var(--np-toolbar-scale)) calc(5px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
+  row-gap: calc(3px * var(--np-toolbar-scale));
+  column-gap: calc(5px * var(--np-toolbar-scale));
   overflow-x: visible;
+}
+
+.notepages-toolbar-float-wrapper.is-toolbar-wrap.is-dock-collapsed .notepages-floating-dock {
+  padding: calc(4px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
+}
+
+.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-floating-dock > .notepages-toolbar-separator {
+  display: none;
+}
+
+.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-dock-resize-handle {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 55%;
+  min-height: 20px;
+  margin-left: 0;
 }
 
 .notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-dock-section {
@@ -2063,7 +2083,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
 
 .notepages-toolbar-float-wrapper.is-position-bottom .notepages-page-popover {
   top: auto;
-  bottom: calc(44px * var(--np-toolbar-scale) + 12px);
+  bottom: calc(100% + 6px);
 }
 
 .notepages-toolbar-float-wrapper.is-position-left {
@@ -2143,18 +2163,22 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   overflow-x: hidden;
 }
 
-.notepages-toolbar-float-wrapper.is-position-left .notepages-page-popover {
+.notepages-toolbar-float-wrapper.is-position-left .notepages-page-popover,
+.notepages-toolbar-float-wrapper.is-position-left .notepages-page-popover.notepages-toolbar-popover {
   top: 0;
   bottom: auto;
   left: calc(100% + 10px);
   right: auto;
+  transform: none;
 }
 
-.notepages-toolbar-float-wrapper.is-position-right .notepages-page-popover {
+.notepages-toolbar-float-wrapper.is-position-right .notepages-page-popover,
+.notepages-toolbar-float-wrapper.is-position-right .notepages-page-popover.notepages-toolbar-popover {
   top: 0;
   bottom: auto;
   right: calc(100% + 10px);
   left: auto;
+  transform: none;
 }
 
 .notepages-toolbar-float-wrapper.is-position-floating {
@@ -2164,26 +2188,26 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   align-items: flex-start;
 }
 
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover {
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover,
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.notepages-toolbar-popover {
   top: calc(100% + 8px);
   bottom: auto;
   right: 0;
   left: auto;
+  transform: none;
 }
 
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-above {
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-above,
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.notepages-toolbar-popover.is-popover-above {
   top: auto;
   bottom: calc(100% + 8px);
 }
 
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-align-left {
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-align-left,
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.notepages-toolbar-popover.is-popover-align-left {
   right: auto;
   left: 0;
 }
-
-/* ==========================================================================
-   Page Size, Toolbar Size & Theme Styles in Popover
-   ========================================================================== */
 
 .notepages-popover-size-grid {
   display: grid;

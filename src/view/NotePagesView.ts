@@ -146,6 +146,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   activeCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   templateCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   pageIntersectionObserver: IntersectionObserver | null = null;
+  private toolbarResizeObserver: ResizeObserver | null = null;
   performanceMonitor: PerformanceMonitor = new PerformanceMonitor();
   pageVirtualizer!: PageVirtualizer;
 
@@ -1009,6 +1010,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
     this.pageIntersectionObserver?.disconnect();
     this.pageIntersectionObserver = null;
+    this.toolbarResizeObserver?.disconnect();
+    this.toolbarResizeObserver = null;
     this.pageVirtualizer.destroy();
     this.sidebar.destroy();
     this.minimap?.destroy();
@@ -1040,7 +1043,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pageVirtualizer.destroy();
     this.selectionController?.destroy();
     this.sidebar.clear();
-    this.minimap?.destroy();
+    this.minimap?.clear();
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
@@ -1415,31 +1418,32 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.plugin.settings.toolbarPlacement = placement;
       void this.plugin.saveSettings();
     }
-    try {
-      window.localStorage.setItem(this.savedPlacementKey, placement);
-    } catch {
-      // Ignore
+    if (typeof window !== "undefined" && typeof window.localStorage !== "undefined") {
+      try {
+        window.localStorage.setItem(this.savedPlacementKey, placement);
+      } catch (err) {
+        console.warn("Failed to persist toolbar placement in localStorage", err);
+      }
     }
+    this.syncScrollerTopPadding();
   }
 
   getToolbarPlacement(): ToolbarPlacement {
+    const isPlacement = (value: unknown): value is ToolbarPlacement =>
+      value === "top" || value === "bottom" || value === "left" || value === "right" || value === "floating";
     const settingPlacement = this.plugin?.settings?.toolbarPlacement;
-    if (
-      settingPlacement === "top" ||
-      settingPlacement === "bottom" ||
-      settingPlacement === "left" ||
-      settingPlacement === "right" ||
-      settingPlacement === "floating"
-    ) {
+    if (isPlacement(settingPlacement)) {
       return settingPlacement;
     }
-    try {
-      const saved = window.localStorage.getItem(this.savedPlacementKey);
-      if (saved === "top" || saved === "bottom" || saved === "left" || saved === "right" || saved === "floating") {
-        return saved;
+    if (typeof window !== "undefined" && typeof window.localStorage !== "undefined") {
+      try {
+        const saved = window.localStorage.getItem(this.savedPlacementKey);
+        if (isPlacement(saved)) {
+          return saved;
+        }
+      } catch (err) {
+        console.warn("Failed to read toolbar placement from localStorage", err);
       }
-    } catch {
-      // Ignore
     }
     return "top";
   }
@@ -1476,6 +1480,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       s.toolbarShowZoomControls = partial.showZoomControls;
     }
     void this.plugin.saveSettings();
+    this.syncScrollerTopPadding();
   }
 
   getToolbarFloatingPos(): { left: number; top: number } | null {
@@ -1497,6 +1502,42 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const placement = this.getToolbarPlacement();
     if (placement !== this.toolbar.currentPlacement) {
       this.toolbar.setPlacement(placement, false);
+    }
+    this.syncScrollerTopPadding();
+  }
+
+  private setupToolbarResizeObserver(): void {
+    this.toolbarResizeObserver?.disconnect();
+    if (typeof ResizeObserver === "undefined" || !this.toolbar?.toolbarWrapperEl) {
+      return;
+    }
+    this.toolbarResizeObserver = new ResizeObserver(() => {
+      this.syncScrollerTopPadding();
+    });
+    this.toolbarResizeObserver.observe(this.toolbar.toolbarWrapperEl);
+    if (this.toolbar.toolbarEl) {
+      this.toolbarResizeObserver.observe(this.toolbar.toolbarEl);
+    }
+    if (this.toolbar.subToolbarEl) {
+      this.toolbarResizeObserver.observe(this.toolbar.subToolbarEl);
+    }
+  }
+
+  syncScrollerTopPadding(): void {
+    if (!this.scrollerEl || !this.toolbar?.toolbarWrapperEl) {
+      return;
+    }
+    if (this.toolbar.currentPlacement === "top") {
+      const wrapperRect = this.toolbar.toolbarWrapperEl.getBoundingClientRect();
+      const height = wrapperRect.height;
+      const topPad = height > 0 ? Math.max(68, Math.ceil(height) + 22) : 96;
+      this.scrollerEl.setCssProps({
+        "--np-scroller-padding-top": `${topPad}px`
+      });
+    } else {
+      this.scrollerEl.setCssProps({
+        "--np-scroller-padding-top": "32px"
+      });
     }
   }
 
@@ -1541,9 +1582,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
   }
 
-  // NotePagesMinimapDelegate
   getCurrentPageDimensions(): PageDimensions | undefined {
     return this.pageManager?.getPageByNumber(this.currentPageNumber)?.dimensions;
+  }
+
+  getCurrentPageBackgroundColor(): string | undefined {
+    return this.pageManager?.getPageByNumber(this.currentPageNumber)?.template.backgroundColor;
   }
 
   getPageElement(pageNumber: number): HTMLElement | undefined {
@@ -1717,6 +1761,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.scrollerEl = this.mainAreaEl.createDiv({
       cls: "notepages-scroller"
     });
+    this.setupToolbarResizeObserver();
+    this.syncScrollerTopPadding();
     this.registerDomEvent(this.scrollerEl, "scroll", () => {
       this.handleScroll();
     });

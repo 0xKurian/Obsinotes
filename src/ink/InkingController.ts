@@ -210,7 +210,6 @@ export class InkingController {
         const dy = pt.y - lastPoint.y;
         const distSq = dx * dx + dy * dy;
         const isPressureSignificant = Math.abs(basePressure - (lastPoint.pressure || 0.5)) > 0.05;
-        // Deduplicate micro-movement jitter (< 0.5px) unless pressure changed significantly
         if (distSq < 0.25 && !isPressureSignificant) {
           lastPoint.timestamp = baseTime + i;
           lastPoint.tiltX = e.tiltX;

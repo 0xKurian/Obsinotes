@@ -482,4 +482,26 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(wrapper.hasClass("is-position-left"), true);
     assert.strictEqual(wrapper.hasClass("is-position-top"), false);
   });
+
+  test("toolbar customize popover opens independently and stays mutually exclusive with page popover", () => {
+    const root = createMockElement("div", "notepages-view-container");
+    const delegate = createMockDelegate();
+    const toolbar = new NotePagesToolbar(delegate);
+    toolbar.build(root as unknown as HTMLElement);
+
+    const toolbarPopover = toolbar.toolbarPopoverEl as unknown as MockDomElement;
+    const pagePopover = toolbar.pagePopoverEl as unknown as MockDomElement;
+    assert.ok(toolbarPopover, "Toolbar customize popover must exist");
+    assert.strictEqual(toolbarPopover.hasClass("is-hidden"), true);
+
+    toolbar.openToolbarPopover();
+    assert.strictEqual(toolbar.isToolbarPopoverOpen, true);
+    assert.strictEqual(toolbarPopover.hasClass("is-hidden"), false);
+
+    toolbar.openPagePopover();
+    assert.strictEqual(toolbar.isPagePopoverOpen, true);
+    assert.strictEqual(pagePopover.hasClass("is-hidden"), false);
+    assert.strictEqual(toolbar.isToolbarPopoverOpen, false);
+    assert.strictEqual(toolbarPopover.hasClass("is-hidden"), true);
+  });
 });

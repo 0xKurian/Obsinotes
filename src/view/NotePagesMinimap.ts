@@ -4,6 +4,7 @@ import { PageDimensions } from "../types";
 export interface NotePagesMinimapDelegate {
   getCurrentPageNumber(): number;
   getCurrentPageDimensions(): PageDimensions | undefined;
+  getCurrentPageBackgroundColor?(): string | undefined;
   getPageElement(pageNumber: number): HTMLElement | undefined;
   getCommittedCanvas(pageId: string): HTMLCanvasElement | undefined;
   getCurrentPageId(): string | undefined;
@@ -104,7 +105,6 @@ export class NotePagesMinimap {
   }
 
   private bindEvents(): void {
-    // Click on preview to jump
     this.delegate.registerDomEvent(this.previewBoxEl, "click", (e: MouseEvent) => {
       if (this.isDraggingViewfinder) {
         return;
@@ -122,7 +122,6 @@ export class NotePagesMinimap {
       this.delegate.scrollToPagePoint(pageNum, xRatio, yRatio);
     });
 
-    // Drag viewfinder to pan
     this.delegate.registerDomEvent(this.viewfinderEl, "pointerdown", (e: PointerEvent) => {
       e.stopPropagation();
       e.preventDefault();
@@ -130,11 +129,7 @@ export class NotePagesMinimap {
       this.dragStartX = e.clientX;
       this.dragStartY = e.clientY;
       this.viewfinderEl.addClass("is-dragging");
-      try {
-        this.viewfinderEl.setPointerCapture(e.pointerId);
-      } catch {
-        // Fallback if not supported
-      }
+      this.capturePointer(this.viewfinderEl, e.pointerId);
     });
 
     this.delegate.registerDomEvent(this.viewfinderEl, "pointermove", (e: PointerEvent) => {
@@ -168,15 +163,35 @@ export class NotePagesMinimap {
       }
       this.isDraggingViewfinder = false;
       this.viewfinderEl.removeClass("is-dragging");
-      try {
-        this.viewfinderEl.releasePointerCapture(e.pointerId);
-      } catch {
-        // Fallback
-      }
+      this.releasePointer(this.viewfinderEl, e.pointerId);
     };
 
     this.delegate.registerDomEvent(this.viewfinderEl, "pointerup", onPointerEnd);
     this.delegate.registerDomEvent(this.viewfinderEl, "pointercancel", onPointerEnd);
+  }
+
+  private capturePointer(targetEl: HTMLElement, pointerId: number): void {
+    if (typeof targetEl.setPointerCapture !== "function") {
+      return;
+    }
+    try {
+      targetEl.setPointerCapture(pointerId);
+    } catch (err) {
+      console.warn("[NotePages] Unable to capture minimap pointer:", err);
+    }
+  }
+
+  private releasePointer(targetEl: HTMLElement, pointerId: number): void {
+    if (typeof targetEl.releasePointerCapture !== "function") {
+      return;
+    }
+    try {
+      if (typeof targetEl.hasPointerCapture !== "function" || targetEl.hasPointerCapture(pointerId)) {
+        targetEl.releasePointerCapture(pointerId);
+      }
+    } catch (err) {
+      console.warn("[NotePages] Unable to release minimap pointer:", err);
+    }
   }
 
   togglePin(): void {
@@ -275,11 +290,10 @@ export class NotePagesMinimap {
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, this.currentMiniWidth, this.currentMiniHeight);
 
-    // Subtle paper background fill
-    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    const paperBg = this.delegate.getCurrentPageBackgroundColor?.() || "#ffffff";
+    ctx.fillStyle = paperBg;
     ctx.fillRect(0, 0, this.currentMiniWidth, this.currentMiniHeight);
 
-    // Fast blit from committed page canvas
     const committedCanvas = this.delegate.getCommittedCanvas(pageId);
     if (committedCanvas && committedCanvas.width > 0 && committedCanvas.height > 0) {
       ctx.drawImage(
@@ -363,11 +377,27 @@ export class NotePagesMinimap {
     });
   }
 
-  destroy(): void {
+  clear(): void {
     if (this.rafViewfinderId !== null && typeof window !== "undefined") {
       window.cancelAnimationFrame(this.rafViewfinderId);
       this.rafViewfinderId = null;
     }
+    this.isDraggingViewfinder = false;
+    this.viewfinderEl?.removeClass("is-dragging");
+    this.viewfinderEl?.toggleClass("is-hidden", true);
+    if (this.canvasEl && typeof this.canvasEl.getContext === "function") {
+      const ctx = this.canvasEl.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, this.canvasEl.width, this.canvasEl.height);
+      }
+    }
+    if (!this.isPinned && this.containerEl) {
+      this.containerEl.addClass("is-hidden");
+    }
+  }
+
+  destroy(): void {
+    this.clear();
     this.containerEl?.remove();
   }
 }

@@ -218,4 +218,118 @@ describe("NotePagesMinimap", () => {
     assert.strictEqual(viewfinder.hasClass("is-hidden"), false);
     assert.ok(viewfinder.style.transform.includes("translate(30px, 40px)"), `Expected translate near 30px, 40px but got ${viewfinder.style.transform}`);
   });
+
+  test("clear resets viewfinder and auto-hides without detaching DOM", () => {
+    const parent = createMockElement("div");
+    let removed = false;
+
+    const mockPageFrame = createMockElement("div");
+    mockPageFrame.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 1000,
+      bottom: 1000,
+      width: 1000,
+      height: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => {}
+    } as DOMRect);
+
+    const mockScroller = createMockElement("div");
+    mockScroller.getBoundingClientRect = () => ({
+      left: 250,
+      top: 250,
+      right: 750,
+      bottom: 750,
+      width: 500,
+      height: 500,
+      x: 250,
+      y: 250,
+      toJSON: () => {}
+    } as DOMRect);
+
+    const delegate: NotePagesMinimapDelegate = {
+      getCurrentPageNumber: () => 1,
+      getCurrentPageDimensions: () => ({ width: 1000, height: 1000, unit: "pt" }),
+      getPageElement: () => mockPageFrame as unknown as HTMLElement,
+      getCommittedCanvas: () => undefined,
+      getCurrentPageId: () => "page_1",
+      getScrollerEl: () => mockScroller as unknown as HTMLElement,
+      getZoomLevel: () => 2.0,
+      scrollBy: () => {},
+      scrollToPagePoint: () => {},
+      registerDomEvent: () => {}
+    };
+
+    const minimap = new NotePagesMinimap(delegate);
+    minimap.build(parent as unknown as HTMLElement);
+
+    const container = parent.children[0];
+    container.remove = () => {
+      removed = true;
+    };
+    const preview = container.children[1].children[0];
+    const viewfinder = preview.children[1];
+
+    minimap.onZoomChanged(2.0);
+    minimap.updateViewfinder();
+    assert.strictEqual(container.hasClass("is-hidden"), false);
+    assert.strictEqual(viewfinder.hasClass("is-hidden"), false);
+
+    minimap.clear();
+    assert.strictEqual(removed, false);
+    assert.strictEqual(viewfinder.hasClass("is-hidden"), true);
+    assert.strictEqual(container.hasClass("is-hidden"), true);
+
+    minimap.togglePin();
+    minimap.updateViewfinder();
+    assert.strictEqual(container.hasClass("is-hidden"), false);
+    minimap.clear();
+    assert.strictEqual(removed, false);
+    assert.strictEqual(viewfinder.hasClass("is-hidden"), true);
+    assert.strictEqual(container.hasClass("is-hidden"), false);
+
+    minimap.destroy();
+    assert.strictEqual(removed, true);
+  });
+
+  test("renders thumbnail background using getCurrentPageBackgroundColor", () => {
+    const parent = createMockElement("div");
+    const filledStyles: string[] = [];
+
+    const delegate: NotePagesMinimapDelegate = {
+      getCurrentPageNumber: () => 1,
+      getCurrentPageDimensions: () => ({ width: 600, height: 800, unit: "pt" }),
+      getCurrentPageBackgroundColor: () => "#1e293b",
+      getPageElement: () => undefined,
+      getCommittedCanvas: () => undefined,
+      getCurrentPageId: () => "page_1",
+      getScrollerEl: () => undefined,
+      getZoomLevel: () => 1.5,
+      scrollBy: () => {},
+      scrollToPagePoint: () => {},
+      registerDomEvent: () => {}
+    };
+
+    const minimap = new NotePagesMinimap(delegate);
+    minimap.build(parent as unknown as HTMLElement);
+
+    const canvasEl = parent.children[0].children[1].children[0].children[0];
+    const mockCtx = {
+      fillStyle: "",
+      clearRect: () => {},
+      fillRect: () => {
+        filledStyles.push(mockCtx.fillStyle);
+      },
+      drawImage: () => {},
+      save: () => {},
+      restore: () => {},
+      scale: () => {}
+    };
+    canvasEl.getContext = () => mockCtx;
+
+    minimap.renderThumbnail();
+    assert.ok(filledStyles.includes("#1e293b"), `Expected background #1e293b in ${JSON.stringify(filledStyles)}`);
+  });
 });

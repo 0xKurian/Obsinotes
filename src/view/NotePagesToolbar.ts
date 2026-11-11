@@ -11,6 +11,13 @@ import {
   ToolType
 } from "../types";
 
+const TOOLBAR_MIN_SCALE = 0.7;
+const TOOLBAR_MAX_SCALE = 1.5;
+const TOOLBAR_MIN_WIDTH = 180;
+const TOOLBAR_MAX_WIDTH = 1600;
+const SNAP_EDGE_THRESHOLD_PX = 42;
+const DRAG_MOVE_THRESHOLD_PX = 4;
+
 export interface NotePagesToolbarDelegate {
   onToggleSidebar(): void;
   onQuickRename(): void;
@@ -87,10 +94,12 @@ export class NotePagesToolbar {
   toolbarEl!: HTMLElement;
   subToolbarEl!: HTMLElement;
   pagePopoverEl!: HTMLElement;
+  toolbarPopoverEl!: HTMLElement;
   collapseBtn!: HTMLButtonElement;
   pageMenuBtn!: HTMLButtonElement;
   isCollapsed: boolean = false;
   isPagePopoverOpen: boolean = false;
+  isToolbarPopoverOpen: boolean = false;
   private hasSelection: boolean = false;
   private currentTool: ToolType = "pressure";
 
@@ -103,15 +112,19 @@ export class NotePagesToolbar {
     showZoomControls: true
   };
   private isDraggingDock: boolean = false;
+  private dragDockMoved: boolean = false;
   private dragDockStartX: number = 0;
   private dragDockStartY: number = 0;
   private dragDockInitLeft: number = 0;
   private dragDockInitTop: number = 0;
+  private dragHandleEl?: HTMLElement;
 
   private isResizingDock: boolean = false;
   private resizeStartX: number = 0;
   private resizeStartWidth: number = 0;
+  private resizeStartScale: number = 1.0;
   private resizeDragWidth: number | null = null;
+  private resizeDragScale: number | null = null;
   private resizeHandleEl?: HTMLElement;
   private toolbarScalePresets: Map<number, HTMLElement> = new Map();
   private toolbarScaleSlider?: HTMLInputElement;
@@ -186,6 +199,10 @@ export class NotePagesToolbar {
       cls: "notepages-page-popover is-hidden"
     });
 
+    this.toolbarPopoverEl = this.toolbarWrapperEl.createDiv({
+      cls: "notepages-page-popover notepages-toolbar-popover is-hidden"
+    });
+
     const initPlacement = this.delegate.getToolbarPlacement ? this.delegate.getToolbarPlacement() || "top" : "top";
     this.setPlacement(initPlacement, false);
     if (initPlacement === "floating" && this.delegate.getToolbarFloatingPos) {
@@ -206,6 +223,7 @@ export class NotePagesToolbar {
     this.buildMainDock();
     this.buildSubDock();
     this.buildPagePopover();
+    this.buildToolbarPopover();
     this.applyLayoutConfig(this.layoutConfig);
     this.registerGlobalEvents();
 
@@ -215,14 +233,21 @@ export class NotePagesToolbar {
   }
 
   private buildMainDock(): void {
+    this.delegate.registerDomEvent(this.toolbarEl, "contextmenu", (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleToolbarPopover();
+    });
+
     const leftGroup = this.toolbarEl.createDiv({
       cls: "notepages-dock-section notepages-dock-left"
     });
 
     const dragHandle = leftGroup.createDiv({
       cls: "notepages-dock-drag-handle",
-      title: "Drag to reposition toolbar"
+      title: "Drag to move · Click to customize toolbar size & position"
     });
+    this.dragHandleEl = dragHandle;
     setIcon(dragHandle, "grip-vertical");
     this.setupToolbarDrag(dragHandle);
 
@@ -383,7 +408,7 @@ export class NotePagesToolbar {
     this.resizeHandleEl = this.toolbarEl.createDiv({
       cls: "notepages-dock-resize-handle"
     });
-    this.resizeHandleEl.setAttribute("title", "Drag to resize toolbar width (double-click to reset)");
+    this.resizeHandleEl.setAttribute("title", "Drag width · Shift+drag to scale · Double-click to reset");
     this.setupToolbarResize(this.resizeHandleEl);
 
     this.delegate.registerDomEvent(this.toolbarEl, "wheel", (e: WheelEvent) => {
@@ -988,51 +1013,57 @@ export class NotePagesToolbar {
       this.closePagePopover();
     });
 
-    const dockSection = this.pagePopoverEl.createDiv({
+    const toolbarCustomizeSection = this.pagePopoverEl.createDiv({
       cls: "notepages-popover-section"
     });
-    dockSection.createDiv({
-      cls: "notepages-popover-section-label",
-      text: "Toolbar position"
+    const openCustomizeBtn = toolbarCustomizeSection.createEl("button", {
+      cls: "notepages-popover-row-btn"
+    });
+    const customDockIconSpan = openCustomizeBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(customDockIconSpan, "sliders-horizontal");
+    openCustomizeBtn.createSpan({
+      cls: "notepages-popover-item-text",
+      text: "Customize toolbar size & position..."
+    });
+    openCustomizeBtn.setAttribute("title", "Adjust toolbar scale, width, wrapping, and position");
+    this.delegate.registerDomEvent(openCustomizeBtn, "click", (e: MouseEvent) => {
+      e.stopPropagation();
+      this.closePagePopover();
+      this.openToolbarPopover();
+    });
+  }
+
+  private buildToolbarPopover(): void {
+    const header = this.toolbarPopoverEl.createDiv({
+      cls: "notepages-popover-header"
+    });
+    header.createSpan({
+      cls: "notepages-popover-title",
+      text: "Toolbar size & position"
+    });
+    const resetAllBtn = header.createEl("button", {
+      cls: "notepages-popover-mini-btn",
+      text: "Reset"
+    });
+    resetAllBtn.setAttribute("title", "Reset toolbar scale, width, wrap, and position to defaults");
+    this.delegate.registerDomEvent(resetAllBtn, "click", () => {
+      this.setPlacement("top");
+      this.delegate.onSetToolbarFloatingPos?.(null);
+      this.updateLayoutConfig({
+        scale: 1.0,
+        maxWidth: null,
+        wrap: false,
+        showTitle: true,
+        showZoomControls: true
+      });
     });
 
-    const dockGrid = dockSection.createDiv({
-      cls: "notepages-popover-grid notepages-popover-dock-grid"
-    });
-
-    this.dockPlacementButtons.clear();
-    const dockPositions: Array<{ pos: ToolbarPlacement; label: string; icon: string }> = [
-      { pos: "top", label: "Top", icon: "arrow-up" },
-      { pos: "bottom", label: "Bottom", icon: "arrow-down" },
-      { pos: "left", label: "Left", icon: "arrow-left" },
-      { pos: "right", label: "Right", icon: "arrow-right" },
-      { pos: "floating", label: "Free", icon: "move" }
-    ];
-
-    for (const dp of dockPositions) {
-      const btn = dockGrid.createEl("button", {
-        cls: dp.pos === this.currentPlacement ? "notepages-popover-item is-active" : "notepages-popover-item"
-      });
-      const iconSpan = btn.createSpan({ cls: "notepages-popover-item-icon" });
-      setIcon(iconSpan, dp.icon);
-      btn.createSpan({ cls: "notepages-popover-item-text", text: dp.label });
-      btn.setAttribute("title", `Dock toolbar to ${dp.label}`);
-      this.dockPlacementButtons.set(dp.pos, btn);
-      this.delegate.registerDomEvent(btn, "click", () => {
-        this.setPlacement(dp.pos);
-        if (dp.pos !== "floating") {
-          this.delegate.onSetToolbarFloatingPos?.(null);
-        }
-        this.closePagePopover();
-      });
-    }
-
-    const sizeLayoutSection = this.pagePopoverEl.createDiv({
+    const sizeLayoutSection = this.toolbarPopoverEl.createDiv({
       cls: "notepages-popover-section"
     });
     sizeLayoutSection.createDiv({
       cls: "notepages-popover-section-label",
-      text: "Toolbar size & layout"
+      text: "Button & icon scale"
     });
 
     const scaleGrid = sizeLayoutSection.createDiv({
@@ -1091,7 +1122,15 @@ export class NotePagesToolbar {
       this.updateLayoutConfig({ scale: nextScale });
     });
 
-    const widthSliderRow = sizeLayoutSection.createDiv({
+    const widthSection = this.toolbarPopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    widthSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Width & visibility"
+    });
+
+    const widthSliderRow = widthSection.createDiv({
       cls: "notepages-popover-slider-row"
     });
     widthSliderRow.createSpan({ cls: "notepages-popover-sublabel", text: "Width:" });
@@ -1111,9 +1150,9 @@ export class NotePagesToolbar {
       cls: "notepages-popover-mini-btn",
       text: "Auto"
     });
-    autoWidthBtn.setAttribute("title", "Reset toolbar width to automatic");
+    autoWidthBtn.setAttribute("title", "Reset toolbar width to single-row automatic");
     this.delegate.registerDomEvent(autoWidthBtn, "click", () => {
-      this.updateLayoutConfig({ maxWidth: null });
+      this.updateLayoutConfig({ maxWidth: null, wrap: false });
     });
     this.delegate.registerDomEvent(this.toolbarWidthSlider, "input", () => {
       if (!this.toolbarWidthSlider) {
@@ -1130,7 +1169,7 @@ export class NotePagesToolbar {
       this.updateLayoutConfig({ maxWidth: nextW, wrap: true });
     });
 
-    const togglesRow = sizeLayoutSection.createDiv({
+    const togglesRow = widthSection.createDiv({
       cls: "notepages-popover-toggles-row"
     });
 
@@ -1160,13 +1199,53 @@ export class NotePagesToolbar {
     this.delegate.registerDomEvent(this.toolbarZoomToggleBtn, "click", () => {
       this.updateLayoutConfig({ showZoomControls: !this.layoutConfig.showZoomControls });
     });
+
+    const dockSection = this.toolbarPopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    dockSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Toolbar position"
+    });
+
+    const dockGrid = dockSection.createDiv({
+      cls: "notepages-popover-grid notepages-popover-dock-grid"
+    });
+
+    this.dockPlacementButtons.clear();
+    const dockPositions: Array<{ pos: ToolbarPlacement; label: string; icon: string }> = [
+      { pos: "top", label: "Top", icon: "arrow-up" },
+      { pos: "bottom", label: "Bottom", icon: "arrow-down" },
+      { pos: "left", label: "Left", icon: "arrow-left" },
+      { pos: "right", label: "Right", icon: "arrow-right" },
+      { pos: "floating", label: "Free", icon: "move" }
+    ];
+
+    for (const dp of dockPositions) {
+      const btn = dockGrid.createEl("button", {
+        cls: dp.pos === this.currentPlacement ? "notepages-popover-item is-active" : "notepages-popover-item"
+      });
+      const iconSpan = btn.createSpan({ cls: "notepages-popover-item-icon" });
+      setIcon(iconSpan, dp.icon);
+      btn.createSpan({ cls: "notepages-popover-item-text", text: dp.label });
+      btn.setAttribute("title", `Dock toolbar to ${dp.label}`);
+      this.dockPlacementButtons.set(dp.pos, btn);
+      this.delegate.registerDomEvent(btn, "click", () => {
+        this.setPlacement(dp.pos);
+        if (dp.pos !== "floating") {
+          this.delegate.onSetToolbarFloatingPos?.(null);
+        }
+        this.closeToolbarPopover();
+      });
+    }
   }
 
   applyLayoutConfig(config: ToolbarLayoutConfig): void {
-    const scale = Math.round(Math.min(1.5, Math.max(0.7, Number.isFinite(config.scale) ? config.scale : 1.0)) * 100) / 100;
+    const rawScale = Number.isFinite(config.scale) ? config.scale : 1.0;
+    const scale = Math.round(Math.min(TOOLBAR_MAX_SCALE, Math.max(TOOLBAR_MIN_SCALE, rawScale)) * 100) / 100;
     const maxWidth =
       config.maxWidth !== null && Number.isFinite(config.maxWidth)
-        ? Math.round(Math.min(1600, Math.max(180, config.maxWidth)))
+        ? Math.round(Math.min(TOOLBAR_MAX_WIDTH, Math.max(TOOLBAR_MIN_WIDTH, config.maxWidth)))
         : null;
 
     this.layoutConfig = {
@@ -1262,6 +1341,7 @@ export class NotePagesToolbar {
       e.stopPropagation();
       e.preventDefault();
       this.isDraggingDock = true;
+      this.dragDockMoved = false;
       this.dragDockStartX = e.clientX;
       this.dragDockStartY = e.clientY;
       const rect = this.toolbarWrapperEl.getBoundingClientRect();
@@ -1270,11 +1350,7 @@ export class NotePagesToolbar {
       this.dragDockInitTop = rect.top - parentRect.top;
 
       this.toolbarWrapperEl.addClass("is-dock-dragging");
-      try {
-        handleEl.setPointerCapture(e.pointerId);
-      } catch {
-        // Fallback
-      }
+      this.capturePointer(handleEl, e.pointerId);
     });
 
     this.delegate.registerDomEvent(handleEl, "pointermove", (e: PointerEvent) => {
@@ -1286,6 +1362,13 @@ export class NotePagesToolbar {
 
       const dx = e.clientX - this.dragDockStartX;
       const dy = e.clientY - this.dragDockStartY;
+      if (!this.dragDockMoved && Math.hypot(dx, dy) > DRAG_MOVE_THRESHOLD_PX) {
+        this.dragDockMoved = true;
+      }
+      if (!this.dragDockMoved) {
+        return;
+      }
+
       const newLeft = Math.max(0, this.dragDockInitLeft + dx);
       const newTop = Math.max(0, this.dragDockInitTop + dy);
 
@@ -1300,12 +1383,15 @@ export class NotePagesToolbar {
       if (!this.isDraggingDock) {
         return;
       }
+      const wasMoved = this.dragDockMoved;
       this.isDraggingDock = false;
+      this.dragDockMoved = false;
       this.toolbarWrapperEl.removeClass("is-dock-dragging");
-      try {
-        handleEl.releasePointerCapture(e.pointerId);
-      } catch {
-        // Fallback
+      this.releasePointer(handleEl, e.pointerId);
+
+      if (!wasMoved) {
+        this.toggleToolbarPopover();
+        return;
       }
 
       const rect = this.toolbarWrapperEl.getBoundingClientRect();
@@ -1319,17 +1405,15 @@ export class NotePagesToolbar {
         ? parentRect.right - rect.right
         : (typeof window !== "undefined" ? window.innerWidth - rect.right : 1000);
 
-      if (topDist < 42) {
-        this.setPlacement("top");
-        this.delegate.onSetToolbarFloatingPos?.(null);
-      } else if (bottomDist < 42) {
-        this.setPlacement("bottom");
-        this.delegate.onSetToolbarFloatingPos?.(null);
-      } else if (leftDist < 42) {
-        this.setPlacement("left");
-        this.delegate.onSetToolbarFloatingPos?.(null);
-      } else if (rightDist < 42) {
-        this.setPlacement("right");
+      const edgeSnaps = [
+        { dist: topDist, placement: "top" },
+        { dist: bottomDist, placement: "bottom" },
+        { dist: leftDist, placement: "left" },
+        { dist: rightDist, placement: "right" }
+      ] as const;
+      const matchedSnap = edgeSnaps.find((snap) => snap.dist < SNAP_EDGE_THRESHOLD_PX);
+      if (matchedSnap) {
+        this.setPlacement(matchedSnap.placement);
         this.delegate.onSetToolbarFloatingPos?.(null);
       } else {
         this.setPlacement("floating");
@@ -1344,6 +1428,31 @@ export class NotePagesToolbar {
     this.delegate.registerDomEvent(handleEl, "pointercancel", onPointerUp);
   }
 
+  private capturePointer(el: HTMLElement, pointerId: number): void {
+    if (typeof el.setPointerCapture !== "function") {
+      return;
+    }
+    try {
+      el.setPointerCapture(pointerId);
+    } catch (err) {
+      console.warn("Failed to capture toolbar pointer", err);
+    }
+  }
+
+  private releasePointer(el: HTMLElement, pointerId: number): void {
+    if (typeof el.releasePointerCapture !== "function") {
+      return;
+    }
+    if (typeof el.hasPointerCapture === "function" && !el.hasPointerCapture(pointerId)) {
+      return;
+    }
+    try {
+      el.releasePointerCapture(pointerId);
+    } catch (err) {
+      console.warn("Failed to release toolbar pointer", err);
+    }
+  }
+
   private setupToolbarResize(handleEl: HTMLElement): void {
     this.delegate.registerDomEvent(handleEl, "dblclick", (e: MouseEvent) => {
       e.stopPropagation();
@@ -1356,14 +1465,19 @@ export class NotePagesToolbar {
       this.isResizingDock = true;
       this.resizeStartX = e.clientX;
       this.resizeStartWidth = this.toolbarEl.getBoundingClientRect().width;
-      this.resizeDragWidth = this.resizeStartWidth;
+      this.resizeStartScale = this.layoutConfig.scale;
+      this.resizeDragWidth = null;
+      this.resizeDragScale = null;
       this.toolbarWrapperEl.addClass("is-dock-resizing");
-      try {
-        handleEl.setPointerCapture(e.pointerId);
-      } catch {
-        // Fallback
-      }
+      this.capturePointer(handleEl, e.pointerId);
     });
+
+    const minResizeWidth = 220;
+    const minMaxAllowedWidth = 240;
+    const parentHorizontalPadding = 32;
+    const defaultParentWidth = 1000;
+    const scaleDragSpanPx = 180;
+    const scaleRoundSteps = 20;
 
     this.delegate.registerDomEvent(handleEl, "pointermove", (e: PointerEvent) => {
       if (!this.isResizingDock) {
@@ -1372,13 +1486,35 @@ export class NotePagesToolbar {
       e.stopPropagation();
       e.preventDefault();
 
-      const dx = e.clientX - this.resizeStartX;
+      if (e.shiftKey) {
+        const dx = e.clientX - this.resizeStartX;
+        const nextScale = Math.round(
+          Math.min(TOOLBAR_MAX_SCALE, Math.max(TOOLBAR_MIN_SCALE, this.resizeStartScale + dx / scaleDragSpanPx)) * scaleRoundSteps
+        ) / scaleRoundSteps;
+        this.resizeDragScale = nextScale;
+        this.applyLayoutConfig({
+          ...this.layoutConfig,
+          scale: nextScale
+        });
+        handleEl.setAttribute("data-resize-width", `${Math.round(nextScale * 100)}%`);
+        return;
+      }
+
+      const wrapperRect = this.toolbarWrapperEl.getBoundingClientRect();
+      const parentWidth = this.toolbarWrapperEl.parentElement?.getBoundingClientRect().width ?? defaultParentWidth;
+      const maxAllowed = Math.max(minMaxAllowedWidth, Math.round(parentWidth - parentHorizontalPadding));
       const isCentered = this.currentPlacement === "top" || this.currentPlacement === "bottom";
-      const isRightSide = this.currentPlacement === "right";
-      const deltaFactor = isCentered ? 2 : (isRightSide ? -1 : 1);
-      const parentWidth = this.toolbarWrapperEl.parentElement?.getBoundingClientRect().width ?? 1000;
-      const maxAllowed = Math.max(240, Math.round(parentWidth - 32));
-      const nextWidth = Math.round(Math.max(180, Math.min(maxAllowed, this.resizeStartWidth + dx * deltaFactor)));
+
+      let nextWidth: number;
+      if (isCentered && wrapperRect.width > 0) {
+        const centerX = (wrapperRect.left + wrapperRect.right) / 2;
+        nextWidth = Math.round(Math.max(minResizeWidth, Math.min(maxAllowed, Math.abs(e.clientX - centerX) * 2)));
+      } else {
+        const dx = e.clientX - this.resizeStartX;
+        const isRightSide = this.currentPlacement === "right";
+        const deltaFactor = isRightSide ? -1 : 1;
+        nextWidth = Math.round(Math.max(minResizeWidth, Math.min(maxAllowed, this.resizeStartWidth + dx * deltaFactor)));
+      }
 
       this.resizeDragWidth = nextWidth;
       this.applyLayoutConfig({
@@ -1396,12 +1532,13 @@ export class NotePagesToolbar {
       this.isResizingDock = false;
       this.toolbarWrapperEl.removeClass("is-dock-resizing");
       handleEl.removeAttribute("data-resize-width");
-      try {
-        handleEl.releasePointerCapture(e.pointerId);
-      } catch {
-        // Fallback
-      }
+      this.releasePointer(handleEl, e.pointerId);
 
+      if (this.resizeDragScale !== null) {
+        const committedScale = this.resizeDragScale;
+        this.resizeDragScale = null;
+        this.updateLayoutConfig({ scale: committedScale });
+      }
       if (this.resizeDragWidth !== null) {
         const committedWidth = Math.round(this.resizeDragWidth);
         this.resizeDragWidth = null;
@@ -1413,12 +1550,12 @@ export class NotePagesToolbar {
     this.delegate.registerDomEvent(handleEl, "pointercancel", onResizeEnd);
   }
 
-  private positionPagePopover(): void {
-    if (!this.pagePopoverEl || !this.toolbarWrapperEl) {
+  private positionPopover(popoverEl: HTMLElement): void {
+    if (!popoverEl || !this.toolbarWrapperEl) {
       return;
     }
-    this.pagePopoverEl.removeClass("is-popover-above");
-    this.pagePopoverEl.removeClass("is-popover-align-left");
+    popoverEl.removeClass("is-popover-above");
+    popoverEl.removeClass("is-popover-align-left");
 
     if (this.currentPlacement === "floating") {
       const wrapperRect = this.toolbarWrapperEl.getBoundingClientRect();
@@ -1427,12 +1564,12 @@ export class NotePagesToolbar {
         const centerY = (wrapperRect.top + wrapperRect.bottom) / 2;
         const parentMidY = (parentRect.top + parentRect.bottom) / 2;
         if (centerY > parentMidY) {
-          this.pagePopoverEl.addClass("is-popover-above");
+          popoverEl.addClass("is-popover-above");
         }
         const centerX = (wrapperRect.left + wrapperRect.right) / 2;
         const parentMidX = (parentRect.left + parentRect.right) / 2;
         if (centerX < parentMidX) {
-          this.pagePopoverEl.addClass("is-popover-align-left");
+          popoverEl.addClass("is-popover-align-left");
         }
       }
     }
@@ -1443,8 +1580,8 @@ export class NotePagesToolbar {
       return;
     }
     this.delegate.registerDomEvent(window, "pointerdown", (e: PointerEvent) => {
+      const target = e.target as Node;
       if (this.isPagePopoverOpen) {
-        const target = e.target as Node;
         if (
           this.pagePopoverEl &&
           !this.pagePopoverEl.contains(target) &&
@@ -1452,6 +1589,15 @@ export class NotePagesToolbar {
           !this.pageMenuBtn.contains(target)
         ) {
           this.closePagePopover();
+        }
+      }
+      if (this.isToolbarPopoverOpen) {
+        if (
+          this.toolbarPopoverEl &&
+          !this.toolbarPopoverEl.contains(target) &&
+          (!this.dragHandleEl || !this.dragHandleEl.contains(target))
+        ) {
+          this.closeToolbarPopover();
         }
       }
     });
@@ -1472,6 +1618,7 @@ export class NotePagesToolbar {
     }
     if (this.isCollapsed) {
       this.closePagePopover();
+      this.closeToolbarPopover();
       if (this.subToolbarEl) {
         this.subToolbarEl.addClass("is-hidden");
         this.subToolbarEl.toggle(false);
@@ -1490,10 +1637,11 @@ export class NotePagesToolbar {
   }
 
   openPagePopover(): void {
+    this.closeToolbarPopover();
     if (this.pagePopoverEl) {
       this.pagePopoverEl.removeClass("is-hidden");
       this.isPagePopoverOpen = true;
-      this.positionPagePopover();
+      this.positionPopover(this.pagePopoverEl);
       if (this.pageMenuBtn) {
         this.pageMenuBtn.addClass("is-active");
       }
@@ -1507,6 +1655,32 @@ export class NotePagesToolbar {
       if (this.pageMenuBtn) {
         this.pageMenuBtn.removeClass("is-active");
       }
+    }
+  }
+
+  toggleToolbarPopover(): void {
+    if (this.isToolbarPopoverOpen) {
+      this.closeToolbarPopover();
+    } else {
+      this.openToolbarPopover();
+    }
+  }
+
+  openToolbarPopover(): void {
+    this.closePagePopover();
+    if (this.toolbarPopoverEl) {
+      this.toolbarPopoverEl.removeClass("is-hidden");
+      this.isToolbarPopoverOpen = true;
+      this.positionPopover(this.toolbarPopoverEl);
+      this.dragHandleEl?.addClass("is-active");
+    }
+  }
+
+  closeToolbarPopover(): void {
+    if (this.toolbarPopoverEl) {
+      this.toolbarPopoverEl.addClass("is-hidden");
+      this.isToolbarPopoverOpen = false;
+      this.dragHandleEl?.removeClass("is-active");
     }
   }
 
