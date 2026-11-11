@@ -304,6 +304,18 @@ export default class NotePagesPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    this.refreshToolbarSettings();
+  }
+
+  refreshToolbarSettings(): void {
+    if (!this.app?.workspace?.iterateAllLeaves) {
+      return;
+    }
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (leaf.view instanceof NotePagesView) {
+        leaf.view.refreshToolbarLayout();
+      }
+    });
   }
 
   private handleFileOpen(file: TFile | null): void {

@@ -1,6 +1,7 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, SliderComponent, TextComponent, ToggleComponent } from "obsidian";
 import type { SettingDefinitionItem } from "obsidian";
 import type NotePagesPlugin from "../main";
+import { DEFAULT_SETTINGS } from "./NotePagesSettings";
 import { PageSizePreset, PageOrientation, PaperTemplateType } from "../types";
 
 export class NotePagesSettingTab extends PluginSettingTab {
@@ -96,6 +97,49 @@ export class NotePagesSettingTab extends PluginSettingTab {
         },
       },
       {
+        name: "Toolbar scale",
+        desc: "Adjust overall size of floating toolbar buttons, icons, and spacing (70% to 150%).",
+        control: {
+          type: "slider",
+          key: "toolbarScale",
+          min: 0.7,
+          max: 1.5,
+          step: 0.05,
+        },
+      },
+      {
+        name: "Auto-wrap toolbar buttons",
+        desc: "Automatically wrap toolbar buttons onto multiple rows when space is narrow or resized.",
+        control: {
+          type: "toggle",
+          key: "toolbarWrap",
+        },
+      },
+      {
+        name: "Toolbar maximum width (px)",
+        desc: "Optional max width in pixels (200 to 1600). Leave empty for automatic width.",
+        control: {
+          type: "text",
+          key: "toolbarMaxWidth",
+        },
+      },
+      {
+        name: "Show notebook title on toolbar",
+        desc: "Display the clickable notebook title pill on the floating dock.",
+        control: {
+          type: "toggle",
+          key: "toolbarShowTitle",
+        },
+      },
+      {
+        name: "Show zoom controls on toolbar",
+        desc: "Display zoom stepper buttons and percentage pill on the floating dock.",
+        control: {
+          type: "toggle",
+          key: "toolbarShowZoomControls",
+        },
+      },
+      {
         name: "Custom feedback form URL",
         desc: "Optional URL for user feedback. If blank, GitHub issues is opened.",
         control: {
@@ -108,13 +152,17 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
   override getControlValue(key: string): unknown {
     const settings = this.plugin.settings as unknown as Record<string, unknown>;
+    if (key === "toolbarMaxWidth") {
+      const v = settings[key];
+      return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
+    }
     return settings[key];
   }
 
   override async setControlValue(key: string, value: unknown): Promise<void> {
     const settings = this.plugin.settings as unknown as Record<string, unknown>;
     if (key === "autosaveIntervalMs") {
-      const parsed = typeof value === "number" ? value : parseInt(String(value), 10);
+      const parsed = typeof value === "number" ? value : typeof value === "string" ? parseInt(value, 10) : NaN;
       if (!isNaN(parsed) && parsed >= 300) {
         settings[key] = parsed;
         await this.plugin.saveSettings();
@@ -122,9 +170,31 @@ export class NotePagesSettingTab extends PluginSettingTab {
       return;
     }
     if (key === "defaultLineSpacing") {
-      const parsed = typeof value === "number" ? value : parseInt(String(value), 10);
+      const parsed = typeof value === "number" ? value : typeof value === "string" ? parseInt(value, 10) : NaN;
       if (!isNaN(parsed) && parsed >= 12 && parsed <= 64) {
         settings[key] = parsed;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
+    if (key === "toolbarScale") {
+      const parsed = typeof value === "number" ? value : typeof value === "string" ? parseFloat(value) : NaN;
+      if (!isNaN(parsed)) {
+        settings[key] = Math.round(Math.min(1.5, Math.max(0.7, parsed)) * 100) / 100;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
+    if (key === "toolbarMaxWidth") {
+      const raw = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+      if (!raw) {
+        settings[key] = null;
+        await this.plugin.saveSettings();
+        return;
+      }
+      const parsed = parseInt(raw, 10);
+      if (!isNaN(parsed) && parsed >= 200) {
+        settings[key] = Math.min(1600, Math.round(parsed));
         await this.plugin.saveSettings();
       }
       return;
@@ -250,6 +320,113 @@ export class NotePagesSettingTab extends PluginSettingTab {
               this.plugin.settings.autosaveIntervalMs = parsed;
               await this.plugin.saveSettings();
             }
+          });
+      });
+
+    new Setting(containerEl).setName("Toolbar size & layout").setHeading();
+
+    let scaleSlider: SliderComponent | undefined;
+    let wrapToggle: ToggleComponent | undefined;
+    let maxWidthText: TextComponent | undefined;
+    let showTitleToggle: ToggleComponent | undefined;
+    let showZoomToggle: ToggleComponent | undefined;
+
+    new Setting(containerEl)
+      .setName("Toolbar scale")
+      .setDesc("Adjust overall size of floating toolbar buttons, icons, and spacing (70% to 150%).")
+      .addSlider((slider) => {
+        scaleSlider = slider;
+        slider
+          .setLimits(0.7, 1.5, 0.05)
+          .setValue(this.plugin.settings.toolbarScale ?? 1.0)
+          .onChange(async (value) => {
+            this.plugin.settings.toolbarScale = Math.round(value * 100) / 100;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Auto-wrap toolbar buttons")
+      .setDesc("Automatically wrap toolbar buttons onto multiple rows when space is narrow or resized.")
+      .addToggle((toggle) => {
+        wrapToggle = toggle;
+        toggle
+          .setValue(this.plugin.settings.toolbarWrap ?? false)
+          .onChange(async (value) => {
+            this.plugin.settings.toolbarWrap = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Toolbar maximum width (px)")
+      .setDesc("Optional max width in pixels (200 to 1600). Leave empty for automatic width.")
+      .addText((text) => {
+        maxWidthText = text;
+        text
+          .setPlaceholder("Auto")
+          .setValue(this.plugin.settings.toolbarMaxWidth ? String(this.plugin.settings.toolbarMaxWidth) : "")
+          .onChange(async (value) => {
+            const raw = value.trim();
+            if (!raw) {
+              this.plugin.settings.toolbarMaxWidth = null;
+              await this.plugin.saveSettings();
+              return;
+            }
+            const parsed = parseInt(raw, 10);
+            if (!isNaN(parsed) && parsed >= 200) {
+              this.plugin.settings.toolbarMaxWidth = Math.min(1600, Math.round(parsed));
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Show notebook title on toolbar")
+      .setDesc("Display the clickable notebook title pill on the floating dock.")
+      .addToggle((toggle) => {
+        showTitleToggle = toggle;
+        toggle
+          .setValue(this.plugin.settings.toolbarShowTitle ?? true)
+          .onChange(async (value) => {
+            this.plugin.settings.toolbarShowTitle = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Show zoom controls on toolbar")
+      .setDesc("Display zoom stepper buttons and percentage pill on the floating dock.")
+      .addToggle((toggle) => {
+        showZoomToggle = toggle;
+        toggle
+          .setValue(this.plugin.settings.toolbarShowZoomControls ?? true)
+          .onChange(async (value) => {
+            this.plugin.settings.toolbarShowZoomControls = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Reset toolbar layout")
+      .setDesc("Restore default toolbar scale, width, wrapping, and position.")
+      .addButton((button) => {
+        button
+          .setButtonText("Reset defaults")
+          .onClick(async () => {
+            this.plugin.settings.toolbarScale = DEFAULT_SETTINGS.toolbarScale;
+            this.plugin.settings.toolbarMaxWidth = DEFAULT_SETTINGS.toolbarMaxWidth;
+            this.plugin.settings.toolbarWrap = DEFAULT_SETTINGS.toolbarWrap;
+            this.plugin.settings.toolbarShowTitle = DEFAULT_SETTINGS.toolbarShowTitle;
+            this.plugin.settings.toolbarShowZoomControls = DEFAULT_SETTINGS.toolbarShowZoomControls;
+            this.plugin.settings.toolbarPlacement = DEFAULT_SETTINGS.toolbarPlacement;
+            this.plugin.settings.toolbarFloatingPos = DEFAULT_SETTINGS.toolbarFloatingPos;
+            await this.plugin.saveSettings();
+            scaleSlider?.setValue(DEFAULT_SETTINGS.toolbarScale);
+            wrapToggle?.setValue(DEFAULT_SETTINGS.toolbarWrap);
+            maxWidthText?.setValue("");
+            showTitleToggle?.setValue(DEFAULT_SETTINGS.toolbarShowTitle);
+            showZoomToggle?.setValue(DEFAULT_SETTINGS.toolbarShowZoomControls);
           });
       });
 

@@ -25,6 +25,7 @@ interface MockDomElement {
   setAttribute: (key: string, val: string) => void;
   getAttribute: (key: string) => string | undefined;
   setCssStyles: (styles: Record<string, string>) => void;
+  setCssProps: (props: Record<string, string>) => void;
   setText: (txt: string) => void;
   empty: () => void;
   toggle: (show?: boolean) => void;
@@ -96,6 +97,9 @@ function createMockElement(tag: string = "div", initialCls: string = ""): MockDo
     getAttribute: (key: string) => attributes.get(key),
     setCssStyles: (newStyles: Record<string, string>) => {
       Object.assign(style, newStyles);
+    },
+    setCssProps: (props: Record<string, string>) => {
+      Object.assign(style, props);
     },
     setText: (txt: string) => {
       el.textContent = txt;
@@ -404,5 +408,78 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     toolbar.setEraserRadius(24);
     assert.strictEqual(btnLarge.hasClass("is-active"), true);
     assert.strictEqual(btnMedium.hasClass("is-active"), false);
+  });
+
+  test("applyLayoutConfig updates CSS custom properties, clamps bounds, and toggles layout classes", () => {
+    const root = createMockElement("div", "notepages-view-container");
+    const delegate = createMockDelegate({
+      getToolbarLayoutConfig: () => ({
+        scale: 1.0,
+        maxWidth: null,
+        wrap: false,
+        showTitle: true,
+        showZoomControls: true
+      })
+    });
+    const toolbar = new NotePagesToolbar(delegate);
+    toolbar.build(root as unknown as HTMLElement);
+
+    const wrapper = toolbar.toolbarWrapperEl as unknown as MockDomElement;
+    assert.strictEqual(wrapper.style["--np-toolbar-scale"], "1");
+    assert.strictEqual(wrapper.style["--np-toolbar-max-width"], "calc(100% - 24px)");
+    assert.strictEqual(wrapper.hasClass("is-toolbar-wrap"), false);
+    assert.strictEqual(wrapper.hasClass("is-hide-title"), false);
+    assert.strictEqual(wrapper.hasClass("is-hide-zoom"), false);
+    assert.strictEqual(wrapper.hasClass("is-custom-width"), false);
+
+    // Apply custom resized palette layout and clamped bounds
+    toolbar.applyLayoutConfig({
+      scale: 2.0, // should clamp to 1.5
+      maxWidth: 420,
+      wrap: true,
+      showTitle: false,
+      showZoomControls: false
+    });
+
+    assert.strictEqual(toolbar.layoutConfig.scale, 1.5);
+    assert.strictEqual(wrapper.style["--np-toolbar-scale"], "1.5");
+    assert.strictEqual(wrapper.style["--np-toolbar-max-width"], "420px");
+    assert.strictEqual(wrapper.hasClass("is-toolbar-wrap"), true);
+    assert.strictEqual(wrapper.hasClass("is-hide-title"), true);
+    assert.strictEqual(wrapper.hasClass("is-hide-zoom"), true);
+    assert.strictEqual(wrapper.hasClass("is-custom-width"), true);
+
+    // Lower clamp check
+    toolbar.applyLayoutConfig({
+      scale: 0.3, // should clamp to 0.7
+      maxWidth: 50, // should clamp to 180
+      wrap: false,
+      showTitle: true,
+      showZoomControls: true
+    });
+    assert.strictEqual(toolbar.layoutConfig.scale, 0.7);
+    assert.strictEqual(toolbar.layoutConfig.maxWidth, 180);
+  });
+
+  test("dock includes resize handle and switches placement cleanly", () => {
+    const root = createMockElement("div", "notepages-view-container");
+    let savedPlacement = "top";
+    const delegate = createMockDelegate({
+      onSetToolbarPlacement: (p) => {
+        savedPlacement = p;
+      }
+    });
+    const toolbar = new NotePagesToolbar(delegate);
+    toolbar.build(root as unknown as HTMLElement);
+
+    const dock = toolbar.toolbarEl as unknown as MockDomElement;
+    const resizeHandle = dock.children.find((c) => c.hasClass("notepages-dock-resize-handle"));
+    assert.ok(resizeHandle, "Main dock must contain interactive resize handle");
+
+    const wrapper = toolbar.toolbarWrapperEl as unknown as MockDomElement;
+    toolbar.setPlacement("left");
+    assert.strictEqual(savedPlacement, "left");
+    assert.strictEqual(wrapper.hasClass("is-position-left"), true);
+    assert.strictEqual(wrapper.hasClass("is-position-top"), false);
   });
 });

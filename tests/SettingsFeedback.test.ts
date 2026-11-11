@@ -67,4 +67,44 @@ describe("Settings & Feedback Integration", () => {
     const resolvedWhenCustom = customUrl || defaultFallback;
     assert.strictEqual(resolvedWhenCustom, customUrl);
   });
+
+  test("toolbar size & layout settings definitions and validation work cleanly", async () => {
+    const settings: NotePagesSettings = { ...DEFAULT_SETTINGS };
+    const mockPlugin = {
+      settings,
+      saveSettings: async () => {}
+    } as unknown as NotePagesPlugin;
+
+    const tab = new NotePagesSettingTab({} as unknown as App, mockPlugin);
+    const definitions = tab.getSettingDefinitions();
+
+    const toolbarKeys = [
+      "toolbarScale",
+      "toolbarWrap",
+      "toolbarMaxWidth",
+      "toolbarShowTitle",
+      "toolbarShowZoomControls"
+    ];
+    for (const key of toolbarKeys) {
+      const def = definitions.find((d) => "control" in d && d.control && d.control.key === key);
+      assert.ok(def, `SettingDefinitions must include ${key}`);
+    }
+
+    // Clamping toolbarScale between 0.7 and 1.5
+    await tab.setControlValue("toolbarScale", 2.4);
+    assert.strictEqual(settings.toolbarScale, 1.5);
+    await tab.setControlValue("toolbarScale", 0.2);
+    assert.strictEqual(settings.toolbarScale, 0.7);
+    await tab.setControlValue("toolbarScale", 1.25);
+    assert.strictEqual(settings.toolbarScale, 1.25);
+
+    // Custom max width parsing and auto reset
+    await tab.setControlValue("toolbarMaxWidth", "480");
+    assert.strictEqual(settings.toolbarMaxWidth, 480);
+    assert.strictEqual(tab.getControlValue("toolbarMaxWidth"), "480");
+
+    await tab.setControlValue("toolbarMaxWidth", "  ");
+    assert.strictEqual(settings.toolbarMaxWidth, null);
+    assert.strictEqual(tab.getControlValue("toolbarMaxWidth"), "");
+  });
 });

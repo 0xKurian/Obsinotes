@@ -12,6 +12,8 @@
 }
 
 .notepages-toolbar-float-wrapper {
+  --np-toolbar-scale: 1;
+  --np-toolbar-max-width: calc(100% - 24px);
   position: absolute;
   top: 10px;
   left: 0;
@@ -19,7 +21,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--np-toolbar-scale));
   z-index: 50;
   pointer-events: none;
   padding: 0 16px;
@@ -44,7 +46,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  padding: 4px 10px;
+  padding: calc(4px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
   background-color: var(--background-primary);
   background: var(--background-primary);
   backdrop-filter: blur(16px);
@@ -52,16 +54,17 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: 9999px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
-  height: 44px;
-  min-height: 44px;
-  max-height: 44px;
+  height: calc(44px * var(--np-toolbar-scale));
+  min-height: calc(44px * var(--np-toolbar-scale));
+  max-height: calc(44px * var(--np-toolbar-scale));
   box-sizing: border-box;
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  gap: 6px;
-  max-width: calc(100% - 24px);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: calc(6px * var(--np-toolbar-scale));
+  max-width: var(--np-toolbar-max-width);
+  position: relative;
+  transition: opacity 0.25s ease, box-shadow 0.25s ease, border-radius 0.2s ease;
 }
 
 .notepages-floating-dock::-webkit-scrollbar {
@@ -72,7 +75,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--np-toolbar-scale));
   flex-wrap: nowrap;
   flex-shrink: 0;
 }
@@ -83,15 +86,15 @@
   align-items: center;
   background-color: var(--background-modifier-hover);
   border-radius: 9999px;
-  padding: 1px 3px;
-  gap: 1px;
+  padding: calc(1px * var(--np-toolbar-scale)) calc(3px * var(--np-toolbar-scale));
+  gap: calc(1px * var(--np-toolbar-scale));
 }
 
 .notepages-toolbar-separator {
   width: 1px;
-  height: 20px;
+  height: calc(20px * var(--np-toolbar-scale));
   background-color: var(--divider-color);
-  margin: 0 3px;
+  margin: 0 calc(3px * var(--np-toolbar-scale));
   flex-shrink: 0;
 }
 
@@ -100,19 +103,21 @@
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  padding: 4px 12px;
+  justify-content: center;
+  padding: calc(4px * var(--np-toolbar-scale)) calc(12px * var(--np-toolbar-scale));
   background-color: var(--background-primary);
   background: var(--background-primary);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 9999px;
+  border-radius: calc(18px * var(--np-toolbar-scale));
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-  height: 38px;
-  min-height: 38px;
+  min-height: calc(38px * var(--np-toolbar-scale));
+  height: auto;
   box-sizing: border-box;
-  gap: 6px;
-  max-width: calc(100% - 32px);
+  gap: calc(6px * var(--np-toolbar-scale));
+  max-width: var(--np-toolbar-max-width);
+  flex-wrap: wrap;
   overflow-x: auto;
   overflow-y: hidden;
   animation: notepages-subdock-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -140,11 +145,13 @@
 .notepages-page-popover {
   pointer-events: auto;
   position: absolute;
-  top: 56px;
+  top: calc(44px * var(--np-toolbar-scale) + 10px);
   right: 28px;
-  width: 290px;
-  min-width: 290px;
+  width: 296px;
+  min-width: 280px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
   background-color: var(--background-primary);
   background: var(--background-primary);
   backdrop-filter: blur(20px);
@@ -317,6 +324,7 @@
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-dock-page-btn,
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-export-btn,
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-title-btn,
+.notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-dock-resize-handle,
 .notepages-toolbar-float-wrapper.is-dock-collapsed .notepages-toolbar-separator:not(.notepages-keep-collapsed) {
   display: none;
 }
@@ -329,8 +337,8 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 4px;
-  flex-wrap: nowrap;
+  gap: calc(4px * var(--np-toolbar-scale));
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
@@ -339,8 +347,8 @@
 }
 
 .notepages-color-chip {
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--np-toolbar-scale));
+  height: calc(20px * var(--np-toolbar-scale));
   border-radius: 50%;
   border: 1.5px solid rgba(0, 0, 0, 0.18);
   cursor: pointer;
@@ -367,8 +375,8 @@
 }
 
 .notepages-color-picker-input {
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--np-toolbar-scale));
+  height: calc(22px * var(--np-toolbar-scale));
   padding: 0;
   border: 1px solid var(--divider-color);
   border-radius: 50%;
@@ -456,13 +464,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: calc(26px * var(--np-toolbar-scale));
+  height: calc(26px * var(--np-toolbar-scale));
   border-radius: 6px;
   border: 1px solid transparent;
   background-color: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--np-toolbar-scale));
   font-weight: 600;
   cursor: pointer;
   padding: 0;
@@ -502,9 +510,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
+  width: calc(30px * var(--np-toolbar-scale));
+  height: calc(30px * var(--np-toolbar-scale));
+  min-width: calc(30px * var(--np-toolbar-scale));
   padding: 0;
   border-radius: 50%;
   border: 1px solid transparent;
@@ -518,8 +526,8 @@
 }
 
 .notepages-tool-button svg {
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--np-toolbar-scale));
+  height: calc(16px * var(--np-toolbar-scale));
 }
 
 .notepages-tool-button:hover {
@@ -545,24 +553,24 @@
 
 .notepages-zoom-btn {
   width: auto;
-  min-width: 36px;
-  padding: 0 4px;
-  font-size: 11px;
+  min-width: calc(36px * var(--np-toolbar-scale));
+  padding: 0 calc(4px * var(--np-toolbar-scale));
+  font-size: calc(11px * var(--np-toolbar-scale));
   font-variant-numeric: tabular-nums;
   border-radius: 9999px;
-  height: 26px;
+  height: calc(26px * var(--np-toolbar-scale));
 }
 
 .notepages-zoom-stepper-btn {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
+  width: calc(24px * var(--np-toolbar-scale));
+  height: calc(24px * var(--np-toolbar-scale));
+  min-width: calc(24px * var(--np-toolbar-scale));
   border-radius: 50%;
 }
 
 .notepages-zoom-stepper-btn svg {
-  width: 13px;
-  height: 13px;
+  width: calc(13px * var(--np-toolbar-scale));
+  height: calc(13px * var(--np-toolbar-scale));
 }
 
 @container (max-width: 520px) {
@@ -1681,18 +1689,18 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
 .notepages-title-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--np-toolbar-scale));
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-s);
-  padding: 2px 8px;
-  font-size: 13px;
+  padding: calc(2px * var(--np-toolbar-scale)) calc(8px * var(--np-toolbar-scale));
+  font-size: calc(13px * var(--np-toolbar-scale));
   font-weight: 600;
   color: var(--text-normal);
   cursor: pointer;
-  max-width: 220px;
-  min-width: 40px;
-  height: 28px;
+  max-width: calc(200px * var(--np-toolbar-scale));
+  min-width: calc(36px * var(--np-toolbar-scale));
+  height: calc(28px * var(--np-toolbar-scale));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1939,13 +1947,18 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 28px;
+  width: calc(18px * var(--np-toolbar-scale));
+  height: calc(28px * var(--np-toolbar-scale));
   cursor: grab;
   color: var(--text-faint);
   margin-right: 2px;
   border-radius: 4px;
   flex-shrink: 0;
+}
+
+.notepages-dock-drag-handle svg {
+  width: calc(14px * var(--np-toolbar-scale));
+  height: calc(14px * var(--np-toolbar-scale));
 }
 
 .notepages-dock-drag-handle:hover {
@@ -1957,16 +1970,100 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   cursor: grabbing;
 }
 
-.notepages-toolbar-float-wrapper.is-dock-dragging {
+.notepages-dock-resize-handle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: calc(24px * var(--np-toolbar-scale));
+  cursor: ew-resize;
+  flex-shrink: 0;
+  margin-left: 2px;
+  border-radius: 4px;
+}
+
+.notepages-dock-resize-handle::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background-color: var(--text-faint);
+  opacity: 0.45;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.notepages-dock-resize-handle:hover::before,
+.notepages-toolbar-float-wrapper.is-dock-resizing .notepages-dock-resize-handle::before {
+  opacity: 1;
+  background-color: var(--interactive-accent);
+}
+
+.notepages-dock-resize-handle[data-resize-width]::after {
+  content: attr(data-resize-width);
+  position: absolute;
+  top: -28px;
+  right: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  font-size: 10px;
+  font-family: var(--font-monospace);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow-s);
+}
+
+.notepages-toolbar-float-wrapper.is-dock-dragging,
+.notepages-toolbar-float-wrapper.is-dock-resizing {
   transition: none !important;
-  opacity: 0.95;
+  opacity: 0.96;
+}
+
+.notepages-toolbar-float-wrapper.is-dock-dragging {
   cursor: grabbing;
+}
+
+.notepages-toolbar-float-wrapper.is-custom-width .notepages-floating-dock {
+  width: min(var(--np-toolbar-max-width), calc(100% - 24px));
+  max-width: min(var(--np-toolbar-max-width), calc(100% - 24px));
+}
+
+.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-floating-dock {
+  height: auto;
+  max-height: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-radius: calc(18px * var(--np-toolbar-scale));
+  padding: calc(6px * var(--np-toolbar-scale)) calc(12px * var(--np-toolbar-scale));
+  overflow-x: visible;
+}
+
+.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-dock-section {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.notepages-toolbar-float-wrapper.is-hide-title .notepages-title-btn,
+.notepages-toolbar-float-wrapper.is-hide-title .notepages-dock-left .notepages-toolbar-separator {
+  display: none;
+}
+
+.notepages-toolbar-float-wrapper.is-hide-zoom .notepages-dock-zoom-group {
+  display: none;
 }
 
 .notepages-toolbar-float-wrapper.is-position-bottom {
   top: auto;
   bottom: 12px;
   flex-direction: column-reverse;
+}
+
+.notepages-toolbar-float-wrapper.is-position-bottom .notepages-page-popover {
+  top: auto;
+  bottom: calc(44px * var(--np-toolbar-scale) + 12px);
 }
 
 .notepages-toolbar-float-wrapper.is-position-left {
@@ -1979,24 +2076,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   padding: 0;
 }
 
-.notepages-toolbar-float-wrapper.is-position-left .notepages-floating-dock {
-  flex-direction: column;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.notepages-toolbar-float-wrapper.is-position-left .notepages-dock-section {
-  flex-direction: column;
-}
-
-.notepages-toolbar-float-wrapper.is-position-left .notepages-subtoolbar-float {
-  flex-direction: column;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
 .notepages-toolbar-float-wrapper.is-position-right {
   top: 50%;
   right: 14px;
@@ -2007,32 +2086,103 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   padding: 0;
 }
 
+.notepages-toolbar-float-wrapper.is-position-left .notepages-floating-dock,
 .notepages-toolbar-float-wrapper.is-position-right .notepages-floating-dock {
   flex-direction: column;
-  max-height: calc(100vh - 120px);
+  height: auto;
+  min-height: auto;
+  max-height: calc(100vh - 100px);
+  width: auto;
+  max-width: calc(180px * var(--np-toolbar-scale));
+  border-radius: calc(20px * var(--np-toolbar-scale));
+  padding: calc(10px * var(--np-toolbar-scale)) calc(6px * var(--np-toolbar-scale));
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+.notepages-toolbar-float-wrapper.is-position-left .notepages-dock-section,
 .notepages-toolbar-float-wrapper.is-position-right .notepages-dock-section {
   flex-direction: column;
 }
 
+.notepages-toolbar-float-wrapper.is-position-left .notepages-dock-zoom-group,
+.notepages-toolbar-float-wrapper.is-position-right .notepages-dock-zoom-group {
+  flex-direction: column;
+  padding: calc(3px * var(--np-toolbar-scale)) calc(1px * var(--np-toolbar-scale));
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-toolbar-separator,
+.notepages-toolbar-float-wrapper.is-position-right .notepages-toolbar-separator {
+  width: calc(20px * var(--np-toolbar-scale));
+  height: 1px;
+  margin: calc(3px * var(--np-toolbar-scale)) 0;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-title-btn,
+.notepages-toolbar-float-wrapper.is-position-right .notepages-title-btn {
+  max-width: calc(34px * var(--np-toolbar-scale));
+  padding: 2px;
+  justify-content: center;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-title-text,
+.notepages-toolbar-float-wrapper.is-position-right .notepages-title-text {
+  display: none;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-dock-resize-handle,
+.notepages-toolbar-float-wrapper.is-position-right .notepages-dock-resize-handle {
+  display: none;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-subtoolbar-float,
 .notepages-toolbar-float-wrapper.is-position-right .notepages-subtoolbar-float {
   flex-direction: column;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 100px);
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.notepages-toolbar-float-wrapper.is-position-left .notepages-page-popover {
+  top: 0;
+  bottom: auto;
+  left: calc(100% + 10px);
+  right: auto;
+}
+
+.notepages-toolbar-float-wrapper.is-position-right .notepages-page-popover {
+  top: 0;
+  bottom: auto;
+  right: calc(100% + 10px);
+  left: auto;
 }
 
 .notepages-toolbar-float-wrapper.is-position-floating {
   right: auto;
   padding: 0;
   transform: none;
+  align-items: flex-start;
+}
+
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover {
+  top: calc(100% + 8px);
+  bottom: auto;
+  right: 0;
+  left: auto;
+}
+
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-above {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-align-left {
+  right: auto;
+  left: 0;
 }
 
 /* ==========================================================================
-   Page Size & Theme Styles in Popover
+   Page Size, Toolbar Size & Theme Styles in Popover
    ========================================================================== */
 
 .notepages-popover-size-grid {
@@ -2046,6 +2196,95 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 4px;
+}
+
+.notepages-popover-scale-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.notepages-page-popover .notepages-popover-scale-grid button.notepages-popover-item,
+.notepages-page-popover .notepages-popover-size-grid button.notepages-popover-item {
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  padding: 4px 2px;
+}
+
+.notepages-popover-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.notepages-popover-range {
+  flex: 1;
+  min-width: 80px;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--interactive-accent);
+}
+
+.notepages-popover-value-badge {
+  font-size: 11px;
+  font-family: var(--font-monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: right;
+}
+
+.notepages-popover-mini-btn {
+  padding: 2px 6px;
+  height: 22px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid var(--divider-color);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.notepages-popover-mini-btn:hover {
+  border-color: var(--interactive-accent);
+  background: var(--interactive-hover);
+}
+
+.notepages-popover-toggles-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.notepages-popover-chip {
+  flex: 1;
+  min-width: 72px;
+  height: 26px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--divider-color);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.notepages-popover-chip:hover {
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.notepages-popover-chip.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
 }
 
 .notepages-popover-color-row {
@@ -2082,7 +2321,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   outline-offset: 1px;
 }
 
-.notepages-color-picker-input {
+.notepages-page-popover .notepages-color-picker-input {
   width: 24px;
   height: 24px;
   padding: 0;

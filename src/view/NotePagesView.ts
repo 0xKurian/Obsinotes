@@ -20,6 +20,7 @@ import {
   PageData,
   PageDimensions,
   PageSizePreset,
+  ToolbarLayoutConfig,
   ToolbarPlacement,
   getEffectivePageDimensions,
   ToolType,
@@ -1410,6 +1411,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   onSetToolbarPlacement(placement: ToolbarPlacement): void {
     this.toolbarPlacement = placement;
+    if (this.plugin?.settings) {
+      this.plugin.settings.toolbarPlacement = placement;
+      void this.plugin.saveSettings();
+    }
     try {
       window.localStorage.setItem(this.savedPlacementKey, placement);
     } catch {
@@ -1418,6 +1423,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getToolbarPlacement(): ToolbarPlacement {
+    const settingPlacement = this.plugin?.settings?.toolbarPlacement;
+    if (
+      settingPlacement === "top" ||
+      settingPlacement === "bottom" ||
+      settingPlacement === "left" ||
+      settingPlacement === "right" ||
+      settingPlacement === "floating"
+    ) {
+      return settingPlacement;
+    }
     try {
       const saved = window.localStorage.getItem(this.savedPlacementKey);
       if (saved === "top" || saved === "bottom" || saved === "left" || saved === "right" || saved === "floating") {
@@ -1427,6 +1442,62 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       // Ignore
     }
     return "top";
+  }
+
+  getToolbarLayoutConfig(): ToolbarLayoutConfig {
+    const s = this.plugin?.settings;
+    return {
+      scale: s?.toolbarScale ?? 1.0,
+      maxWidth: s?.toolbarMaxWidth ?? null,
+      wrap: s?.toolbarWrap ?? false,
+      showTitle: s?.toolbarShowTitle ?? true,
+      showZoomControls: s?.toolbarShowZoomControls ?? true
+    };
+  }
+
+  onUpdateToolbarLayoutConfig(partial: Partial<ToolbarLayoutConfig>): void {
+    const s = this.plugin?.settings;
+    if (!s) {
+      return;
+    }
+    if (partial.scale !== undefined) {
+      s.toolbarScale = partial.scale;
+    }
+    if (partial.maxWidth !== undefined) {
+      s.toolbarMaxWidth = partial.maxWidth;
+    }
+    if (partial.wrap !== undefined) {
+      s.toolbarWrap = partial.wrap;
+    }
+    if (partial.showTitle !== undefined) {
+      s.toolbarShowTitle = partial.showTitle;
+    }
+    if (partial.showZoomControls !== undefined) {
+      s.toolbarShowZoomControls = partial.showZoomControls;
+    }
+    void this.plugin.saveSettings();
+  }
+
+  getToolbarFloatingPos(): { left: number; top: number } | null {
+    return this.plugin?.settings?.toolbarFloatingPos ?? null;
+  }
+
+  onSetToolbarFloatingPos(pos: { left: number; top: number } | null): void {
+    if (this.plugin?.settings) {
+      this.plugin.settings.toolbarFloatingPos = pos;
+      void this.plugin.saveSettings();
+    }
+  }
+
+  refreshToolbarLayout(): void {
+    if (!this.toolbar) {
+      return;
+    }
+    this.toolbar.applyLayoutConfig(this.getToolbarLayoutConfig());
+    const placement = this.getToolbarPlacement();
+    if (placement !== this.toolbar.currentPlacement) {
+      this.toolbar.setPlacement(placement, false);
+    }
   }
 
   private applyPageSizeChange(result: PageSizeModalResult): void {

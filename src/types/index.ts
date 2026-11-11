@@ -6,6 +6,14 @@ export const CURRENT_SCHEMA_VERSION = 1;
 export type PageSizePreset = "A4" | "A3" | "A5" | "B5" | "Letter" | "16:9" | "Square" | "Custom";
 export type PageOrientation = "portrait" | "landscape";
 export type ToolbarPlacement = "top" | "bottom" | "left" | "right" | "floating";
+
+export interface ToolbarLayoutConfig {
+  scale: number;
+  maxWidth: number | null;
+  wrap: boolean;
+  showTitle: boolean;
+  showZoomControls: boolean;
+}
 export type ToolType = "select" | "pen" | "pressure" | "fountain" | "highlighter" | "eraser" | "lasso" | "shape" | "connector" | "sticky" | "text" | "image";
 export type EraserMode = "stroke" | "precision";
 export type SelectionSubMode = "lasso" | "pan";

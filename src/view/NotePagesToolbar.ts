@@ -6,6 +6,7 @@ import {
   PaperTemplateType,
   SelectionSubMode,
   ShapeType,
+  ToolbarLayoutConfig,
   ToolbarPlacement,
   ToolType
 } from "../types";
@@ -44,6 +45,10 @@ export interface NotePagesToolbarDelegate {
   getNotebookPageSize?(): PageSizePreset;
   onSetToolbarPlacement?(placement: ToolbarPlacement): void;
   getToolbarPlacement?(): ToolbarPlacement;
+  getToolbarLayoutConfig?(): ToolbarLayoutConfig;
+  onUpdateToolbarLayoutConfig?(partial: Partial<ToolbarLayoutConfig>): void;
+  getToolbarFloatingPos?(): { left: number; top: number } | null;
+  onSetToolbarFloatingPos?(pos: { left: number; top: number } | null): void;
   onTextSizeChanged(size: number): void;
   onTextBoldToggled(): void;
   onTextItalicToggled(): void;
@@ -90,11 +95,33 @@ export class NotePagesToolbar {
   private currentTool: ToolType = "pressure";
 
   currentPlacement: ToolbarPlacement = "top";
+  layoutConfig: ToolbarLayoutConfig = {
+    scale: 1.0,
+    maxWidth: null,
+    wrap: false,
+    showTitle: true,
+    showZoomControls: true
+  };
   private isDraggingDock: boolean = false;
   private dragDockStartX: number = 0;
   private dragDockStartY: number = 0;
   private dragDockInitLeft: number = 0;
   private dragDockInitTop: number = 0;
+
+  private isResizingDock: boolean = false;
+  private resizeStartX: number = 0;
+  private resizeStartWidth: number = 0;
+  private resizeDragWidth: number | null = null;
+  private resizeHandleEl?: HTMLElement;
+  private toolbarScalePresets: Map<number, HTMLElement> = new Map();
+  private toolbarScaleSlider?: HTMLInputElement;
+  private toolbarScaleBadge?: HTMLElement;
+  private toolbarWidthSlider?: HTMLInputElement;
+  private toolbarWidthBadge?: HTMLElement;
+  private toolbarWrapToggleBtn?: HTMLElement;
+  private toolbarTitleToggleBtn?: HTMLElement;
+  private toolbarZoomToggleBtn?: HTMLElement;
+  private dockPlacementButtons: Map<ToolbarPlacement, HTMLElement> = new Map();
 
   undoBtn!: HTMLButtonElement;
   redoBtn!: HTMLButtonElement;
@@ -160,11 +187,26 @@ export class NotePagesToolbar {
     });
 
     const initPlacement = this.delegate.getToolbarPlacement ? this.delegate.getToolbarPlacement() || "top" : "top";
-    this.setPlacement(initPlacement);
+    this.setPlacement(initPlacement, false);
+    if (initPlacement === "floating" && this.delegate.getToolbarFloatingPos) {
+      const floatingPos = this.delegate.getToolbarFloatingPos();
+      if (floatingPos) {
+        this.toolbarWrapperEl.setCssStyles({
+          left: `${floatingPos.left}px`,
+          top: `${floatingPos.top}px`
+        });
+      }
+    }
+
+    const initLayout = this.delegate.getToolbarLayoutConfig?.();
+    if (initLayout) {
+      this.layoutConfig = { ...initLayout };
+    }
 
     this.buildMainDock();
     this.buildSubDock();
     this.buildPagePopover();
+    this.applyLayoutConfig(this.layoutConfig);
     this.registerGlobalEvents();
 
     const activeTool = this.delegate.getActiveTool();
@@ -337,6 +379,12 @@ export class NotePagesToolbar {
     this.delegate.registerDomEvent(this.collapseBtn, "click", () => {
       this.toggleCollapse();
     });
+
+    this.resizeHandleEl = this.toolbarEl.createDiv({
+      cls: "notepages-dock-resize-handle"
+    });
+    this.resizeHandleEl.setAttribute("title", "Drag to resize toolbar width (double-click to reset)");
+    this.setupToolbarResize(this.resizeHandleEl);
 
     this.delegate.registerDomEvent(this.toolbarEl, "wheel", (e: WheelEvent) => {
       if (e.deltaY !== 0 && !e.shiftKey && this.toolbarEl.scrollWidth > this.toolbarEl.clientWidth) {
@@ -945,13 +993,14 @@ export class NotePagesToolbar {
     });
     dockSection.createDiv({
       cls: "notepages-popover-section-label",
-      text: "Toolbar Position"
+      text: "Toolbar position"
     });
 
     const dockGrid = dockSection.createDiv({
       cls: "notepages-popover-grid notepages-popover-dock-grid"
     });
 
+    this.dockPlacementButtons.clear();
     const dockPositions: Array<{ pos: ToolbarPlacement; label: string; icon: string }> = [
       { pos: "top", label: "Top", icon: "arrow-up" },
       { pos: "bottom", label: "Bottom", icon: "arrow-down" },
@@ -968,14 +1017,216 @@ export class NotePagesToolbar {
       setIcon(iconSpan, dp.icon);
       btn.createSpan({ cls: "notepages-popover-item-text", text: dp.label });
       btn.setAttribute("title", `Dock toolbar to ${dp.label}`);
+      this.dockPlacementButtons.set(dp.pos, btn);
       this.delegate.registerDomEvent(btn, "click", () => {
         this.setPlacement(dp.pos);
+        if (dp.pos !== "floating") {
+          this.delegate.onSetToolbarFloatingPos?.(null);
+        }
         this.closePagePopover();
       });
     }
+
+    const sizeLayoutSection = this.pagePopoverEl.createDiv({
+      cls: "notepages-popover-section"
+    });
+    sizeLayoutSection.createDiv({
+      cls: "notepages-popover-section-label",
+      text: "Toolbar size & layout"
+    });
+
+    const scaleGrid = sizeLayoutSection.createDiv({
+      cls: "notepages-popover-grid notepages-popover-scale-grid"
+    });
+
+    this.toolbarScalePresets.clear();
+    const scalePresets: Array<{ scale: number; label: string }> = [
+      { scale: 0.8, label: "Mini" },
+      { scale: 0.9, label: "Compact" },
+      { scale: 1.0, label: "Normal" },
+      { scale: 1.2, label: "Large" },
+      { scale: 1.35, label: "XL" }
+    ];
+
+    for (const sp of scalePresets) {
+      const btn = scaleGrid.createEl("button", {
+        cls: Math.abs(this.layoutConfig.scale - sp.scale) < 0.03 ? "notepages-popover-item is-active" : "notepages-popover-item"
+      });
+      btn.createSpan({ cls: "notepages-popover-item-text", text: sp.label });
+      btn.setAttribute("title", `Set toolbar scale to ${Math.round(sp.scale * 100)}%`);
+      this.toolbarScalePresets.set(sp.scale, btn);
+      this.delegate.registerDomEvent(btn, "click", () => {
+        this.updateLayoutConfig({ scale: sp.scale });
+      });
+    }
+
+    const scaleSliderRow = sizeLayoutSection.createDiv({
+      cls: "notepages-popover-slider-row"
+    });
+    scaleSliderRow.createSpan({ cls: "notepages-popover-sublabel", text: "Scale:" });
+    this.toolbarScaleSlider = scaleSliderRow.createEl("input", {
+      cls: "notepages-popover-range"
+    });
+    this.toolbarScaleSlider.type = "range";
+    this.toolbarScaleSlider.min = "70";
+    this.toolbarScaleSlider.max = "150";
+    this.toolbarScaleSlider.step = "5";
+    this.toolbarScaleSlider.value = String(Math.round(this.layoutConfig.scale * 100));
+    this.toolbarScaleBadge = scaleSliderRow.createSpan({
+      cls: "notepages-popover-value-badge",
+      text: `${Math.round(this.layoutConfig.scale * 100)}%`
+    });
+    this.delegate.registerDomEvent(this.toolbarScaleSlider, "input", () => {
+      if (!this.toolbarScaleSlider) {
+        return;
+      }
+      const nextScale = Math.round(Number(this.toolbarScaleSlider.value)) / 100;
+      this.applyLayoutConfig({ ...this.layoutConfig, scale: nextScale });
+    });
+    this.delegate.registerDomEvent(this.toolbarScaleSlider, "change", () => {
+      if (!this.toolbarScaleSlider) {
+        return;
+      }
+      const nextScale = Math.round(Number(this.toolbarScaleSlider.value)) / 100;
+      this.updateLayoutConfig({ scale: nextScale });
+    });
+
+    const widthSliderRow = sizeLayoutSection.createDiv({
+      cls: "notepages-popover-slider-row"
+    });
+    widthSliderRow.createSpan({ cls: "notepages-popover-sublabel", text: "Width:" });
+    this.toolbarWidthSlider = widthSliderRow.createEl("input", {
+      cls: "notepages-popover-range"
+    });
+    this.toolbarWidthSlider.type = "range";
+    this.toolbarWidthSlider.min = "220";
+    this.toolbarWidthSlider.max = "1000";
+    this.toolbarWidthSlider.step = "20";
+    this.toolbarWidthSlider.value = String(this.layoutConfig.maxWidth ?? 680);
+    this.toolbarWidthBadge = widthSliderRow.createSpan({
+      cls: "notepages-popover-value-badge",
+      text: this.layoutConfig.maxWidth !== null ? `${this.layoutConfig.maxWidth}px` : "Auto"
+    });
+    const autoWidthBtn = widthSliderRow.createEl("button", {
+      cls: "notepages-popover-mini-btn",
+      text: "Auto"
+    });
+    autoWidthBtn.setAttribute("title", "Reset toolbar width to automatic");
+    this.delegate.registerDomEvent(autoWidthBtn, "click", () => {
+      this.updateLayoutConfig({ maxWidth: null });
+    });
+    this.delegate.registerDomEvent(this.toolbarWidthSlider, "input", () => {
+      if (!this.toolbarWidthSlider) {
+        return;
+      }
+      const nextW = parseInt(this.toolbarWidthSlider.value, 10);
+      this.applyLayoutConfig({ ...this.layoutConfig, maxWidth: nextW, wrap: true });
+    });
+    this.delegate.registerDomEvent(this.toolbarWidthSlider, "change", () => {
+      if (!this.toolbarWidthSlider) {
+        return;
+      }
+      const nextW = parseInt(this.toolbarWidthSlider.value, 10);
+      this.updateLayoutConfig({ maxWidth: nextW, wrap: true });
+    });
+
+    const togglesRow = sizeLayoutSection.createDiv({
+      cls: "notepages-popover-toggles-row"
+    });
+
+    this.toolbarWrapToggleBtn = togglesRow.createEl("button", {
+      cls: this.layoutConfig.wrap ? "notepages-popover-chip is-active" : "notepages-popover-chip",
+      text: "Wrap rows"
+    });
+    this.toolbarWrapToggleBtn.setAttribute("title", "Wrap toolbar buttons into multiple rows when space is narrow");
+    this.delegate.registerDomEvent(this.toolbarWrapToggleBtn, "click", () => {
+      this.updateLayoutConfig({ wrap: !this.layoutConfig.wrap });
+    });
+
+    this.toolbarTitleToggleBtn = togglesRow.createEl("button", {
+      cls: this.layoutConfig.showTitle ? "notepages-popover-chip is-active" : "notepages-popover-chip",
+      text: "Show title"
+    });
+    this.toolbarTitleToggleBtn.setAttribute("title", "Show or hide notebook title on the toolbar");
+    this.delegate.registerDomEvent(this.toolbarTitleToggleBtn, "click", () => {
+      this.updateLayoutConfig({ showTitle: !this.layoutConfig.showTitle });
+    });
+
+    this.toolbarZoomToggleBtn = togglesRow.createEl("button", {
+      cls: this.layoutConfig.showZoomControls ? "notepages-popover-chip is-active" : "notepages-popover-chip",
+      text: "Show zoom"
+    });
+    this.toolbarZoomToggleBtn.setAttribute("title", "Show or hide zoom controls on the toolbar");
+    this.delegate.registerDomEvent(this.toolbarZoomToggleBtn, "click", () => {
+      this.updateLayoutConfig({ showZoomControls: !this.layoutConfig.showZoomControls });
+    });
   }
 
-  setPlacement(placement: ToolbarPlacement): void {
+  applyLayoutConfig(config: ToolbarLayoutConfig): void {
+    const scale = Math.round(Math.min(1.5, Math.max(0.7, Number.isFinite(config.scale) ? config.scale : 1.0)) * 100) / 100;
+    const maxWidth =
+      config.maxWidth !== null && Number.isFinite(config.maxWidth)
+        ? Math.round(Math.min(1600, Math.max(180, config.maxWidth)))
+        : null;
+
+    this.layoutConfig = {
+      scale,
+      maxWidth,
+      wrap: Boolean(config.wrap),
+      showTitle: config.showTitle !== undefined ? Boolean(config.showTitle) : true,
+      showZoomControls: config.showZoomControls !== undefined ? Boolean(config.showZoomControls) : true
+    };
+
+    if (this.toolbarWrapperEl) {
+      this.toolbarWrapperEl.setCssProps({
+        "--np-toolbar-scale": String(scale),
+        "--np-toolbar-max-width": maxWidth !== null ? `${maxWidth}px` : "calc(100% - 24px)"
+      });
+
+      this.toolbarWrapperEl.toggleClass("is-toolbar-wrap", this.layoutConfig.wrap);
+      this.toolbarWrapperEl.toggleClass("is-hide-title", !this.layoutConfig.showTitle);
+      this.toolbarWrapperEl.toggleClass("is-hide-zoom", !this.layoutConfig.showZoomControls);
+      this.toolbarWrapperEl.toggleClass("is-custom-width", maxWidth !== null);
+    }
+
+    this.syncToolbarSizeControls();
+  }
+
+  private updateLayoutConfig(partial: Partial<ToolbarLayoutConfig>): void {
+    const nextConfig: ToolbarLayoutConfig = {
+      ...this.layoutConfig,
+      ...partial
+    };
+    this.applyLayoutConfig(nextConfig);
+    if (this.delegate.onUpdateToolbarLayoutConfig) {
+      this.delegate.onUpdateToolbarLayoutConfig(nextConfig);
+    }
+  }
+
+  private syncToolbarSizeControls(): void {
+    const percent = Math.round(this.layoutConfig.scale * 100);
+    if (this.toolbarScaleSlider) {
+      this.toolbarScaleSlider.value = String(percent);
+    }
+    if (this.toolbarScaleBadge) {
+      this.toolbarScaleBadge.textContent = `${percent}%`;
+    }
+    this.toolbarScalePresets.forEach((btn, presetScale) => {
+      btn.toggleClass("is-active", Math.abs(this.layoutConfig.scale - presetScale) < 0.03);
+    });
+    if (this.toolbarWidthSlider && this.layoutConfig.maxWidth !== null) {
+      this.toolbarWidthSlider.value = String(this.layoutConfig.maxWidth);
+    }
+    if (this.toolbarWidthBadge) {
+      this.toolbarWidthBadge.textContent =
+        this.layoutConfig.maxWidth !== null ? `${this.layoutConfig.maxWidth}px` : "Auto";
+    }
+    this.toolbarWrapToggleBtn?.toggleClass("is-active", this.layoutConfig.wrap);
+    this.toolbarTitleToggleBtn?.toggleClass("is-active", this.layoutConfig.showTitle);
+    this.toolbarZoomToggleBtn?.toggleClass("is-active", this.layoutConfig.showZoomControls);
+  }
+
+  setPlacement(placement: ToolbarPlacement, notify: boolean = true): void {
     this.currentPlacement = placement;
     if (!this.toolbarWrapperEl) {
       return;
@@ -997,7 +1248,11 @@ export class NotePagesToolbar {
     }
 
     this.toolbarWrapperEl.addClass(`is-position-${placement}`);
-    if (this.delegate.onSetToolbarPlacement) {
+    this.dockPlacementButtons.forEach((btn, pos) => {
+      btn.toggleClass("is-active", pos === placement);
+    });
+
+    if (notify && this.delegate.onSetToolbarPlacement) {
       this.delegate.onSetToolbarPlacement(placement);
     }
   }
@@ -1034,7 +1289,7 @@ export class NotePagesToolbar {
       const newLeft = Math.max(0, this.dragDockInitLeft + dx);
       const newTop = Math.max(0, this.dragDockInitTop + dy);
 
-      this.setPlacement("floating");
+      this.setPlacement("floating", false);
       this.toolbarWrapperEl.setCssStyles({
         left: `${newLeft}px`,
         top: `${newTop}px`
@@ -1054,24 +1309,133 @@ export class NotePagesToolbar {
       }
 
       const rect = this.toolbarWrapperEl.getBoundingClientRect();
-      const winW = typeof window !== "undefined" ? window.innerWidth : 1000;
-      const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+      const parentRect = this.toolbarWrapperEl.parentElement?.getBoundingClientRect();
+      const topDist = parentRect ? rect.top - parentRect.top : rect.top;
+      const bottomDist = parentRect
+        ? parentRect.bottom - rect.bottom
+        : (typeof window !== "undefined" ? window.innerHeight - rect.bottom : 800);
+      const leftDist = parentRect ? rect.left - parentRect.left : rect.left;
+      const rightDist = parentRect
+        ? parentRect.right - rect.right
+        : (typeof window !== "undefined" ? window.innerWidth - rect.right : 1000);
 
-      if (rect.top < 45) {
+      if (topDist < 42) {
         this.setPlacement("top");
-      } else if (winH - rect.bottom < 45) {
+        this.delegate.onSetToolbarFloatingPos?.(null);
+      } else if (bottomDist < 42) {
         this.setPlacement("bottom");
-      } else if (rect.left < 45) {
+        this.delegate.onSetToolbarFloatingPos?.(null);
+      } else if (leftDist < 42) {
         this.setPlacement("left");
-      } else if (winW - rect.right < 45) {
+        this.delegate.onSetToolbarFloatingPos?.(null);
+      } else if (rightDist < 42) {
         this.setPlacement("right");
+        this.delegate.onSetToolbarFloatingPos?.(null);
       } else {
         this.setPlacement("floating");
+        this.delegate.onSetToolbarFloatingPos?.({
+          left: Math.max(0, Math.round(leftDist)),
+          top: Math.max(0, Math.round(topDist))
+        });
       }
     };
 
     this.delegate.registerDomEvent(handleEl, "pointerup", onPointerUp);
     this.delegate.registerDomEvent(handleEl, "pointercancel", onPointerUp);
+  }
+
+  private setupToolbarResize(handleEl: HTMLElement): void {
+    this.delegate.registerDomEvent(handleEl, "dblclick", (e: MouseEvent) => {
+      e.stopPropagation();
+      this.updateLayoutConfig({ maxWidth: null, wrap: false });
+    });
+
+    this.delegate.registerDomEvent(handleEl, "pointerdown", (e: PointerEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.isResizingDock = true;
+      this.resizeStartX = e.clientX;
+      this.resizeStartWidth = this.toolbarEl.getBoundingClientRect().width;
+      this.resizeDragWidth = this.resizeStartWidth;
+      this.toolbarWrapperEl.addClass("is-dock-resizing");
+      try {
+        handleEl.setPointerCapture(e.pointerId);
+      } catch {
+        // Fallback
+      }
+    });
+
+    this.delegate.registerDomEvent(handleEl, "pointermove", (e: PointerEvent) => {
+      if (!this.isResizingDock) {
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
+
+      const dx = e.clientX - this.resizeStartX;
+      const isCentered = this.currentPlacement === "top" || this.currentPlacement === "bottom";
+      const isRightSide = this.currentPlacement === "right";
+      const deltaFactor = isCentered ? 2 : (isRightSide ? -1 : 1);
+      const parentWidth = this.toolbarWrapperEl.parentElement?.getBoundingClientRect().width ?? 1000;
+      const maxAllowed = Math.max(240, Math.round(parentWidth - 32));
+      const nextWidth = Math.round(Math.max(180, Math.min(maxAllowed, this.resizeStartWidth + dx * deltaFactor)));
+
+      this.resizeDragWidth = nextWidth;
+      this.applyLayoutConfig({
+        ...this.layoutConfig,
+        maxWidth: nextWidth,
+        wrap: true
+      });
+      handleEl.setAttribute("data-resize-width", `${nextWidth}px`);
+    });
+
+    const onResizeEnd = (e: PointerEvent) => {
+      if (!this.isResizingDock) {
+        return;
+      }
+      this.isResizingDock = false;
+      this.toolbarWrapperEl.removeClass("is-dock-resizing");
+      handleEl.removeAttribute("data-resize-width");
+      try {
+        handleEl.releasePointerCapture(e.pointerId);
+      } catch {
+        // Fallback
+      }
+
+      if (this.resizeDragWidth !== null) {
+        const committedWidth = Math.round(this.resizeDragWidth);
+        this.resizeDragWidth = null;
+        this.updateLayoutConfig({ maxWidth: committedWidth, wrap: true });
+      }
+    };
+
+    this.delegate.registerDomEvent(handleEl, "pointerup", onResizeEnd);
+    this.delegate.registerDomEvent(handleEl, "pointercancel", onResizeEnd);
+  }
+
+  private positionPagePopover(): void {
+    if (!this.pagePopoverEl || !this.toolbarWrapperEl) {
+      return;
+    }
+    this.pagePopoverEl.removeClass("is-popover-above");
+    this.pagePopoverEl.removeClass("is-popover-align-left");
+
+    if (this.currentPlacement === "floating") {
+      const wrapperRect = this.toolbarWrapperEl.getBoundingClientRect();
+      const parentRect = this.toolbarWrapperEl.parentElement?.getBoundingClientRect();
+      if (parentRect && parentRect.width > 0 && parentRect.height > 0) {
+        const centerY = (wrapperRect.top + wrapperRect.bottom) / 2;
+        const parentMidY = (parentRect.top + parentRect.bottom) / 2;
+        if (centerY > parentMidY) {
+          this.pagePopoverEl.addClass("is-popover-above");
+        }
+        const centerX = (wrapperRect.left + wrapperRect.right) / 2;
+        const parentMidX = (parentRect.left + parentRect.right) / 2;
+        if (centerX < parentMidX) {
+          this.pagePopoverEl.addClass("is-popover-align-left");
+        }
+      }
+    }
   }
 
   private registerGlobalEvents(): void {
@@ -1129,6 +1493,7 @@ export class NotePagesToolbar {
     if (this.pagePopoverEl) {
       this.pagePopoverEl.removeClass("is-hidden");
       this.isPagePopoverOpen = true;
+      this.positionPagePopover();
       if (this.pageMenuBtn) {
         this.pageMenuBtn.addClass("is-active");
       }
