@@ -183,8 +183,8 @@ export class InkingController {
   handlePointerMove(
     e: PointerEvent,
     pageCoordsList: { x: number; y: number }[],
-    existingStrokes: StrokeObject[],
-    existingShapes: ShapeObject[] = []
+    _existingStrokes?: StrokeObject[],
+    _existingShapes?: ShapeObject[]
   ): void {
     if (!this.isDrawing || !this.activePageId) {
       return;

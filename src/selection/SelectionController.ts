@@ -81,8 +81,12 @@ export class SelectionController {
 
   private schedulePreview(action: () => void): void {
     this.pendingPreviewAction = action;
-    if (this.previewRafId === null && typeof requestAnimationFrame === "function") {
-      this.previewRafId = requestAnimationFrame(() => {
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame === "undefined") {
+      action();
+      return;
+    }
+    if (this.previewRafId === null) {
+      this.previewRafId = window.requestAnimationFrame(() => {
         this.previewRafId = null;
         if (this.pendingPreviewAction) {
           const act = this.pendingPreviewAction;
@@ -90,14 +94,14 @@ export class SelectionController {
           act();
         }
       });
-    } else if (typeof requestAnimationFrame !== "function") {
-      action();
     }
   }
 
   private flushPreview(): void {
-    if (this.previewRafId !== null && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(this.previewRafId);
+    if (this.previewRafId !== null) {
+      if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(this.previewRafId);
+      }
       this.previewRafId = null;
     }
     if (this.pendingPreviewAction) {
