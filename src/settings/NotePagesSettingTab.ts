@@ -2,7 +2,7 @@ import { App, PluginSettingTab, Setting, SliderComponent, TextComponent, ToggleC
 import type { SettingDefinitionItem } from "obsidian";
 import type NotePagesPlugin from "../main";
 import { DEFAULT_SETTINGS } from "./NotePagesSettings";
-import { PageSizePreset, PageOrientation, PaperTemplateType } from "../types";
+import { PageSizePreset, PageOrientation, PaperTemplateType, StylusButtonAction } from "../types";
 
 export class NotePagesSettingTab extends PluginSettingTab {
   plugin: NotePagesPlugin;
@@ -85,6 +85,19 @@ export class NotePagesSettingTab extends PluginSettingTab {
         control: {
           type: "toggle",
           key: "drawWithFinger",
+        },
+      },
+      {
+        name: "Stylus side button",
+        desc: "Map the stylus side button within hover or touch range to the eraser (disable system stylus hover shortcuts if hover clicks are intercepted).",
+        control: {
+          type: "dropdown",
+          key: "stylusButtonAction",
+          options: {
+            hold: "Hold to erase (temporary eraser)",
+            toggle: "Toggle eraser on press",
+            off: "Disabled",
+          },
         },
       },
       {
@@ -199,6 +212,13 @@ export class NotePagesSettingTab extends PluginSettingTab {
       }
       return;
     }
+    if (key === "stylusButtonAction") {
+      if (value === "hold" || value === "toggle" || value === "off") {
+        settings[key] = value;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
     if (key === "feedbackUrl") {
       settings[key] = typeof value === "string" ? value.trim() : "";
       await this.plugin.saveSettings();
@@ -304,6 +324,21 @@ export class NotePagesSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.drawWithFinger)
           .onChange(async (value) => {
             this.plugin.settings.drawWithFinger = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Stylus side button")
+      .setDesc("Map the stylus side button within hover or touch range to the eraser (disable system stylus hover shortcuts if hover clicks are intercepted).")
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("hold", "Hold to erase (temporary eraser)")
+          .addOption("toggle", "Toggle eraser on press")
+          .addOption("off", "Disabled")
+          .setValue(this.plugin.settings.stylusButtonAction ?? "hold")
+          .onChange(async (value) => {
+            this.plugin.settings.stylusButtonAction = value as StylusButtonAction;
             await this.plugin.saveSettings();
           });
       });

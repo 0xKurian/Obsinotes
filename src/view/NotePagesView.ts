@@ -39,6 +39,7 @@ import { PageManager } from "../model/PageManager";
 import { TemplateRenderer } from "../renderer/TemplateRenderer";
 import { InkingController } from "../ink/InkingController";
 import { StrokeGeometry } from "../ink/StrokeGeometry";
+import { StylusButtonState } from "../ink/StylusButtonHelper";
 import { SelectionController } from "../selection/SelectionController";
 import { SelectionEngine } from "../selection/SelectionEngine";
 import { ShapeRecognizer } from "../shape/ShapeRecognizer";
@@ -186,7 +187,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   private touchPinchDistance: number = 0;
   private touchPinchStartZoom: number = 1.0;
   private isTouchPinching: boolean = false;
-  private temporaryEraserTool: ToolType | null = null;
+  private stylusButtonState: StylusButtonState = new StylusButtonState();
   private eraserCursorEl!: HTMLElement;
   penWidth: number = 2.5;
   highlighterWidth: number = 14.0;
@@ -1001,7 +1002,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.touchPointers.clear();
     this.touchStartCoords.clear();
     this.touchTapCandidate = null;
-    this.temporaryEraserTool = null;
+    this.stylusButtonState.reset();
     this.isTouchPinching = false;
     if (this.saveStatusResetTimer !== null) {
       window.clearTimeout(this.saveStatusResetTimer);
@@ -1036,7 +1037,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.touchPointers.clear();
     this.touchStartCoords.clear();
     this.touchTapCandidate = null;
-    this.temporaryEraserTool = null;
+    this.stylusButtonState.reset();
     this.isTouchPinching = false;
     this.pageIntersectionObserver?.disconnect();
     this.pageVirtualizer.destroy();
@@ -1233,6 +1234,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   onSelectTool(tool: ToolType): void {
+    this.stylusButtonState.clearToggleHistory();
     this.setActiveTool(tool);
   }
 
@@ -1750,7 +1752,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(this.scrollerEl, "pointermove", (e: PointerEvent) => {
-      if (this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null) {
+      this.stylusButtonState.recordPointerEvent(e.pointerType);
+      this.handleStylusHoverButton(e);
+      if (this.inkingController.activeTool === "eraser" || this.stylusButtonState.temporaryEraserTool !== null) {
         this.updateEraserCursorPosition(e.clientX, e.clientY);
       }
     });
@@ -1795,7 +1799,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(this.scrollerEl, "contextmenu", (e: MouseEvent) => {
-      if (this.isPanning || (e as PointerEvent).pointerType === "pen") {
+      if (this.stylusButtonState.shouldSuppressContextMenu((e as PointerEvent).pointerType, this.isPanning)) {
         e.preventDefault();
         return;
       }
@@ -2001,6 +2005,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.ensureDragOverlay();
 
     this.registerDomEvent(window, "pointermove", (e: PointerEvent) => {
+      this.stylusButtonState.recordPointerEvent(e.pointerType);
       if (e.pointerType === "touch" && this.touchPointers.has(e.pointerId)) {
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
         const start = this.touchStartCoords.get(e.pointerId);
@@ -2030,20 +2035,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       if (this.isDraggingSelection) {
         this.updateSelectionDrag(e.clientX, e.clientY);
       }
-      if (this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null) {
+      if (this.inkingController.activeTool === "eraser" || this.stylusButtonState.temporaryEraserTool !== null) {
         this.updateEraserCursorPosition(e.clientX, e.clientY);
       }
     });
 
     this.registerDomEvent(window, "pointerup", (e: PointerEvent) => {
-      this.toolbar.setDrawingActive(false);
-      if (this.temporaryEraserTool !== null) {
-        const revertTool = this.temporaryEraserTool;
-        this.temporaryEraserTool = null;
-        this.inkingController.setTool(revertTool);
-        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
-        this.hideEraserCursor();
+      if (e) {
+        this.stylusButtonState.recordPointerEvent(e.pointerType);
       }
+      this.toolbar.setDrawingActive(false);
+      this.revertTemporaryStylusEraser(e);
       if (e && e.pointerType === "touch") {
         if (this.touchTapCandidate && !this.isTouchPinching) {
           const duration = Date.now() - this.touchTapCandidate.startTime;
@@ -2074,14 +2076,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.registerDomEvent(window, "pointercancel", (e: PointerEvent) => {
-      this.toolbar.setDrawingActive(false);
-      if (this.temporaryEraserTool !== null) {
-        const revertTool = this.temporaryEraserTool;
-        this.temporaryEraserTool = null;
-        this.inkingController.setTool(revertTool);
-        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
-        this.hideEraserCursor();
+      if (e) {
+        this.stylusButtonState.recordPointerEvent(e.pointerType);
       }
+      this.toolbar.setDrawingActive(false);
+      this.revertTemporaryStylusEraser(e);
       if (e && e.pointerType === "touch") {
         this.touchTapCandidate = null;
         this.touchPointers.delete(e.pointerId);
@@ -2272,7 +2271,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.rootContainerEl.toggleClass("is-tool-eraser", tool === "eraser");
     this.toolbar.setActiveTool(tool, this.currentShapeType, this.selectionController.hasSelection());
     this.updateStatusDisplay();
-    if (tool !== "eraser" && this.temporaryEraserTool === null) {
+    if (tool !== "eraser" && this.stylusButtonState.temporaryEraserTool === null) {
       this.hideEraserCursor();
     }
   }
@@ -3184,7 +3183,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (!this.eraserCursorEl || !this.rootContainerEl) {
       return;
     }
-    const isEraser = this.inkingController.activeTool === "eraser" || this.temporaryEraserTool !== null;
+    const isEraser = this.inkingController.activeTool === "eraser" || this.stylusButtonState.temporaryEraserTool !== null;
     if (!isEraser) {
       this.eraserCursorEl.addClass("is-hidden");
       return;
@@ -3232,6 +3231,50 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   private hideEraserCursor(): void {
     if (this.eraserCursorEl) {
       this.eraserCursorEl.addClass("is-hidden");
+    }
+  }
+
+  private handleStylusHoverButton(e: PointerEvent): void {
+    const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
+    const isActivelyInteracting =
+      this.inkingController.isCurrentlyDrawing() ||
+      this.isPanning ||
+      this.isDraggingSelection ||
+      this.isDraggingTextRect ||
+      this.isDraggingShape ||
+      this.isDraggingConnector;
+    const nextTool = this.stylusButtonState.handleHoverMove(
+      e,
+      stylusAction,
+      this.inkingController.activeTool,
+      isActivelyInteracting
+    );
+    if (nextTool !== null) {
+      this.applyStylusToolTransition(nextTool, stylusAction === "toggle");
+      if (nextTool === "eraser") {
+        this.updateEraserCursorPosition(e.clientX, e.clientY);
+      }
+    }
+  }
+
+  private applyStylusToolTransition(nextTool: ToolType, isPersistentToggle: boolean): void {
+    if (isPersistentToggle) {
+      this.setActiveTool(nextTool, false);
+      return;
+    }
+    this.inkingController.setTool(nextTool);
+    this.rootContainerEl.toggleClass("is-tool-eraser", nextTool === "eraser");
+    this.toolbar.setActiveTool(nextTool, this.currentShapeType, false);
+    if (nextTool !== "eraser") {
+      this.hideEraserCursor();
+    }
+  }
+
+  private revertTemporaryStylusEraser(e: PointerEvent | null): void {
+    const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
+    const revertTool = this.stylusButtonState.handlePointerUpOrCancel(e, stylusAction);
+    if (revertTool !== null) {
+      this.applyStylusToolTransition(revertTool, false);
     }
   }
 
@@ -3732,7 +3775,18 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
     });
 
+    this.registerDomEvent(activeCanvas, "touchstart", (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i] as Touch & { touchType?: string };
+        if (touch.touchType === "stylus") {
+          e.preventDefault();
+          break;
+        }
+      }
+    }, { passive: false });
+
     this.registerDomEvent(activeCanvas, "pointerdown", (e: PointerEvent) => {
+      this.stylusButtonState.recordPointerEvent(e.pointerType);
       this.flushCanvasResolutionUpdate();
       this.ensurePageCanvasesMounted(page.pageNumber);
 
@@ -3760,6 +3814,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         }
       }
 
+      const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
+      const nextStylusTool = this.stylusButtonState.handlePointerDown(e, stylusAction, this.inkingController.activeTool);
+      if (nextStylusTool !== null) {
+        this.applyStylusToolTransition(nextStylusTool, stylusAction === "toggle");
+      }
+
       if (this.isPanTrigger(e)) {
         if (this.textController.isEditing()) {
           this.textController.commitActiveEdit();
@@ -3770,19 +3830,24 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         return;
       }
 
-      const isPenEraser = e.pointerType === "pen" && (e.button === 2 || e.button === 5 || (e.buttons & 32) !== 0 || (e.buttons & 2) !== 0);
-      if (isPenEraser && this.temporaryEraserTool === null) {
-        this.temporaryEraserTool = this.inkingController.activeTool;
-        this.inkingController.setTool("eraser");
-        this.toolbar.setActiveTool("eraser", this.currentShapeType, false);
-      }
-
       if (this.imageController.getSelectedImageId()) {
         this.imageController.deselectImage();
         this.imageController.renderPageImages(page, pageFrame, (p) => this.resolveResourcePath(p));
       }
 
       if (e.pointerType === "touch" && !this.plugin.settings.drawWithFinger) {
+        if (
+          this.touchPointers.size === 1 &&
+          !this.isTouchPinching &&
+          !this.inkingController.isCurrentlyDrawing() &&
+          !this.stylusButtonState.isRecentPenActivity(400)
+        ) {
+          if (this.textController.isEditing()) {
+            this.textController.commitActiveEdit();
+          }
+          this.startPan(e.clientX, e.clientY, this.scrollerEl, e.pointerId);
+          e.preventDefault();
+        }
         return;
       }
 
@@ -3984,7 +4049,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           targetInfo?.pointOnPage
         );
       } else {
-        const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+        const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+        const events = coalesced.length > 0 ? coalesced : [e];
         const coordsList = events.map((ev) => ({
           x: (ev.clientX - rect.left) * scaleX,
           y: (ev.clientY - rect.top) * scaleY
@@ -4266,13 +4332,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.inkingController.handlePointerUp(e);
       }
 
-      if (this.temporaryEraserTool !== null) {
-        const revertTool = this.temporaryEraserTool;
-        this.temporaryEraserTool = null;
-        this.inkingController.setTool(revertTool);
-        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
-        this.hideEraserCursor();
-      }
+      this.stylusButtonState.recordPointerEvent(e.pointerType);
+      this.revertTemporaryStylusEraser(e);
     });
 
     this.registerDomEvent(activeCanvas, "pointercancel", (e: PointerEvent) => {
@@ -4341,13 +4402,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.inkingController.handlePointerCancel(e);
       }
 
-      if (this.temporaryEraserTool !== null) {
-        const revertTool = this.temporaryEraserTool;
-        this.temporaryEraserTool = null;
-        this.inkingController.setTool(revertTool);
-        this.toolbar.setActiveTool(revertTool, this.currentShapeType, false);
-        this.hideEraserCursor();
-      }
+      this.stylusButtonState.recordPointerEvent(e.pointerType);
+      this.revertTemporaryStylusEraser(e);
     });
 
     this.registerDomEvent(activeCanvas, "dblclick", (e: MouseEvent) => {

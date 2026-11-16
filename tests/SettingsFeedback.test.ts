@@ -107,4 +107,30 @@ describe("Settings & Feedback Integration", () => {
     assert.strictEqual(settings.toolbarMaxWidth, null);
     assert.strictEqual(tab.getControlValue("toolbarMaxWidth"), "");
   });
+
+  test("stylusButtonAction defaults to hold and validates allowed dropdown values", async () => {
+    const settings: NotePagesSettings = { ...DEFAULT_SETTINGS };
+    assert.strictEqual(settings.stylusButtonAction, "hold");
+
+    const mockPlugin = {
+      settings,
+      saveSettings: async () => {}
+    } as unknown as NotePagesPlugin;
+
+    const tab = new NotePagesSettingTab({} as unknown as App, mockPlugin);
+    const definitions = tab.getSettingDefinitions();
+    const stylusDef = definitions.find(
+      (def) => "control" in def && def.control && def.control.key === "stylusButtonAction"
+    );
+    assert.ok(stylusDef, "SettingDefinitions must include stylusButtonAction");
+
+    await tab.setControlValue("stylusButtonAction", "toggle");
+    assert.strictEqual(settings.stylusButtonAction, "toggle");
+
+    await tab.setControlValue("stylusButtonAction", "invalid-value");
+    assert.strictEqual(settings.stylusButtonAction, "toggle");
+
+    await tab.setControlValue("stylusButtonAction", "off");
+    assert.strictEqual(settings.stylusButtonAction, "off");
+  });
 });

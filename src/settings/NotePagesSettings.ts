@@ -2,6 +2,7 @@ import {
   PageSizePreset,
   PageOrientation,
   PaperTemplateType,
+  StylusButtonAction,
   ToolbarPlacement
 } from "../types";
 
@@ -10,6 +11,7 @@ export interface NotePagesSettings {
   defaultOrientation: PageOrientation;
   defaultTemplate: PaperTemplateType;
   drawWithFinger: boolean;
+  stylusButtonAction: StylusButtonAction;
   autosaveIntervalMs: number;
   defaultLineColor: string;
   defaultLineSpacing: number;
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: NotePagesSettings = {
   defaultOrientation: "portrait",
   defaultTemplate: "ruled",
   drawWithFinger: false,
+  stylusButtonAction: "hold",
   autosaveIntervalMs: 1000,
   defaultLineColor: "#94a3b8",
   defaultLineSpacing: 24,

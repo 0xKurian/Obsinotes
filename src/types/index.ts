@@ -16,6 +16,7 @@ export interface ToolbarLayoutConfig {
 }
 export type ToolType = "select" | "pen" | "pressure" | "fountain" | "highlighter" | "eraser" | "lasso" | "shape" | "connector" | "sticky" | "text" | "image";
 export type EraserMode = "stroke" | "precision";
+export type StylusButtonAction = "hold" | "toggle" | "off";
 export type SelectionSubMode = "lasso" | "pan";
 export type PaperTemplateType = "blank" | "ruled" | "grid" | "dotted" | "cornell";
 
