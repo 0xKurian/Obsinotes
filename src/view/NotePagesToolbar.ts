@@ -1,6 +1,7 @@
 import { setIcon } from "obsidian";
 import {
   EraserMode,
+  HotkeyActionId,
   PageOrientation,
   PageSizePreset,
   PaperTemplateType,
@@ -56,6 +57,7 @@ export interface NotePagesToolbarDelegate {
   onUpdateToolbarLayoutConfig?(partial: Partial<ToolbarLayoutConfig>): void;
   getToolbarFloatingPos?(): { left: number; top: number } | null;
   onSetToolbarFloatingPos?(pos: { left: number; top: number } | null): void;
+  shouldDimToolbarWhileDrawing?(): boolean;
   onTextSizeChanged(size: number): void;
   onTextBoldToggled(): void;
   onTextItalicToggled(): void;
@@ -138,6 +140,9 @@ export class NotePagesToolbar {
 
   undoBtn!: HTMLButtonElement;
   redoBtn!: HTMLButtonElement;
+  sidebarToggleBtn!: HTMLButtonElement;
+  zoomOutBtn!: HTMLButtonElement;
+  zoomInBtn!: HTMLButtonElement;
   toolButtons: Map<ToolType, HTMLElement> = new Map();
   textControlsContainer!: HTMLElement;
   textSizeSelect!: HTMLSelectElement;
@@ -251,12 +256,12 @@ export class NotePagesToolbar {
     setIcon(dragHandle, "grip-vertical");
     this.setupToolbarDrag(dragHandle);
 
-    const sidebarToggleBtn = leftGroup.createEl("button", {
+    this.sidebarToggleBtn = leftGroup.createEl("button", {
       cls: "notepages-tool-button"
     });
-    setIcon(sidebarToggleBtn, "panel-left");
-    sidebarToggleBtn.setAttribute("title", "Toggle pages sidebar (b)");
-    this.delegate.registerDomEvent(sidebarToggleBtn, "click", () => {
+    setIcon(this.sidebarToggleBtn, "panel-left");
+    this.sidebarToggleBtn.setAttribute("title", "Toggle pages sidebar (b)");
+    this.delegate.registerDomEvent(this.sidebarToggleBtn, "click", () => {
       this.delegate.onToggleSidebar();
     });
 
@@ -358,12 +363,12 @@ export class NotePagesToolbar {
       cls: "notepages-dock-zoom-group"
     });
 
-    const zoomOutBtn = zoomGroup.createEl("button", {
+    this.zoomOutBtn = zoomGroup.createEl("button", {
       cls: "notepages-tool-button notepages-zoom-stepper-btn"
     });
-    setIcon(zoomOutBtn, "zoom-out");
-    zoomOutBtn.setAttribute("title", "Zoom out (-)");
-    this.delegate.registerDomEvent(zoomOutBtn, "click", () => {
+    setIcon(this.zoomOutBtn, "zoom-out");
+    this.zoomOutBtn.setAttribute("title", "Zoom out (-)");
+    this.delegate.registerDomEvent(this.zoomOutBtn, "click", () => {
       this.delegate.onChangeZoom(-0.1);
     });
 
@@ -376,12 +381,12 @@ export class NotePagesToolbar {
       this.delegate.onResetZoom();
     });
 
-    const zoomInBtn = zoomGroup.createEl("button", {
+    this.zoomInBtn = zoomGroup.createEl("button", {
       cls: "notepages-tool-button notepages-zoom-stepper-btn"
     });
-    setIcon(zoomInBtn, "zoom-in");
-    zoomInBtn.setAttribute("title", "Zoom in (+)");
-    this.delegate.registerDomEvent(zoomInBtn, "click", () => {
+    setIcon(this.zoomInBtn, "zoom-in");
+    this.zoomInBtn.setAttribute("title", "Zoom in (+)");
+    this.delegate.registerDomEvent(this.zoomInBtn, "click", () => {
       this.delegate.onChangeZoom(0.1);
     });
 
@@ -1686,8 +1691,45 @@ export class NotePagesToolbar {
 
   setDrawingActive(isDrawing: boolean): void {
     if (this.toolbarWrapperEl) {
-      this.toolbarWrapperEl.toggleClass("is-drawing", isDrawing);
+      const shouldDim = isDrawing && (this.delegate.shouldDimToolbarWhileDrawing ? this.delegate.shouldDimToolbarWhileDrawing() : true);
+      this.toolbarWrapperEl.toggleClass("is-drawing", shouldDim);
     }
+  }
+
+  updateHotkeyTooltips(getHotkeyLabel: (actionId: HotkeyActionId) => string | null): void {
+    const formatTitle = (base: string, ...actionIds: HotkeyActionId[]): string => {
+      const labels = actionIds
+        .map((id) => getHotkeyLabel(id))
+        .filter((lbl): lbl is string => Boolean(lbl));
+      return labels.length > 0 ? `${base} (${labels.join(", ")})` : base;
+    };
+
+    this.sidebarToggleBtn?.setAttribute("title", formatTitle("Toggle pages sidebar", "toggleSidebar"));
+    this.titleBtn?.setAttribute("title", formatTitle("Quick rename notebook", "quickRename"));
+    this.undoBtn?.setAttribute("title", formatTitle("Undo", "undo"));
+    this.redoBtn?.setAttribute("title", formatTitle("Redo", "redo", "redoAlt"));
+    this.zoomOutBtn?.setAttribute("title", formatTitle("Zoom out", "zoomOut"));
+    this.zoomResetBtn?.setAttribute("title", formatTitle("Reset zoom to 100%", "zoomReset"));
+    this.zoomInBtn?.setAttribute("title", formatTitle("Zoom in", "zoomIn"));
+
+    const toolTitleMap: Partial<Record<ToolType, { base: string; ids: HotkeyActionId[] }>> = {
+      lasso: { base: "Select & Pan", ids: ["toolLasso", "toolPan"] },
+      pressure: { base: "Pen", ids: ["toolPen"] },
+      highlighter: { base: "Highlighter", ids: ["toolHighlighter"] },
+      eraser: { base: "Eraser", ids: ["toolEraser"] },
+      shape: { base: "Shapes", ids: ["toolShape"] },
+      connector: { base: "Line / Connector", ids: ["toolConnector"] },
+      sticky: { base: "Sticky Note", ids: ["toolSticky"] },
+      text: { base: "Text Box", ids: ["toolText"] },
+      image: { base: "Insert Image", ids: ["toolImage"] }
+    };
+
+    this.toolButtons.forEach((btn, toolType) => {
+      const entry = toolTitleMap[toolType];
+      if (entry) {
+        btn.setAttribute("title", formatTitle(entry.base, ...entry.ids));
+      }
+    });
   }
 
   updateTitle(newTitle: string): void {

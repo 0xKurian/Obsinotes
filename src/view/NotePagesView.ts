@@ -4,6 +4,8 @@ import {
   TFile,
   Notice,
   Scope,
+  KeymapEventHandler,
+  Modifier,
   Menu,
   Modal,
   App,
@@ -33,8 +35,15 @@ import {
   TextObject,
   ImageObject,
   StrokeBoundingBox,
-  EraserMode
+  EraserMode,
+  HotkeyActionId
 } from "../types";
+import {
+  HOTKEY_ACTION_METADATA,
+  areHotkeyBindingsEqual,
+  formatHotkeyBinding,
+  resolveHotkeyBinding
+} from "../settings/HotkeyHelper";
 import { PageManager } from "../model/PageManager";
 import { TemplateRenderer } from "../renderer/TemplateRenderer";
 import { InkingController } from "../ink/InkingController";
@@ -188,6 +197,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   private touchPinchStartZoom: number = 1.0;
   private isTouchPinching: boolean = false;
   private stylusButtonState: StylusButtonState = new StylusButtonState();
+  private registeredKeyHandlers: KeymapEventHandler[] = [];
   private eraserCursorEl!: HTMLElement;
   penWidth: number = 2.5;
   highlighterWidth: number = 14.0;
@@ -599,6 +609,34 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.inkingController.setPerformanceMonitor(this.performanceMonitor);
+    this.applyInitialDrawingSettings();
+  }
+
+  private applyInitialDrawingSettings(): void {
+    const s = this.plugin?.settings;
+    if (!s) {
+      return;
+    }
+    this.penWidth = Math.max(0.5, Math.min(15, s.defaultPenWidth ?? 2.5));
+    this.highlighterWidth = Math.max(4, Math.min(36, s.defaultHighlighterWidth ?? 14));
+    const initialTool = s.defaultTool ?? "pressure";
+    if (initialTool === "select") {
+      this.inkingController.setTool("lasso");
+      this.selectionSubMode = "pan";
+    } else {
+      this.inkingController.setTool(initialTool);
+      if (initialTool === "lasso") {
+        this.selectionSubMode = "lasso";
+      }
+    }
+    const color = s.defaultPenColor || "#1e293b";
+    this.inkingController.setColor(color);
+    this.currentTextOptions.color = color;
+    this.inkingController.setWidth(initialTool === "highlighter" ? this.highlighterWidth : this.penWidth);
+    this.inkingController.setEraserMode(s.defaultEraserMode ?? "stroke");
+    this.inkingController.setEraserRadius(s.defaultEraserRadius ?? 12);
+    this.inkingController.setShapeRecognition(s.shapeRecognitionEnabled ?? true);
+    this.inkingController.setPalmRejectionDelay(s.palmRejectionDelayMs ?? 350);
   }
 
   getFile(): TFile | null {
@@ -710,6 +748,15 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
 
     this.toolbar.build(this.rootContainerEl);
+    this.toolbar.setSelectionSubMode(this.selectionSubMode);
+    this.toolbar.setActiveColor(this.inkingController.currentColor);
+    this.toolbar.setActiveWidth(this.inkingController.currentWidth);
+    this.toolbar.setEraserMode(this.inkingController.eraserMode);
+    this.toolbar.setEraserRadius(this.inkingController.eraserRadius);
+    this.rootContainerEl.toggleClass(
+      "is-tool-select",
+      this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan"
+    );
     this.minimap = new NotePagesMinimap(this);
     this.minimap.build(this.rootContainerEl);
     this.buildMainArea();
@@ -721,273 +768,182 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (!this.scope) {
       this.scope = new Scope(this.app.scope);
     }
+    this.refreshKeyboardShortcuts();
+  }
 
-    this.scope.register(["Mod"], "z", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.clearActiveSelectionCanvas();
-      this.historyManager.undo();
-      return false;
-    });
+  refreshKeyboardShortcuts(): void {
+    if (!this.scope) {
+      return;
+    }
 
-    this.scope.register(["Mod", "Shift"], "z", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.clearActiveSelectionCanvas();
-      this.historyManager.redo();
-      return false;
-    });
+    for (const handler of this.registeredKeyHandlers) {
+      this.scope.unregister(handler);
+    }
+    this.registeredKeyHandlers = [];
 
-    this.scope.register(["Mod"], "y", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.clearActiveSelectionCanvas();
-      this.historyManager.redo();
-      return false;
-    });
-
-    this.scope.register(["Mod"], "d", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      if (this.selectionController.hasSelection()) {
-        e.preventDefault();
+    const customHotkeys = this.plugin?.settings?.customHotkeys;
+    const actionHandlers: Record<HotkeyActionId, (e: KeyboardEvent) => boolean | void> = {
+      toolPen: () => this.setActiveTool("pressure"),
+      toolHighlighter: () => this.setActiveTool("highlighter"),
+      toolEraser: () => this.setActiveTool("eraser"),
+      toolLasso: () => {
+        this.selectionSubMode = "lasso";
+        this.toolbar?.setSelectionSubMode?.("lasso");
+        this.setActiveTool("lasso");
+      },
+      toolPan: () => this.setActiveTool("select"),
+      toolShape: () => this.setActiveTool("shape"),
+      toolConnector: () => this.setActiveTool("connector"),
+      toolSticky: () => this.setActiveTool("sticky"),
+      toolText: () => this.setActiveTool("text"),
+      toolImage: () => this.openImagePicker(),
+      undo: () => {
+        this.clearActiveSelectionCanvas();
+        this.historyManager.undo();
+      },
+      redo: () => {
+        this.clearActiveSelectionCanvas();
+        this.historyManager.redo();
+      },
+      redoAlt: () => {
+        this.clearActiveSelectionCanvas();
+        this.historyManager.redo();
+      },
+      duplicateSelection: () => {
+        if (!this.selectionController.hasSelection()) {
+          return true;
+        }
         this.duplicateActiveSelection();
         return false;
-      }
-      return true;
-    });
-
-    this.scope.register(["Mod"], "c", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      if (this.selectionController.hasSelection()) {
-        e.preventDefault();
+      },
+      copySelection: () => {
+        if (!this.selectionController.hasSelection()) {
+          return true;
+        }
         this.copySelection();
         return false;
-      }
-      return true;
-    });
-
-    this.scope.register(["Mod"], "v", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      if (this.clipboard) {
-        e.preventDefault();
+      },
+      pasteSelection: () => {
+        if (!this.clipboard) {
+          return true;
+        }
         this.pasteSelection();
         return false;
-      }
-      return true;
-    });
+      },
+      deleteSelection: () => this.handleDeleteShortcut(),
+      decreaseWidth: () => {
+        const current = this.inkingController.currentWidth;
+        const next = Math.max(0.5, Math.round((current - 0.5) * 10) / 10);
+        this.setActiveWidth(next);
+      },
+      increaseWidth: () => {
+        const current = this.inkingController.currentWidth;
+        const next = Math.min(30, Math.round((current + 0.5) * 10) / 10);
+        this.setActiveWidth(next);
+      },
+      zoomIn: () => this.changeZoom(0.1),
+      zoomOut: () => this.changeZoom(-0.1),
+      zoomReset: () => this.resetZoom(),
+      toggleSidebar: () => this.toggleSidebar(),
+      addPage: () => this.addNewPage(),
+      toggleOrientation: () => this.onToggleOrientation(),
+      quickRename: () => this.openQuickRenameModal(),
+      clearSelection: () => this.handleEscapeShortcut()
+    };
 
-    this.scope.register([], "Delete", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
+    const registerBinding = (
+      modifiers: Modifier[],
+      key: string,
+      handlerFn: (e: KeyboardEvent) => boolean | void
+    ) => {
+      if (!this.scope) {
+        return;
       }
-      if (this.selectionController.hasSelection()) {
-        e.preventDefault();
-        this.deleteActiveSelection();
-        return false;
-      }
-      const selectedImgId = this.imageController.getSelectedImageId();
-      if (selectedImgId && this.pageManager) {
-        const page = this.pageManager.getPageByNumber(this.currentPageNumber);
-        if (page) {
-          e.preventDefault();
-          this.imageController.deselectImage();
-          this.imageController.callbacks.onImageDeleted(page, selectedImgId);
-          return false;
-        }
-      }
-      return true;
-    });
-
-    this.scope.register([], "Backspace", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      if (this.selectionController.hasSelection()) {
-        e.preventDefault();
-        this.deleteActiveSelection();
-        return false;
-      }
-      const selectedImgId = this.imageController.getSelectedImageId();
-      if (selectedImgId && this.pageManager) {
-        const page = this.pageManager.getPageByNumber(this.currentPageNumber);
-        if (page) {
-          e.preventDefault();
-          this.imageController.deselectImage();
-          this.imageController.callbacks.onImageDeleted(page, selectedImgId);
-          return false;
-        }
-      }
-      return true;
-    });
-
-    const toolHotkeys: { key: string; tool: ToolType }[] = [
-      { key: "v", tool: "select" },
-      { key: "p", tool: "pressure" },
-      { key: "h", tool: "highlighter" },
-      { key: "e", tool: "eraser" },
-      { key: "s", tool: "shape" },
-      { key: "c", tool: "connector" },
-      { key: "n", tool: "sticky" },
-      { key: "t", tool: "text" },
-      { key: "l", tool: "lasso" },
-      { key: "q", tool: "lasso" }
-    ];
-
-    for (const mapping of toolHotkeys) {
-      this.scope.register([], mapping.key, (e) => {
+      const keyHandler = this.scope.register(modifiers, key, (e) => {
         if (this.textController.isEditing()) {
           return true;
         }
+        const outcome = handlerFn(e);
+        if (outcome === true) {
+          return true;
+        }
         e.preventDefault();
-        this.setActiveTool(mapping.tool);
         return false;
       });
+      this.registeredKeyHandlers.push(keyHandler);
+    };
+
+    const resolvedBindings = HOTKEY_ACTION_METADATA.map((meta) => ({
+      id: meta.id,
+      binding: resolveHotkeyBinding(meta.id, customHotkeys)
+    }));
+
+    const hasExactBinding = (modifiers: Modifier[], key: string): boolean => {
+      return resolvedBindings.some(
+        (entry) => entry.binding !== null && areHotkeyBindingsEqual(entry.binding, { modifiers, key })
+      );
+    };
+
+    for (const entry of resolvedBindings) {
+      if (!entry.binding) {
+        continue;
+      }
+      registerBinding(entry.binding.modifiers, entry.binding.key, actionHandlers[entry.id]);
+      if (
+        entry.id === "zoomIn" &&
+        areHotkeyBindingsEqual(entry.binding, { modifiers: [], key: "=" }) &&
+        !hasExactBinding([], "+")
+      ) {
+        registerBinding([], "+", actionHandlers.zoomIn);
+      }
+      if (
+        entry.id === "deleteSelection" &&
+        areHotkeyBindingsEqual(entry.binding, { modifiers: [], key: "Delete" }) &&
+        !hasExactBinding([], "Backspace")
+      ) {
+        registerBinding([], "Backspace", actionHandlers.deleteSelection);
+      }
     }
 
-    this.scope.register([], "i", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.openImagePicker();
-      return false;
+    this.toolbar?.updateHotkeyTooltips((actionId) => {
+      const binding = resolveHotkeyBinding(actionId, customHotkeys);
+      return binding ? formatHotkeyBinding(binding) : null;
     });
+  }
 
-    this.scope.register([], "b", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.toggleSidebar();
+  private handleDeleteShortcut(): boolean | void {
+    if (this.selectionController.hasSelection()) {
+      this.deleteActiveSelection();
       return false;
-    });
-
-    this.scope.register([], "[", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      const current = this.inkingController.currentWidth;
-      const next = Math.max(0.5, Math.round((current - 0.5) * 10) / 10);
-      this.setActiveWidth(next);
-      return false;
-    });
-
-    this.scope.register([], "]", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      const current = this.inkingController.currentWidth;
-      const next = Math.min(30, Math.round((current + 0.5) * 10) / 10);
-      this.setActiveWidth(next);
-      return false;
-    });
-
-    this.scope.register([], "r", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      if (this.pageManager) {
-        const curr = this.pageManager.getNotebookOrientation();
-        const next: PageOrientation = curr === "portrait" ? "landscape" : "portrait";
-        this.pageManager.updateAllPagesOrientation(next);
-        this.updateOrientationButtonDisplay(next);
-        this.renderDocument();
-        this.requestSave();
-        new Notice(`Updated orientation to ${next.toUpperCase()} for all pages`);
-      }
-      return false;
-    });
-
-    this.scope.register([], "a", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.addNewPage();
-      return false;
-    });
-
-    this.scope.register([], "=", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.changeZoom(0.1);
-      return false;
-    });
-
-    this.scope.register([], "+", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.changeZoom(0.1);
-      return false;
-    });
-
-    this.scope.register([], "-", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.changeZoom(-0.1);
-      return false;
-    });
-
-    this.scope.register([], "0", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.resetZoom();
-      return false;
-    });
-
-    this.scope.register([], "F2", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      e.preventDefault();
-      this.openQuickRenameModal();
-      return false;
-    });
-
-    this.scope.register([], "Escape", (e) => {
-      if (this.textController.isEditing()) {
-        return true;
-      }
-      if (this.selectionController.hasSelection()) {
-        e.preventDefault();
-        this.clearActiveSelectionCanvas();
-        return false;
-      }
-      const selectedImgId = this.imageController.getSelectedImageId();
-      if (selectedImgId && this.pageManager) {
+    }
+    const selectedImgId = this.imageController.getSelectedImageId();
+    if (selectedImgId && this.pageManager) {
+      const page = this.pageManager.getPageByNumber(this.currentPageNumber);
+      if (page) {
         this.imageController.deselectImage();
-        const page = this.pageManager.getPageByNumber(this.currentPageNumber);
-        const frameEl = page ? this.getPageFrame(page.pageNumber) : null;
-        if (page && frameEl) {
-          this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
-        }
+        this.imageController.callbacks.onImageDeleted(page, selectedImgId);
         return false;
       }
-      return true;
-    });
+    }
+    return true;
+  }
+
+  private handleEscapeShortcut(): boolean | void {
+    if (this.selectionController.hasSelection()) {
+      this.clearActiveSelectionCanvas();
+      return false;
+    }
+    const selectedImgId = this.imageController.getSelectedImageId();
+    if (selectedImgId && this.pageManager) {
+      this.imageController.deselectImage();
+      const page = this.pageManager.getPageByNumber(this.currentPageNumber);
+      const frameEl = page ? this.getPageFrame(page.pageNumber) : null;
+      if (page && frameEl) {
+        this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
+      }
+      return false;
+    }
+    return true;
   }
 
   async onClose(): Promise<void> {
@@ -1478,6 +1434,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
   }
 
+  shouldDimToolbarWhileDrawing(): boolean {
+    return this.plugin?.settings?.toolbarDimWhileDrawing ?? true;
+  }
+
   refreshToolbarLayout(): void {
     if (!this.toolbar) {
       return;
@@ -1488,6 +1448,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.toolbar.setPlacement(placement, false);
     }
     this.syncScrollerTopPadding();
+  }
+
+  applyLiveSettings(): void {
+    const s = this.plugin?.settings;
+    if (s) {
+      this.inkingController.setShapeRecognition(s.shapeRecognitionEnabled ?? true);
+      this.inkingController.setPalmRejectionDelay(s.palmRejectionDelayMs ?? 350);
+    }
+    this.refreshToolbarLayout();
+    this.refreshKeyboardShortcuts();
   }
 
   private setupToolbarResizeObserver(): void {
@@ -2048,12 +2018,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.revertTemporaryStylusEraser(e);
       if (e && e.pointerType === "touch") {
         if (this.touchTapCandidate && !this.isTouchPinching) {
-          const duration = Date.now() - this.touchTapCandidate.startTime;
-          if (duration < 280 && this.touchTapCandidate.maxDistance < 20) {
-            if (this.touchTapCandidate.maxCount === 2) {
-              this.onUndo();
-            } else if (this.touchTapCandidate.maxCount === 3) {
-              this.onRedo();
+          if (this.plugin.settings.twoFingerTapUndoRedo !== false) {
+            const duration = Date.now() - this.touchTapCandidate.startTime;
+            if (duration < 280 && this.touchTapCandidate.maxDistance < 20) {
+              if (this.touchTapCandidate.maxCount === 2) {
+                this.onUndo();
+              } else if (this.touchTapCandidate.maxCount === 3) {
+                this.onRedo();
+              }
             }
           }
           this.touchTapCandidate = null;

@@ -1,4 +1,7 @@
 import {
+  DefaultToolPreset,
+  EraserMode,
+  HotkeyMap,
   PageSizePreset,
   PageOrientation,
   PaperTemplateType,
@@ -10,7 +13,16 @@ export interface NotePagesSettings {
   defaultPageSize: PageSizePreset;
   defaultOrientation: PageOrientation;
   defaultTemplate: PaperTemplateType;
+  defaultTool: DefaultToolPreset;
+  defaultPenColor: string;
+  defaultPenWidth: number;
+  defaultHighlighterWidth: number;
+  defaultEraserMode: EraserMode;
+  defaultEraserRadius: number;
+  shapeRecognitionEnabled: boolean;
   drawWithFinger: boolean;
+  twoFingerTapUndoRedo: boolean;
+  palmRejectionDelayMs: number;
   stylusButtonAction: StylusButtonAction;
   autosaveIntervalMs: number;
   defaultLineColor: string;
@@ -22,15 +34,26 @@ export interface NotePagesSettings {
   toolbarWrap: boolean;
   toolbarShowTitle: boolean;
   toolbarShowZoomControls: boolean;
+  toolbarDimWhileDrawing: boolean;
   toolbarPlacement: ToolbarPlacement;
   toolbarFloatingPos: { left: number; top: number } | null;
+  customHotkeys: HotkeyMap;
 }
 
 export const DEFAULT_SETTINGS: NotePagesSettings = {
   defaultPageSize: "A4",
   defaultOrientation: "portrait",
   defaultTemplate: "ruled",
+  defaultTool: "pressure",
+  defaultPenColor: "#1e293b",
+  defaultPenWidth: 2.5,
+  defaultHighlighterWidth: 14,
+  defaultEraserMode: "stroke",
+  defaultEraserRadius: 12,
+  shapeRecognitionEnabled: true,
   drawWithFinger: false,
+  twoFingerTapUndoRedo: true,
+  palmRejectionDelayMs: 350,
   stylusButtonAction: "hold",
   autosaveIntervalMs: 1000,
   defaultLineColor: "#94a3b8",
@@ -42,6 +65,8 @@ export const DEFAULT_SETTINGS: NotePagesSettings = {
   toolbarWrap: false,
   toolbarShowTitle: true,
   toolbarShowZoomControls: true,
+  toolbarDimWhileDrawing: true,
   toolbarPlacement: "top",
-  toolbarFloatingPos: null
+  toolbarFloatingPos: null,
+  customHotkeys: {}
 };

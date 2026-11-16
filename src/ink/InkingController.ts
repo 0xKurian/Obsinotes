@@ -29,6 +29,7 @@ export class InkingController {
   eraserMode: EraserMode = "stroke";
   eraserRadius: number = 12;
   shapeRecognitionEnabled: boolean = true;
+  palmRejectionDelayMs: number = 350;
 
   private isDrawing: boolean = false;
   private activePageId: string | null = null;
@@ -83,6 +84,12 @@ export class InkingController {
     this.shapeRecognitionEnabled = enabled;
   }
 
+  setPalmRejectionDelay(ms: number): void {
+    if (Number.isFinite(ms)) {
+      this.palmRejectionDelayMs = Math.max(0, Math.min(1000, Math.round(ms)));
+    }
+  }
+
   setPerformanceMonitor(monitor?: PerformanceMonitor): void {
     this.performanceMonitor = monitor;
   }
@@ -110,7 +117,7 @@ export class InkingController {
     if (e.pointerType === "pen") {
       this.lastPenTimestamp = Date.now();
     } else if (e.pointerType === "touch") {
-      if (Date.now() - this.lastPenTimestamp < 350) {
+      if (Date.now() - this.lastPenTimestamp < this.palmRejectionDelayMs) {
         return;
       }
     }

@@ -1,3 +1,5 @@
+import type { Modifier } from "obsidian";
+
 export const NOTE_PAGES_VIEW_TYPE = "notepages-view";
 export const NOTE_PAGES_EXTENSION = "gnote";
 export const NOTE_PAGES_FRONTMATTER_KEY = "notepages-plugin";
@@ -15,10 +17,47 @@ export interface ToolbarLayoutConfig {
   showZoomControls: boolean;
 }
 export type ToolType = "select" | "pen" | "pressure" | "fountain" | "highlighter" | "eraser" | "lasso" | "shape" | "connector" | "sticky" | "text" | "image";
+export type DefaultToolPreset = "pressure" | "highlighter" | "lasso" | "select";
 export type EraserMode = "stroke" | "precision";
 export type StylusButtonAction = "hold" | "toggle" | "off";
 export type SelectionSubMode = "lasso" | "pan";
 export type PaperTemplateType = "blank" | "ruled" | "grid" | "dotted" | "cornell";
+
+export type HotkeyActionId =
+  | "toolPen"
+  | "toolHighlighter"
+  | "toolEraser"
+  | "toolLasso"
+  | "toolPan"
+  | "toolShape"
+  | "toolConnector"
+  | "toolSticky"
+  | "toolText"
+  | "toolImage"
+  | "undo"
+  | "redo"
+  | "redoAlt"
+  | "duplicateSelection"
+  | "copySelection"
+  | "pasteSelection"
+  | "deleteSelection"
+  | "decreaseWidth"
+  | "increaseWidth"
+  | "zoomIn"
+  | "zoomOut"
+  | "zoomReset"
+  | "toggleSidebar"
+  | "addPage"
+  | "toggleOrientation"
+  | "quickRename"
+  | "clearSelection";
+
+export interface HotkeyBinding {
+  modifiers: Modifier[];
+  key: string;
+}
+
+export type HotkeyMap = Partial<Record<HotkeyActionId, HotkeyBinding | null>>;
 
 export interface PageDimensions {
   width: number;

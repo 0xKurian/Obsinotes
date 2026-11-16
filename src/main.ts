@@ -11,6 +11,7 @@ import {
 import { NotePagesView } from "./view/NotePagesView";
 import { NotePagesSettings, DEFAULT_SETTINGS } from "./settings/NotePagesSettings";
 import { NotePagesSettingTab } from "./settings/NotePagesSettingTab";
+import { sanitizeHotkeyMap } from "./settings/HotkeyHelper";
 import {
   NOTE_PAGES_VIEW_TYPE,
   NOTE_PAGES_EXTENSION,
@@ -291,6 +292,48 @@ export default class NotePagesPlugin extends Plugin {
       }
     });
 
+    const activeViewCommands: { id: string; name: string; run: (view: NotePagesView) => void }[] = [
+      { id: "select-tool-pen", name: "Select pen tool", run: (v) => v.onSelectTool("pressure") },
+      { id: "select-tool-highlighter", name: "Select highlighter tool", run: (v) => v.onSelectTool("highlighter") },
+      { id: "select-tool-eraser", name: "Select eraser tool", run: (v) => v.onSelectTool("eraser") },
+      {
+        id: "select-tool-lasso",
+        name: "Select lasso tool",
+        run: (v) => {
+          v.onSetSelectionSubMode("lasso");
+          v.onSelectTool("lasso");
+        }
+      },
+      { id: "select-tool-pan", name: "Select pan / hand tool", run: (v) => v.onSelectTool("select") },
+      { id: "select-tool-shape", name: "Select shape tool", run: (v) => v.onSelectTool("shape") },
+      { id: "select-tool-connector", name: "Select connector tool", run: (v) => v.onSelectTool("connector") },
+      { id: "undo-stroke", name: "Undo", run: (v) => v.onUndo() },
+      { id: "redo-stroke", name: "Redo", run: (v) => v.onRedo() },
+      { id: "zoom-in", name: "Zoom in", run: (v) => v.onChangeZoom(0.1) },
+      { id: "zoom-out", name: "Zoom out", run: (v) => v.onChangeZoom(-0.1) },
+      { id: "zoom-reset", name: "Reset zoom to 100%", run: (v) => v.onResetZoom() },
+      { id: "toggle-sidebar", name: "Toggle pages sidebar", run: (v) => v.onToggleSidebar() },
+      { id: "add-new-page", name: "Add new page", run: (v) => v.onAddNewPage() }
+    ];
+
+    for (const cmd of activeViewCommands) {
+      this.addCommand({
+        id: cmd.id,
+        name: cmd.name,
+        checkCallback: (checking: boolean) => {
+          const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+          if (!activeView || activeView.textController.isEditing()) {
+            return false;
+          }
+          if (checking) {
+            return true;
+          }
+          cmd.run(activeView);
+          return true;
+        }
+      });
+    }
+
     this.addSettingTab(new NotePagesSettingTab(this.app, this));
   }
 
@@ -300,6 +343,7 @@ export default class NotePagesPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const loadedData = (await this.loadData()) as Partial<NotePagesSettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+    this.settings.customHotkeys = sanitizeHotkeyMap(loadedData?.customHotkeys);
   }
 
   async saveSettings(): Promise<void> {
@@ -313,7 +357,7 @@ export default class NotePagesPlugin extends Plugin {
     }
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.view instanceof NotePagesView) {
-        leaf.view.refreshToolbarLayout();
+        leaf.view.applyLiveSettings();
       }
     });
   }
