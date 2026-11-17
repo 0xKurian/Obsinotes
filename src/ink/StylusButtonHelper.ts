@@ -8,15 +8,20 @@ export interface StylusPointerSnapshot {
 
 const PEN_PRIMARY_TIP_MASK = 1;
 const PEN_BARREL_SECONDARY_MASK = 2;
+const PEN_AUX_MASK = 4;
 const PEN_ERASER_MASK = 32;
-const PEN_BUTTON_MASK = PEN_BARREL_SECONDARY_MASK | PEN_ERASER_MASK;
-const PEN_CONTEXTMENU_GUARD_MS = 500;
+const PEN_STYLUS_SECONDARY_MASK = 64;
+const PEN_BUTTON_MASK =
+  PEN_BARREL_SECONDARY_MASK | PEN_AUX_MASK | PEN_ERASER_MASK | PEN_STYLUS_SECONDARY_MASK;
+const PEN_CONTEXTMENU_GUARD_MS = 1000;
+const LATE_STROKE_TAKEOVER_MS = 150;
+const LATE_STROKE_MAX_POINTS = 5;
 
 export function isStylusEraserButtonPressed(e: StylusPointerSnapshot): boolean {
   if (e.pointerType !== "pen") {
     return false;
   }
-  return e.button === 2 || e.button === 5 || (e.buttons & PEN_BUTTON_MASK) !== 0;
+  return e.button === 1 || e.button === 2 || e.button === 5 || (e.buttons & PEN_BUTTON_MASK) !== 0;
 }
 
 export function isStylusSecondaryMaskActive(e: StylusPointerSnapshot): boolean {
@@ -47,7 +52,7 @@ export class StylusButtonState {
     isPanning: boolean,
     timestamp: number = Date.now()
   ): boolean {
-    if (isPanning || pointerType === "pen" || this.temporaryEraserTool !== null) {
+    if (isPanning || pointerType === "pen" || this.temporaryEraserTool !== null || this.wasButtonPressed) {
       return true;
     }
     return this.isRecentPenActivity(PEN_CONTEXTMENU_GUARD_MS, timestamp);
@@ -140,17 +145,50 @@ export class StylusButtonState {
     return null;
   }
 
+  handleActiveStrokeMove(
+    e: StylusPointerSnapshot,
+    mode: StylusButtonAction,
+    currentTool: ToolType,
+    strokeElapsedMs: number,
+    pointCount: number
+  ): ToolType | null {
+    if (e.pointerType !== "pen" || mode === "off" || currentTool === "eraser") {
+      return null;
+    }
+    const buttonPressed = isStylusSecondaryMaskActive(e);
+    const risingEdge = buttonPressed && !this.wasButtonPressed;
+    this.wasButtonPressed = buttonPressed;
+    if (!risingEdge || strokeElapsedMs > LATE_STROKE_TAKEOVER_MS || pointCount > LATE_STROKE_MAX_POINTS) {
+      return null;
+    }
+    if (mode === "hold") {
+      if (this.temporaryEraserTool === null) {
+        this.temporaryEraserTool = currentTool;
+        return "eraser";
+      }
+      return null;
+    }
+    return this.toggleEraser(currentTool);
+  }
+
   handlePointerUpOrCancel(
     e: StylusPointerSnapshot | null,
-    mode: StylusButtonAction
+    mode: StylusButtonAction,
+    isCancel: boolean = false
   ): ToolType | null {
-    if (e && e.pointerType === "pen") {
-      this.wasButtonPressed = isStylusSecondaryMaskActive(e);
+    const isPenEvent = Boolean(e && e.pointerType === "pen");
+    const buttonStillPressed = isPenEvent && e ? isStylusSecondaryMaskActive(e) : false;
+
+    if (isPenEvent) {
+      this.wasButtonPressed = isCancel ? false : buttonStillPressed;
     } else if (!e) {
       this.wasButtonPressed = false;
     }
 
-    if ((mode === "hold" || this.temporaryEraserTool !== null) && this.temporaryEraserTool !== null) {
+    if (this.temporaryEraserTool !== null) {
+      if (!isCancel && mode === "hold" && buttonStillPressed) {
+        return null;
+      }
       const revertTool = this.temporaryEraserTool;
       this.temporaryEraserTool = null;
       return revertTool;

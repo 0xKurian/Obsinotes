@@ -183,7 +183,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
         },
         {
           name: "Stylus side button",
-          desc: "Map the stylus side button within hover or touch range to the eraser (disable system stylus hover shortcuts if hover clicks are intercepted).",
+          desc: "Map the stylus side button within hover or touch range to the eraser (hold the side button while touching or dragging on tablets where hover shortcuts are intercepted).",
           control: { type: "dropdown", key: "stylusButtonAction", options: STYLUS_BUTTON_OPTIONS }
         }
       ]
@@ -860,7 +860,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Stylus side button")
-      .setDesc("Map the stylus side button within hover or touch range to the eraser (disable system stylus hover shortcuts if hover clicks are intercepted).")
+      .setDesc("Map the stylus side button within hover or touch range to the eraser (hold the side button while touching or dragging on tablets where hover shortcuts are intercepted).")
       .addDropdown((dropdown) => {
         Object.entries(STYLUS_BUTTON_OPTIONS).forEach(([val, label]) => {
           dropdown.addOption(val, label);

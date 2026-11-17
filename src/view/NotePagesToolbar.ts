@@ -58,6 +58,7 @@ export interface NotePagesToolbarDelegate {
   getToolbarFloatingPos?(): { left: number; top: number } | null;
   onSetToolbarFloatingPos?(pos: { left: number; top: number } | null): void;
   shouldDimToolbarWhileDrawing?(): boolean;
+  shouldSuppressToolbarContextMenu?(e: MouseEvent): boolean;
   onTextSizeChanged(size: number): void;
   onTextBoldToggled(): void;
   onTextItalicToggled(): void;
@@ -241,6 +242,9 @@ export class NotePagesToolbar {
     this.delegate.registerDomEvent(this.toolbarEl, "contextmenu", (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (this.delegate.shouldSuppressToolbarContextMenu?.(e)) {
+        return;
+      }
       this.toggleToolbarPopover();
     });
 
@@ -1429,8 +1433,18 @@ export class NotePagesToolbar {
       }
     };
 
+    const onPointerCancel = (e: PointerEvent) => {
+      if (!this.isDraggingDock) {
+        return;
+      }
+      this.isDraggingDock = false;
+      this.dragDockMoved = false;
+      this.toolbarWrapperEl.removeClass("is-dock-dragging");
+      this.releasePointer(handleEl, e.pointerId);
+    };
+
     this.delegate.registerDomEvent(handleEl, "pointerup", onPointerUp);
-    this.delegate.registerDomEvent(handleEl, "pointercancel", onPointerUp);
+    this.delegate.registerDomEvent(handleEl, "pointercancel", onPointerCancel);
   }
 
   private capturePointer(el: HTMLElement, pointerId: number): void {

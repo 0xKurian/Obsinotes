@@ -38,6 +38,7 @@ export class InkingController {
   private currentPoints: PointSample[] = [];
   private lastPenTimestamp: number = 0;
   private lastMoveTimestamp: number = 0;
+  private strokeStartTimestamp: number = 0;
   private callbacks: InkingControllerCallbacks;
   private rafId: number | null = null;
   private isRafScheduled: boolean = false;
@@ -102,6 +103,20 @@ export class InkingController {
       return false;
     }
     return true;
+  }
+
+  getActiveStrokeMeta(): { pointCount: number; elapsedMs: number } {
+    return {
+      pointCount: this.currentPoints.length,
+      elapsedMs: this.strokeStartTimestamp > 0 ? Date.now() - this.strokeStartTimestamp : 0
+    };
+  }
+
+  discardActiveStroke(): void {
+    if (this.activeCanvas) {
+      this.clearCanvas(this.activeCanvas);
+    }
+    this.finalizeStrokeDrawing();
   }
 
   handlePointerDown(
@@ -171,6 +186,7 @@ export class InkingController {
     }
 
     this.isDrawing = true;
+    this.strokeStartTimestamp = Date.now();
     this.currentPoints = [];
 
     const pressure = e.pressure && e.pressure > 0 ? e.pressure : 0.5;
@@ -390,6 +406,7 @@ export class InkingController {
     this.activeCanvas = null;
     this.committedCanvas = null;
     this.currentPoints = [];
+    this.strokeStartTimestamp = 0;
   }
 
   private renderActiveStroke(): void {

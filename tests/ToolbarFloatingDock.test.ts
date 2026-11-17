@@ -504,4 +504,68 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(toolbar.isToolbarPopoverOpen, false);
     assert.strictEqual(toolbarPopover.hasClass("is-hidden"), true);
   });
+
+  test("toolbar contextmenu suppresses stylus popover trigger and pointercancel does not toggle popover", () => {
+    const root = createMockElement("div", "notepages-view-container");
+    const listeners = new Map<unknown, Map<string, Array<(ev: unknown) => void>>>();
+    let suppressNext = true;
+
+    const delegate = createMockDelegate({
+      shouldSuppressToolbarContextMenu: () => suppressNext,
+      registerDomEvent: (el: unknown, type: string, cb: (ev: unknown) => void) => {
+        if (!listeners.has(el)) {
+          listeners.set(el, new Map());
+        }
+        const elMap = listeners.get(el)!;
+        if (!elMap.has(type)) {
+          elMap.set(type, []);
+        }
+        elMap.get(type)!.push(cb);
+      }
+    });
+
+    const toolbar = new NotePagesToolbar(delegate);
+    toolbar.build(root as unknown as HTMLElement);
+
+    const dockListeners = listeners.get(toolbar.toolbarEl)?.get("contextmenu") ?? [];
+    assert.strictEqual(dockListeners.length, 1);
+
+    let prevented = false;
+    let stopped = false;
+    dockListeners[0]({
+      pointerType: "pen",
+      preventDefault: () => {
+        prevented = true;
+      },
+      stopPropagation: () => {
+        stopped = true;
+      }
+    });
+    assert.strictEqual(prevented, true);
+    assert.strictEqual(stopped, true);
+    assert.strictEqual(toolbar.isToolbarPopoverOpen, false);
+
+    suppressNext = false;
+    dockListeners[0]({
+      pointerType: "mouse",
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    });
+    assert.strictEqual(toolbar.isToolbarPopoverOpen, true);
+    toolbar.closeToolbarPopover();
+
+    const dragHandle = (toolbar as unknown as { dragHandleEl: MockDomElement }).dragHandleEl;
+    (toolbar.toolbarWrapperEl as unknown as { getBoundingClientRect: () => { left: number; top: number } }).getBoundingClientRect = () => ({ left: 0, top: 0 });
+    const handleListeners = listeners.get(dragHandle);
+    assert.ok(handleListeners);
+    (handleListeners.get("pointerdown") ?? [])[0]({
+      pointerId: 7,
+      clientX: 10,
+      clientY: 10,
+      stopPropagation: () => {},
+      preventDefault: () => {}
+    });
+    (handleListeners.get("pointercancel") ?? [])[0]({ pointerId: 7 });
+    assert.strictEqual(toolbar.isToolbarPopoverOpen, false);
+  });
 });

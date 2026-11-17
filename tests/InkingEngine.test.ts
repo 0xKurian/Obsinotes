@@ -492,4 +492,92 @@ describe("EraserEngine", () => {
     // Without deduplication, it would be 1 + 10 + 2 = 13 points!
     assert.strictEqual((capturedStroke as StrokeObject).points.length, 3, "Jitter was filtered out, only real points kept");
   });
+
+  test("InkingController discardActiveStroke clears uncommitted stroke and allows immediate eraser takeover", () => {
+    let committedCount = 0;
+    let erasedCount = 0;
+    const controller = new InkingController({
+      onStrokeCommitted: () => {
+        committedCount++;
+      },
+      onStrokesErased: () => {
+        erasedCount++;
+      }
+    });
+
+    let clearRectCalls = 0;
+    const mockCanvas = {
+      dataset: { pageWidth: "595", pageHeight: "842" },
+      width: 595,
+      height: 842,
+      getContext: () => ({
+        beginPath: () => {},
+        moveTo: () => {},
+        lineTo: () => {},
+        quadraticCurveTo: () => {},
+        closePath: () => {},
+        fill: () => {},
+        clearRect: () => {
+          clearRectCalls++;
+        },
+        save: () => {},
+        restore: () => {},
+        setTransform: () => {}
+      }),
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {}
+    } as unknown as HTMLCanvasElement;
+
+    controller.setTool("pressure");
+    controller.handlePointerDown(
+      { pointerId: 1, pointerType: "pen", button: 0, timeStamp: 100 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 50, y: 50 },
+      [],
+      []
+    );
+    assert.strictEqual(controller.isCurrentlyDrawing("page_1"), true);
+    assert.strictEqual(controller.getActiveStrokeMeta().pointCount, 1);
+
+    controller.discardActiveStroke();
+    assert.strictEqual(controller.isCurrentlyDrawing(), false);
+    assert.strictEqual(committedCount, 0);
+    assert.ok(clearRectCalls >= 1);
+
+    const sampleStroke: StrokeObject = {
+      id: "stroke_takeover",
+      tool: "pen",
+      color: "#000000",
+      width: 2,
+      opacity: 1,
+      points: [
+        { x: 40, y: 50, pressure: 0.5, timestamp: 10 },
+        { x: 60, y: 50, pressure: 0.5, timestamp: 20 }
+      ],
+      bounds: StrokeGeometry.computeBoundingBox(
+        [
+          { x: 40, y: 50, pressure: 0.5, timestamp: 10 },
+          { x: 60, y: 50, pressure: 0.5, timestamp: 20 }
+        ],
+        4
+      ),
+      createdAt: 10
+    };
+
+    controller.setTool("eraser");
+    controller.handlePointerDown(
+      { pointerId: 1, pointerType: "pen", button: 2, buttons: 3, timeStamp: 116 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 50, y: 50 },
+      [sampleStroke],
+      []
+    );
+    controller.handlePointerUp({ pointerId: 1, pointerType: "pen" } as unknown as PointerEvent);
+    assert.strictEqual(committedCount, 0);
+    assert.strictEqual(erasedCount, 1);
+  });
 });
