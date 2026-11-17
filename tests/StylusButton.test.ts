@@ -246,4 +246,146 @@ describe("StylusButtonHelper & Samsung S Pen Button", () => {
     assert.strictEqual(cancelledWhileHeld, "highlighter");
     assert.strictEqual(state.temporaryEraserTool, null);
   });
+
+  test("detects X1/X2 barrel button codes and Android WebView zero-pressure hover button quirk", () => {
+    assert.strictEqual(isStylusEraserButtonPressed({ pointerType: "pen", button: 3, buttons: 8 }), true);
+    assert.strictEqual(isStylusEraserButtonPressed({ pointerType: "pen", button: 4, buttons: 16 }), true);
+    assert.strictEqual(isStylusSecondaryMaskActive({ pointerType: "pen", button: -1, buttons: 8 }), true);
+    assert.strictEqual(isStylusSecondaryMaskActive({ pointerType: "pen", button: -1, buttons: 16 }), true);
+
+    const state = new StylusButtonState();
+    const hoverQuirk = state.handleHoverMove(
+      { pointerType: "pen", button: -1, buttons: 1, pressure: 0 },
+      "hold",
+      "pressure",
+      false
+    );
+    assert.strictEqual(hoverQuirk, "eraser");
+    assert.strictEqual(state.temporaryEraserTool, "pressure");
+
+    // Tip contact keeps eraser active even if Android drops the barrel bit on pointerdown
+    const downWithoutBit = state.handlePointerDown(
+      { pointerType: "pen", button: 0, buttons: 1, pressure: 0.4 },
+      "hold",
+      "eraser"
+    );
+    assert.strictEqual(downWithoutBit, null);
+    assert.strictEqual(state.temporaryEraserTool, "pressure");
+
+    // While tip is down, zero-pressure move does not re-trigger hover transitions
+    assert.strictEqual(
+      state.handleHoverMove({ pointerType: "pen", button: -1, buttons: 1, pressure: 0 }, "hold", "eraser", false),
+      null
+    );
+
+    const revert = state.handlePointerUpOrCancel({ pointerType: "pen", button: 0, buttons: 0 }, "hold", false);
+    assert.strictEqual(revert, "pressure");
+    assert.strictEqual(state.temporaryEraserTool, null);
+
+    // Toggle mode with Android hover quirk does not double-toggle when lifting back to hover while held
+    state.reset();
+    assert.strictEqual(
+      state.handleHoverMove({ pointerType: "pen", button: 1, buttons: 1, pressure: 0 }, "toggle", "pen", false),
+      "eraser"
+    );
+    assert.strictEqual(
+      state.handlePointerDown({ pointerType: "pen", button: 0, buttons: 1, pressure: 0.5 }, "toggle", "eraser"),
+      null
+    );
+    assert.strictEqual(
+      state.handlePointerUpOrCancel({ pointerType: "pen", button: 0, buttons: 1, pressure: 0 }, "toggle", false),
+      null
+    );
+    assert.strictEqual(
+      state.handleHoverMove({ pointerType: "pen", button: -1, buttons: 1, pressure: 0 }, "toggle", "eraser", false),
+      null
+    );
+  });
+
+  test("handles mouse-emulated stylus right-click immediately following pen activity", () => {
+    const state = new StylusButtonState();
+    state.recordPointerEvent("pen", 1000);
+
+    // Real middle click is not treated as stylus-emulated eraser
+    assert.strictEqual(
+      state.isMouseEmulatedStylusDown({ pointerType: "mouse", button: 1, buttons: 4, pointerId: 12 }, "hold", 1050),
+      false
+    );
+    // Stale mouse right-click (>400ms after pen hover) is not hijacked
+    assert.strictEqual(
+      state.isMouseEmulatedStylusDown({ pointerType: "mouse", button: 2, buttons: 2, pointerId: 12 }, "hold", 1500),
+      false
+    );
+    // Off mode disables mouse-emulated stylus handling
+    assert.strictEqual(
+      state.isMouseEmulatedStylusDown({ pointerType: "mouse", button: 2, buttons: 2, pointerId: 12 }, "off", 1050),
+      false
+    );
+
+    assert.strictEqual(
+      state.isMouseEmulatedStylusDown({ pointerType: "mouse", button: 2, buttons: 2, pointerId: 12 }, "hold", 1100),
+      true
+    );
+    state.markMouseEmulatedPointer(12);
+    assert.strictEqual(state.isMouseEmulatedPointerActive(12), true);
+
+    const transition = state.handlePointerDown(
+      { pointerType: "pen", button: 2, buttons: 2, pointerId: 12 },
+      "hold",
+      "pressure"
+    );
+    assert.strictEqual(transition, "eraser");
+    assert.strictEqual(state.temporaryEraserTool, "pressure");
+
+    const revert = state.handlePointerUpOrCancel(
+      { pointerType: "mouse", button: 2, buttons: 0, pointerId: 12 },
+      "hold",
+      false
+    );
+    assert.strictEqual(revert, "pressure");
+    assert.strictEqual(state.temporaryEraserTool, null);
+    assert.strictEqual(state.isMouseEmulatedPointerActive(12), false);
+  });
+
+  test("handleActiveButtonContactMove recovers eraser session when pointerdown was swallowed or cancelled", () => {
+    const state = new StylusButtonState();
+
+    // Normal contact move without stylus button does not trigger recovery
+    assert.deepStrictEqual(
+      state.handleActiveButtonContactMove(
+        { pointerType: "pen", button: -1, buttons: 1, pressure: 0.4 },
+        "hold",
+        "pressure"
+      ),
+      { startEraserSession: false, transitionTool: null }
+    );
+
+    // Android hover quirk (pressure === 0, buttons === 1) does not start contact eraser session
+    assert.deepStrictEqual(
+      state.handleActiveButtonContactMove(
+        { pointerType: "pen", button: -1, buttons: 1, pressure: 0 },
+        "hold",
+        "pressure"
+      ),
+      { startEraserSession: false, transitionTool: null }
+    );
+
+    // Swallowed pointerdown: pointermove arrives with pressure > 0 and barrel bit active
+    assert.deepStrictEqual(
+      state.handleActiveButtonContactMove(
+        { pointerType: "pen", button: -1, buttons: 33, pressure: 0.45 },
+        "hold",
+        "pressure"
+      ),
+      { startEraserSession: true, transitionTool: "eraser" }
+    );
+    assert.strictEqual(state.temporaryEraserTool, "pressure");
+
+    // Hover lift clears contact state and reverts temporary eraser
+    assert.strictEqual(
+      state.handlePointerUpOrCancel({ pointerType: "pen", button: -1, buttons: 0, pressure: 0 }, "hold", false),
+      "pressure"
+    );
+    assert.strictEqual(state.temporaryEraserTool, null);
+  });
 });

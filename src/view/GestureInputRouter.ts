@@ -12,7 +12,7 @@ import { SelectionController } from "../selection/SelectionController";
 import { SelectionEngine } from "../selection/SelectionEngine";
 import { TextController, TextFormattingOptions } from "../text/TextController";
 import { ImageController } from "../image/ImageController";
-import { StylusButtonState } from "../ink/StylusButtonHelper";
+import { StylusButtonState, StylusPointerSnapshot } from "../ink/StylusButtonHelper";
 import { AddImageCommand, AddShapeCommand, HistoryManager } from "../history/HistoryManager";
 import { PageCanvasHost } from "./PageCanvasHost";
 import { ViewportZoomController } from "./ViewportZoomController";
@@ -119,6 +119,7 @@ export class GestureInputRouter {
   private dragConnectorStartY: number = 0;
   private dragConnectorCurrentX: number = 0;
   private dragConnectorCurrentY: number = 0;
+  private recoveredEraserPointerId: number | null = null;
 
   constructor(delegate: GestureInputDelegate) {
     this.delegate = delegate;
@@ -137,6 +138,7 @@ export class GestureInputRouter {
     this.dragShapeCanvas = null;
     this.isDraggingConnector = false;
     this.dragConnectorCanvas = null;
+    this.recoveredEraserPointerId = null;
     this.stylusButtonState.reset();
   }
 
@@ -148,6 +150,7 @@ export class GestureInputRouter {
   ): void {
     this.delegate.registerDomEvent(scrollerEl, "pointermove", (e: PointerEvent) => {
       this.stylusButtonState.recordPointerEvent(e.pointerType);
+      this.tryFinishRecoveredEraserOnHover(e);
       this.handleStylusHoverButton(e, toolbarWrapperEl);
       this.updateHoverCursors(e, toolbarWrapperEl);
     });
@@ -305,6 +308,10 @@ export class GestureInputRouter {
         }
       }
 
+      if (this.tryFinishRecoveredEraserOnHover(e)) {
+        this.handleStylusHoverButton(e, toolbarWrapperEl);
+      }
+
       if (this.isPanning) {
         this.updatePan(e.clientX, e.clientY);
         return;
@@ -319,6 +326,12 @@ export class GestureInputRouter {
     this.delegate.registerWindowDomEvent("pointerup", (e: PointerEvent) => {
       if (e) {
         this.stylusButtonState.recordPointerEvent(e.pointerType);
+        if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
+          this.recoveredEraserPointerId = null;
+          if (this.delegate.getInkingController().isCurrentlyDrawing()) {
+            this.delegate.getInkingController().handlePointerUp(e);
+          }
+        }
       }
       this.delegate.setToolbarDrawingActive(false);
       this.revertTemporaryStylusEraser(e);
@@ -357,6 +370,9 @@ export class GestureInputRouter {
     this.delegate.registerWindowDomEvent("pointercancel", (e: PointerEvent) => {
       if (e) {
         this.stylusButtonState.recordPointerEvent(e.pointerType);
+        if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
+          this.recoveredEraserPointerId = null;
+        }
       }
       this.delegate.setToolbarDrawingActive(false);
       this.revertTemporaryStylusEraser(e, true);
@@ -574,9 +590,30 @@ export class GestureInputRouter {
       { passive: false }
     );
 
+    this.delegate.registerDomEvent(activeCanvas, "mousedown", (e: MouseEvent) => {
+      if (
+        e.button !== 0 ||
+        this.stylusButtonState.temporaryEraserTool !== null ||
+        this.stylusButtonState.isRecentPenActivity(400)
+      ) {
+        e.preventDefault();
+      }
+    });
+
+    this.delegate.registerDomEvent(activeCanvas, "auxclick", (e: MouseEvent) => {
+      if (
+        this.stylusButtonState.temporaryEraserTool !== null ||
+        this.stylusButtonState.isRecentPenActivity(400)
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+
     this.delegate.registerDomEvent(activeCanvas, "pointerdown", (e: PointerEvent) => {
       this.delegate.blurFocusedToolbarControl();
       this.stylusButtonState.recordPointerEvent(e.pointerType);
+      this.recoveredEraserPointerId = null;
       this.delegate.getZoomController().flushCanvasResolutionUpdate();
       this.delegate.getCanvasHost().ensurePageCanvasesMounted(page.pageNumber);
 
@@ -608,9 +645,15 @@ export class GestureInputRouter {
       }
 
       const stylusAction = this.delegate.getStylusButtonAction();
-      const nextStylusTool = this.stylusButtonState.handlePointerDown(e, stylusAction, inking.activeTool);
+      const stylusSnapshot = this.buildStylusSnapshot(e, stylusAction);
+      const nextStylusTool = this.stylusButtonState.handlePointerDown(
+        stylusSnapshot,
+        stylusAction,
+        inking.activeTool
+      );
       if (nextStylusTool !== null) {
         this.applyStylusToolTransition(nextStylusTool, stylusAction === "toggle");
+        this.updateHoverCursors(e, toolbarWrapperEl);
       }
 
       const textController = this.delegate.getTextController();
@@ -745,7 +788,27 @@ export class GestureInputRouter {
 
     this.delegate.registerDomEvent(activeCanvas, "pointermove", (e: PointerEvent) => {
       this.stylusButtonState.recordPointerEvent(e.pointerType);
+      this.tryFinishRecoveredEraserOnHover(e);
       const inking = this.delegate.getInkingController();
+      if (
+        !inking.isCurrentlyDrawing() &&
+        !this.isPanning &&
+        !this.delegate.getDragCoordinator().isDraggingSelection() &&
+        !this.isDraggingTextRect &&
+        !this.isDraggingShape &&
+        !this.isDraggingConnector
+      ) {
+        const recovered = this.tryRecoverStylusEraserOnMove(
+          e,
+          page,
+          activeCanvas,
+          committedCanvas,
+          toolbarWrapperEl
+        );
+        if (recovered) {
+          return;
+        }
+      }
       if (e.pointerType === "pen" && !inking.isCurrentlyDrawing()) {
         this.handleStylusHoverButton(e, toolbarWrapperEl);
       }
@@ -895,6 +958,9 @@ export class GestureInputRouter {
 
     this.delegate.registerDomEvent(activeCanvas, "pointerup", (e: PointerEvent) => {
       this.delegate.setToolbarDrawingActive(false);
+      if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
+        this.recoveredEraserPointerId = null;
+      }
       if (this.isPanning) {
         this.finishPan();
         return;
@@ -943,6 +1009,10 @@ export class GestureInputRouter {
     });
 
     this.delegate.registerDomEvent(activeCanvas, "pointercancel", (e: PointerEvent) => {
+      this.delegate.setToolbarDrawingActive(false);
+      if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
+        this.recoveredEraserPointerId = null;
+      }
       if (this.isPanning) {
         this.finishPan();
         return;
@@ -1426,6 +1496,12 @@ export class GestureInputRouter {
   }
 
   isPanTrigger(e: PointerEvent): boolean {
+    if (
+      this.stylusButtonState.isMouseEmulatedPointerActive(e.pointerId) ||
+      this.stylusButtonState.isMouseEmulatedStylusDown(e, this.delegate.getStylusButtonAction())
+    ) {
+      return false;
+    }
     if (this.isSpacePressed) {
       return true;
     }
@@ -1681,6 +1757,101 @@ export class GestureInputRouter {
     if (revertTool !== null) {
       this.applyStylusToolTransition(revertTool, false);
     }
+  }
+
+  private buildStylusSnapshot(e: PointerEvent, stylusAction: StylusButtonAction): StylusPointerSnapshot {
+    const isMouseEmulatedStylus =
+      this.stylusButtonState.isMouseEmulatedPointerActive(e.pointerId) ||
+      this.stylusButtonState.isMouseEmulatedStylusDown(e, stylusAction);
+    if (isMouseEmulatedStylus) {
+      this.stylusButtonState.markMouseEmulatedPointer(e.pointerId);
+      return {
+        pointerType: "pen",
+        button: e.button,
+        buttons: e.buttons,
+        pressure: e.pressure,
+        pointerId: e.pointerId
+      };
+    }
+    return e;
+  }
+
+  private tryFinishRecoveredEraserOnHover(e: PointerEvent): boolean {
+    if (this.recoveredEraserPointerId === null || e.pointerId !== this.recoveredEraserPointerId) {
+      return false;
+    }
+    const isHoverLift = (e.pressure === undefined || e.pressure === 0) && (e.buttons & 1) === 0;
+    if (!isHoverLift) {
+      return false;
+    }
+    this.recoveredEraserPointerId = null;
+    this.delegate.setToolbarDrawingActive(false);
+    const inking = this.delegate.getInkingController();
+    if (inking.isCurrentlyDrawing()) {
+      inking.handlePointerUp(e);
+    }
+    this.revertTemporaryStylusEraser(e);
+    return true;
+  }
+
+  private tryRecoverStylusEraserOnMove(
+    e: PointerEvent,
+    page: PageData,
+    activeCanvas: HTMLCanvasElement,
+    committedCanvas: HTMLCanvasElement,
+    toolbarWrapperEl?: HTMLElement
+  ): boolean {
+    if (e.pointerType === "touch") {
+      return false;
+    }
+    const stylusAction = this.delegate.getStylusButtonAction();
+    if (stylusAction === "off") {
+      return false;
+    }
+    const snapshot = this.buildStylusSnapshot(e, stylusAction);
+    if (snapshot.pointerType !== "pen") {
+      return false;
+    }
+    const inking = this.delegate.getInkingController();
+    const result = this.stylusButtonState.handleActiveButtonContactMove(
+      snapshot,
+      stylusAction,
+      inking.activeTool
+    );
+    if (result.transitionTool !== null) {
+      this.applyStylusToolTransition(result.transitionTool, stylusAction === "toggle");
+    }
+    if (!result.startEraserSession) {
+      return false;
+    }
+
+    const rect = activeCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+
+    this.delegate.getZoomController().flushCanvasResolutionUpdate();
+    this.delegate.getCanvasHost().ensurePageCanvasesMounted(page.pageNumber);
+    this.delegate.setToolbarDrawingActive(true);
+    this.recoveredEraserPointerId = e.pointerId;
+
+    const scaleX = page.dimensions.width / rect.width;
+    const scaleY = page.dimensions.height / rect.height;
+    const pageX = (e.clientX - rect.left) * scaleX;
+    const pageY = (e.clientY - rect.top) * scaleY;
+
+    inking.handlePointerDown(
+      e,
+      page.id,
+      activeCanvas,
+      committedCanvas,
+      { x: pageX, y: pageY },
+      page.strokes,
+      page.shapes,
+      page.dimensions
+    );
+    this.updateHoverCursors(e, toolbarWrapperEl);
+    return true;
   }
 
   private trySetPointerCapture(el: HTMLElement, pointerId: number): void {

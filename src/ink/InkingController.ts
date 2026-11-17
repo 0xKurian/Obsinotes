@@ -168,7 +168,7 @@ export class InkingController {
       }
     }
 
-    if (e.button !== 0 && e.pointerType === "mouse") {
+    if (e.button !== 0 && e.pointerType === "mouse" && this.activeTool !== "eraser") {
       return;
     }
 

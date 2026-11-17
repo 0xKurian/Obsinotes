@@ -580,4 +580,73 @@ describe("EraserEngine", () => {
     assert.strictEqual(committedCount, 0);
     assert.strictEqual(erasedCount, 1);
   });
+
+  test("InkingController allows mouse-emulated secondary button when eraser is active", () => {
+    let committedCount = 0;
+    let erasedCount = 0;
+    let remainingAfterErase: StrokeObject[] = [];
+
+    const controller = new InkingController({
+      onStrokeCommitted: () => {
+        committedCount++;
+      },
+      onStrokesErased: (_pageId, remainingStrokes) => {
+        erasedCount++;
+        remainingAfterErase = remainingStrokes;
+      }
+    });
+
+    const mockCtx = {
+      clearRect: () => {},
+      save: () => {},
+      restore: () => {},
+      setTransform: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+      fill: () => {},
+      arc: () => {}
+    };
+    const mockCanvas = {
+      width: 595,
+      height: 842,
+      dataset: { pageWidth: "595", pageHeight: "842" },
+      getContext: () => mockCtx,
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {}
+    } as unknown as HTMLCanvasElement;
+
+    const stroke = createSampleStroke("stroke_mouse_emu", 40, 60, 50);
+
+    // Non-eraser tools still ignore non-primary mouse buttons
+    controller.setTool("pressure");
+    controller.handlePointerDown(
+      { pointerId: 2, pointerType: "mouse", button: 2, buttons: 2, timeStamp: 100 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 50, y: 50 },
+      [stroke],
+      []
+    );
+    assert.strictEqual(controller.isCurrentlyDrawing(), false);
+    assert.strictEqual(committedCount, 0);
+
+    // Eraser tool accepts mouse-emulated stylus right-click
+    controller.setTool("eraser");
+    controller.handlePointerDown(
+      { pointerId: 2, pointerType: "mouse", button: 2, buttons: 2, timeStamp: 120 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 50, y: 50 },
+      [stroke],
+      []
+    );
+    assert.strictEqual(controller.isCurrentlyDrawing("page_1"), true);
+    controller.handlePointerUp({ pointerId: 2, pointerType: "mouse" } as unknown as PointerEvent);
+    assert.strictEqual(erasedCount, 1);
+    assert.strictEqual(remainingAfterErase.length, 0);
+  });
 });
