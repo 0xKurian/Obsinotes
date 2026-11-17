@@ -567,6 +567,27 @@ export class NotePagesToolbar {
     }
 
     this.syncToolbarSizeControls();
+    this.syncResponsiveDockFit();
+  }
+
+  syncResponsiveDockFit(): void {
+    if (!this.toolbarWrapperEl || !this.hostParentEl) {
+      return;
+    }
+    const hostH = this.hostParentEl.clientHeight ?? 0;
+    const hostW = this.hostParentEl.clientWidth ?? 0;
+    const scale = this.layoutConfig.scale || 1.0;
+
+    if (this.currentPlacement === "left" || this.currentPlacement === "right") {
+      const needs2Col = hostH > 0 && scale * 720 > hostH - 20;
+      this.toolbarWrapperEl.toggleClass("is-vertical-2col", needs2Col);
+      this.toolbarWrapperEl.removeClass("is-auto-wrap");
+    } else {
+      this.toolbarWrapperEl.removeClass("is-vertical-2col");
+      const isDockedHoriz = this.currentPlacement === "top" || this.currentPlacement === "bottom";
+      const needsAutoWrap = isDockedHoriz && hostW > 0 && scale * 920 > hostW - 32;
+      this.toolbarWrapperEl.toggleClass("is-auto-wrap", needsAutoWrap);
+    }
   }
 
   private updateLayoutConfig(partial: Partial<ToolbarLayoutConfig>): void {
@@ -632,6 +653,7 @@ export class NotePagesToolbar {
     if (notify && this.delegate.onSetToolbarPlacement) {
       this.delegate.onSetToolbarPlacement(placement);
     }
+    this.syncResponsiveDockFit();
   }
 
   private positionPopover(popoverEl: HTMLElement): void {

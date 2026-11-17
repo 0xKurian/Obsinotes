@@ -1768,8 +1768,12 @@ export class NotePagesView
       return;
     }
     this.toolbarResizeObserver = new ResizeObserver(() => {
+      this.toolbar?.syncResponsiveDockFit();
       this.syncScrollerTopPadding();
     });
+    if (this.canvasStageEl) {
+      this.toolbarResizeObserver.observe(this.canvasStageEl);
+    }
     this.toolbarResizeObserver.observe(this.toolbar.toolbarWrapperEl);
     if (this.toolbar.toolbarEl) {
       this.toolbarResizeObserver.observe(this.toolbar.toolbarEl);
