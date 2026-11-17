@@ -179,13 +179,17 @@
 }
 
 .notepages-page-popover.notepages-toolbar-popover {
+  top: 56px;
   left: 50%;
   right: auto;
+  bottom: auto;
   transform: translateX(-50%);
+  width: 316px;
+  z-index: 65;
   animation: none;
 }
 
-.notepages-toolbar-float-wrapper .notepages-page-popover.is-hidden {
+.notepages-view-container .notepages-page-popover.is-hidden {
   display: none;
 }
 

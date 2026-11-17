@@ -505,6 +505,44 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(toolbarPopover.hasClass("is-hidden"), true);
   });
 
+  test("toolbar customize popover remains pinned at fixed coordinates when scaling or moving dock", () => {
+    const root = createMockElement("div", "notepages-view-container");
+    (root as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800 } as DOMRect);
+
+    const delegate = createMockDelegate();
+    const toolbar = new NotePagesToolbar(delegate);
+    toolbar.build(root as unknown as HTMLElement);
+
+    (toolbar.toolbarEl as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({ left: 940, top: 100, right: 988, bottom: 700, width: 48, height: 600 } as DOMRect);
+    (toolbar.toolbarPopoverEl as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 316, bottom: 340, width: 316, height: 340 } as DOMRect);
+
+    assert.strictEqual((toolbar.toolbarWrapperEl as unknown as MockDomElement).contains(toolbar.toolbarPopoverEl), false);
+    assert.strictEqual(root.contains(toolbar.toolbarPopoverEl), true);
+
+    toolbar.setPlacement("right", false);
+    toolbar.openToolbarPopover();
+
+    const pop = toolbar.toolbarPopoverEl as unknown as MockDomElement;
+    const initialLeft = pop.style.left;
+    const initialTop = pop.style.top;
+    assert.ok(initialLeft && initialTop, "Initial pinned coordinates must be computed");
+
+    toolbar.applyLayoutConfig({
+      scale: 1.45,
+      maxWidth: 420,
+      wrap: true,
+      showTitle: false,
+      showZoomControls: false
+    });
+    toolbar.setPlacement("left", false);
+
+    assert.strictEqual(pop.style.left, initialLeft);
+    assert.strictEqual(pop.style.top, initialTop);
+  });
+
   test("toolbar contextmenu suppresses stylus popover trigger and pointercancel does not toggle popover", () => {
     const root = createMockElement("div", "notepages-view-container");
     const listeners = new Map<unknown, Map<string, Array<(ev: unknown) => void>>>();

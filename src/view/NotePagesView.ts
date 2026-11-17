@@ -2290,7 +2290,7 @@ export class NotePagesView
     if (!(activeEl instanceof HTMLElement)) {
       return;
     }
-    if (!this.toolbar.toolbarWrapperEl.contains(activeEl)) {
+    if (!this.toolbar.toolbarWrapperEl.contains(activeEl) && !this.toolbar.toolbarPopoverEl?.contains(activeEl)) {
       return;
     }
     const tagName = activeEl.tagName.toLowerCase();

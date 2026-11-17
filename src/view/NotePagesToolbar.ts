@@ -129,6 +129,7 @@ export class NotePagesToolbar {
   };
   private dragHandleEl?: HTMLElement;
   private resizeHandleEl?: HTMLElement;
+  private hostParentEl?: HTMLElement;
   private toolbarScalePresets: Map<number, HTMLElement> = new Map();
   private toolbarScaleSlider?: HTMLInputElement;
   private toolbarScaleBadge?: HTMLElement;
@@ -212,6 +213,7 @@ export class NotePagesToolbar {
   }
 
   build(parentEl: HTMLElement): void {
+    this.hostParentEl = parentEl;
     this.toolbarWrapperEl = parentEl.createDiv({
       cls: "notepages-toolbar-float-wrapper"
     });
@@ -228,7 +230,7 @@ export class NotePagesToolbar {
       cls: "notepages-page-popover is-hidden"
     });
 
-    this.toolbarPopoverEl = this.toolbarWrapperEl.createDiv({
+    this.toolbarPopoverEl = parentEl.createDiv({
       cls: "notepages-page-popover notepages-toolbar-popover is-hidden"
     });
 
@@ -753,9 +755,63 @@ export class NotePagesToolbar {
     if (this.toolbarPopoverEl) {
       this.toolbarPopoverEl.removeClass("is-hidden");
       this.isToolbarPopoverOpen = true;
-      this.positionPopover(this.toolbarPopoverEl);
+      this.positionToolbarPopoverPinned();
       this.dragHandleEl?.addClass("is-active");
     }
+  }
+
+  private positionToolbarPopoverPinned(): void {
+    if (!this.toolbarPopoverEl || !this.hostParentEl) {
+      return;
+    }
+    const hasRects =
+      typeof this.hostParentEl.getBoundingClientRect === "function" &&
+      typeof this.toolbarEl?.getBoundingClientRect === "function" &&
+      typeof this.toolbarPopoverEl.getBoundingClientRect === "function";
+    if (!hasRects) {
+      return;
+    }
+    const hostRect = this.hostParentEl.getBoundingClientRect();
+    const dockRect = this.toolbarEl.getBoundingClientRect();
+    const popRect = this.toolbarPopoverEl.getBoundingClientRect();
+    if (hostRect.width <= 0 || hostRect.height <= 0) {
+      return;
+    }
+    const popW = popRect.width > 0 ? popRect.width : 316;
+    const popH = popRect.height > 0 ? popRect.height : 340;
+    const margin = 10;
+
+    let left = (dockRect.left + dockRect.right) / 2 - hostRect.left - popW / 2;
+    let top = dockRect.bottom - hostRect.top + margin;
+
+    if (this.currentPlacement === "right") {
+      left = dockRect.left - hostRect.left - popW - margin;
+      top = (dockRect.top + dockRect.bottom) / 2 - hostRect.top - popH / 2;
+    } else if (this.currentPlacement === "left") {
+      left = dockRect.right - hostRect.left + margin;
+      top = (dockRect.top + dockRect.bottom) / 2 - hostRect.top - popH / 2;
+    } else if (this.currentPlacement === "bottom") {
+      top = dockRect.top - hostRect.top - popH - margin;
+    } else if (this.currentPlacement === "floating") {
+      const dockMidY = (dockRect.top + dockRect.bottom) / 2;
+      const hostMidY = hostRect.top + hostRect.height / 2;
+      if (dockMidY > hostMidY) {
+        top = dockRect.top - hostRect.top - popH - margin;
+      }
+    }
+
+    const maxLeft = Math.max(8, hostRect.width - popW - 8);
+    const maxTop = Math.max(8, hostRect.height - popH - 8);
+    const clampedLeft = Math.round(Math.max(8, Math.min(maxLeft, left)));
+    const clampedTop = Math.round(Math.max(8, Math.min(maxTop, top)));
+
+    this.toolbarPopoverEl.setCssStyles({
+      left: `${clampedLeft}px`,
+      top: `${clampedTop}px`,
+      right: "auto",
+      bottom: "auto",
+      transform: "none"
+    });
   }
 
   closeToolbarPopover(): void {
