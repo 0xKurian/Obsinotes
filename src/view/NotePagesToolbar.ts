@@ -150,7 +150,9 @@ export class NotePagesToolbar {
   colorPickerInput!: HTMLInputElement;
   widthSelectorContainer!: HTMLElement;
   widthButtons: HTMLElement[] = [];
+  widthPresetButtons: Map<number, HTMLElement> = new Map();
   widthSliderInput!: HTMLInputElement;
+  widthNumberInput!: HTMLInputElement;
   widthValueBadge!: HTMLElement;
   widthPreviewDot!: HTMLElement;
   strokePatternContainer!: HTMLElement;
@@ -460,7 +462,9 @@ export class NotePagesToolbar {
     this.colorPickerInput = refs.colorPickerInput;
     this.widthSelectorContainer = refs.widthSelectorContainer;
     this.widthButtons = refs.widthButtons;
+    this.widthPresetButtons = refs.widthPresetButtons;
     this.widthSliderInput = refs.widthSliderInput;
+    this.widthNumberInput = refs.widthNumberInput;
     this.widthValueBadge = refs.widthValueBadge;
     this.widthPreviewDot = refs.widthPreviewDot;
     this.strokePatternContainer = refs.strokePatternContainer;
@@ -911,8 +915,13 @@ export class NotePagesToolbar {
     if (this.widthSliderInput) {
       this.widthSliderInput.value = String(rounded);
     }
-    if (this.widthValueBadge) {
-      this.widthValueBadge.setText(`${rounded} pt`);
+    const isInputFocused =
+      typeof document !== "undefined" && document.activeElement === (this.widthNumberInput as unknown);
+    if (this.widthNumberInput && !isInputFocused) {
+      this.widthNumberInput.value = String(rounded);
+    }
+    for (const [presetWidth, btn] of this.widthPresetButtons.entries()) {
+      btn.toggleClass("is-active", Math.abs(presetWidth - rounded) < 0.05);
     }
     if (this.widthPreviewDot) {
       const previewSize = Math.min(18, Math.max(2, rounded));

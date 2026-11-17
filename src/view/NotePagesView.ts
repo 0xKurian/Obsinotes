@@ -975,7 +975,18 @@ export class NotePagesView
         return;
       }
       const keyHandler = this.scope.register(modifiers, key, (e) => {
-        if (this.textController.isEditing()) {
+        const targetTag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+        const activeTag =
+          typeof document !== "undefined" ? document.activeElement?.tagName?.toLowerCase() : undefined;
+        if (
+          this.textController.isEditing() ||
+          targetTag === "input" ||
+          targetTag === "textarea" ||
+          targetTag === "select" ||
+          activeTag === "input" ||
+          activeTag === "textarea" ||
+          activeTag === "select"
+        ) {
           return true;
         }
         const outcome = handlerFn(e);
@@ -2291,7 +2302,10 @@ export class NotePagesView
       return;
     }
     const tagName = activeEl.tagName.toLowerCase();
-    if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+    if (
+      activeEl !== this.toolbar.widthNumberInput &&
+      (tagName === "input" || tagName === "textarea" || tagName === "select")
+    ) {
       return;
     }
     activeEl.blur();

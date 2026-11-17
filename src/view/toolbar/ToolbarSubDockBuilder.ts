@@ -2,6 +2,20 @@ import { setIcon } from "obsidian";
 import { PenPreset, ShapeType, StrokePattern } from "../../types";
 import type { NotePagesToolbarDelegate } from "../NotePagesToolbar";
 
+export const STROKE_WIDTH_PRESETS: readonly number[] = [1, 2.5, 5, 12];
+
+export function parseStrokeWidthInput(raw: string): number | null {
+  const normalized = raw.trim().replace(",", ".");
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.round(Math.max(0.5, Math.min(30, parsed)) * 10) / 10;
+}
+
 export interface ToolbarSubDockRefs {
   penPresetsContainer: HTMLElement;
   renderPenPresets: (presets: PenPreset[], activeTool: string, activeColor: string, activeWidth: number, activePattern: StrokePattern) => void;
@@ -22,7 +36,9 @@ export interface ToolbarSubDockRefs {
   colorPickerInput: HTMLInputElement;
   widthSelectorContainer: HTMLElement;
   widthButtons: HTMLElement[];
+  widthPresetButtons: Map<number, HTMLElement>;
   widthSliderInput: HTMLInputElement;
+  widthNumberInput: HTMLInputElement;
   widthValueBadge: HTMLElement;
   widthPreviewDot: HTMLElement;
   strokePatternContainer: HTMLElement;
@@ -324,11 +340,32 @@ export function buildToolbarSubDock(
   });
 
   const widthSelectorContainer = subToolbarEl.createDiv({
-    cls: "notepages-palette-group notepages-subdock-group"
+    cls: "notepages-palette-group notepages-subdock-group notepages-width-selector"
   });
 
-  const currentActiveWidth = delegate.getActiveWidth();
+  const currentActiveWidth = Math.round(delegate.getActiveWidth() * 10) / 10;
   const widthButtons: HTMLElement[] = [];
+  const widthPresetButtons = new Map<number, HTMLElement>();
+
+  const widthPresetsGroup = widthSelectorContainer.createDiv({
+    cls: "notepages-width-presets"
+  });
+
+  for (const presetWidth of STROKE_WIDTH_PRESETS) {
+    const isMatched = Math.abs(presetWidth - currentActiveWidth) < 0.05;
+    const btn = widthPresetsGroup.createEl("button", {
+      cls: isMatched ? "notepages-width-preset-btn is-active" : "notepages-width-preset-btn",
+      text: String(presetWidth)
+    });
+    btn.setAttribute("data-width", String(presetWidth));
+    btn.setAttribute("title", `Set stroke width to ${presetWidth} pt`);
+    widthButtons.push(btn);
+    widthPresetButtons.set(presetWidth, btn);
+
+    delegate.registerDomEvent(btn, "click", () => {
+      delegate.onSelectWidth(presetWidth);
+    });
+  }
 
   const sliderWrapper = widthSelectorContainer.createDiv({
     cls: "notepages-width-slider-wrapper"
@@ -344,11 +381,60 @@ export function buildToolbarSubDock(
   widthSliderInput.value = String(currentActiveWidth);
   widthSliderInput.setAttribute("title", "Adjust stroke width (0.5 - 30 pt)");
 
-  const widthValueBadge = sliderWrapper.createSpan({
-    cls: "notepages-width-badge",
-    text: `${currentActiveWidth} pt`
+  const numberGroup = sliderWrapper.createDiv({
+    cls: "notepages-width-input-group"
+  });
+  const widthNumberInput = numberGroup.createEl("input", {
+    cls: "notepages-width-number-input",
+    type: "text"
+  });
+  widthNumberInput.inputMode = "decimal";
+  widthNumberInput.value = String(currentActiveWidth);
+  widthNumberInput.setAttribute("aria-label", "Stroke width in points");
+  widthNumberInput.setAttribute("title", "Enter custom stroke width (0.5 - 30 pt)");
+
+  const widthValueBadge = numberGroup.createSpan({
+    cls: "notepages-width-badge notepages-width-unit",
+    text: "pt"
   });
   widthValueBadge.setAttribute("title", "Current stroke width (scroll to adjust)");
+
+  const commitNumberInput = (): void => {
+    const parsed = parseStrokeWidthInput(widthNumberInput.value);
+    if (parsed !== null) {
+      widthNumberInput.value = String(parsed);
+      delegate.onSelectWidth(parsed);
+    } else {
+      const fallback = Math.round(delegate.getActiveWidth() * 10) / 10;
+      widthNumberInput.value = String(fallback);
+    }
+  };
+
+  delegate.registerDomEvent(widthNumberInput, "focus", () => {
+    if (typeof widthNumberInput.select === "function") {
+      widthNumberInput.select();
+    }
+  });
+
+  delegate.registerDomEvent(widthNumberInput, "keydown", (e: KeyboardEvent) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitNumberInput();
+      if (typeof widthNumberInput.blur === "function") {
+        widthNumberInput.blur();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      widthNumberInput.value = String(Math.round(delegate.getActiveWidth() * 10) / 10);
+      if (typeof widthNumberInput.blur === "function") {
+        widthNumberInput.blur();
+      }
+    }
+  });
+
+  delegate.registerDomEvent(widthNumberInput, "change", commitNumberInput);
+  delegate.registerDomEvent(widthNumberInput, "blur", commitNumberInput);
 
   const previewWrapper = sliderWrapper.createDiv({
     cls: "notepages-width-preview-wrapper"
@@ -523,7 +609,9 @@ export function buildToolbarSubDock(
     colorPickerInput,
     widthSelectorContainer,
     widthButtons,
+    widthPresetButtons,
     widthSliderInput,
+    widthNumberInput,
     widthValueBadge,
     widthPreviewDot,
     strokePatternContainer,

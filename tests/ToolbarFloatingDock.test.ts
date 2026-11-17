@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
 import { NotePagesToolbar, NotePagesToolbarDelegate } from "../src/view/NotePagesToolbar";
+import { parseStrokeWidthInput, STROKE_WIDTH_PRESETS } from "../src/view/toolbar/ToolbarSubDockBuilder";
 import { PaperTemplateType, ToolType, ShapeType, PageOrientation } from "../src/types";
 
 interface MockDomElement {
@@ -636,5 +637,95 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     });
     (handleListeners.get("pointercancel") ?? [])[0]({ pointerId: 7 });
     assert.strictEqual(toolbar.isToolbarPopoverOpen, false);
+  });
+
+  test("parseStrokeWidthInput parses decimals, commas, clamps range, and rejects invalid text", () => {
+    assert.strictEqual(parseStrokeWidthInput("3.5"), 3.5);
+    assert.strictEqual(parseStrokeWidthInput(" 4,26 "), 4.3);
+    assert.strictEqual(parseStrokeWidthInput("0.1"), 0.5);
+    assert.strictEqual(parseStrokeWidthInput("45"), 30);
+    assert.strictEqual(parseStrokeWidthInput(""), null);
+    assert.strictEqual(parseStrokeWidthInput("-2"), null);
+    assert.strictEqual(parseStrokeWidthInput("abc"), null);
+  });
+
+  test("stroke width presets and direct numeric input update active width cleanly", () => {
+    const root = createMockElement("div", "notepages-view-container");
+    const listeners = new Map<unknown, Map<string, Array<(ev: unknown) => void>>>();
+    const selectedWidths: number[] = [];
+    let currentWidth = 2.5;
+
+    const delegate = createMockDelegate({
+      getActiveWidth: () => currentWidth,
+      onSelectWidth: (w) => {
+        currentWidth = w;
+        selectedWidths.push(w);
+        toolbar.setActiveWidth(w);
+      },
+      registerDomEvent: (el: unknown, type: string, cb: (ev: unknown) => void) => {
+        if (!listeners.has(el)) {
+          listeners.set(el, new Map());
+        }
+        const elMap = listeners.get(el)!;
+        if (!elMap.has(type)) {
+          elMap.set(type, []);
+        }
+        elMap.get(type)!.push(cb);
+      }
+    });
+
+    const toolbar = new NotePagesToolbar(delegate);
+    toolbar.build(root as unknown as HTMLElement);
+
+    // Preset buttons exist for all default widths and highlight active width
+    assert.strictEqual(toolbar.widthPresetButtons.size, STROKE_WIDTH_PRESETS.length);
+    const btn25 = toolbar.widthPresetButtons.get(2.5) as unknown as MockDomElement;
+    const btn5 = toolbar.widthPresetButtons.get(5) as unknown as MockDomElement;
+    assert.strictEqual(btn25.hasClass("is-active"), true);
+    assert.strictEqual(btn5.hasClass("is-active"), false);
+
+    // Clicking preset 5 selects 5 and updates active button + number input + slider
+    (listeners.get(btn5)?.get("click") ?? [])[0]({});
+    assert.strictEqual(currentWidth, 5);
+    assert.strictEqual(btn5.hasClass("is-active"), true);
+    assert.strictEqual(btn25.hasClass("is-active"), false);
+    assert.strictEqual(toolbar.widthNumberInput.value, "5");
+    assert.strictEqual(toolbar.widthSliderInput.value, "5");
+
+    // Typing a custom width with comma and pressing Enter commits clamped/rounded width
+    toolbar.widthNumberInput.value = "7,4";
+    let enterPrevented = false;
+    let enterStopped = false;
+    (listeners.get(toolbar.widthNumberInput)?.get("keydown") ?? [])[0]({
+      key: "Enter",
+      preventDefault: () => {
+        enterPrevented = true;
+      },
+      stopPropagation: () => {
+        enterStopped = true;
+      }
+    });
+    assert.strictEqual(enterPrevented, true);
+    assert.strictEqual(enterStopped, true);
+    assert.strictEqual(currentWidth, 7.4);
+    assert.strictEqual(toolbar.widthSliderInput.value, "7.4");
+    assert.strictEqual(btn5.hasClass("is-active"), false);
+
+    // Pressing Escape restores active width without committing invalid edit
+    toolbar.widthNumberInput.value = "99";
+    (listeners.get(toolbar.widthNumberInput)?.get("keydown") ?? [])[0]({
+      key: "Escape",
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    });
+    assert.strictEqual(currentWidth, 7.4);
+    assert.strictEqual(toolbar.widthNumberInput.value, "7.4");
+
+    // Blurring with out-of-range value clamps to 30
+    toolbar.widthNumberInput.value = "120";
+    (listeners.get(toolbar.widthNumberInput)?.get("blur") ?? [])[0]({});
+    assert.strictEqual(currentWidth, 30);
+    assert.strictEqual(toolbar.widthNumberInput.value, "30");
+    assert.deepStrictEqual(selectedWidths, [5, 7.4, 30]);
   });
 });
