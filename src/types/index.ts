@@ -7,7 +7,7 @@ export const CURRENT_SCHEMA_VERSION = 1;
 
 export type PageSizePreset = "A4" | "A3" | "A5" | "B5" | "Letter" | "16:9" | "Square" | "Custom";
 export type PageOrientation = "portrait" | "landscape";
-export type ToolbarPlacement = "top" | "bottom" | "left" | "right" | "floating";
+export type ToolbarPlacement = "top" | "bottom" | "left" | "right";
 
 export interface ToolbarLayoutConfig {
   scale: number;

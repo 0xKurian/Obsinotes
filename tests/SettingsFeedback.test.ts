@@ -87,7 +87,7 @@ describe("Settings & Feedback Integration", () => {
     assert.strictEqual(resolvedWhenCustom, customUrl);
   });
 
-  test("toolbar size & layout settings definitions and validation work cleanly", async () => {
+  test("toolbar placement & display settings definitions and validation work cleanly", async () => {
     const settings: NotePagesSettings = { ...DEFAULT_SETTINGS, customHotkeys: {} };
     const mockPlugin = {
       settings,
@@ -99,10 +99,7 @@ describe("Settings & Feedback Integration", () => {
 
     const toolbarKeys = [
       "toolbarPlacement",
-      "toolbarScale",
       "toolbarDimWhileDrawing",
-      "toolbarWrap",
-      "toolbarMaxWidth",
       "toolbarShowTitle",
       "toolbarShowZoomControls"
     ];
@@ -111,20 +108,14 @@ describe("Settings & Feedback Integration", () => {
       assert.ok(def, `SettingDefinitions must include ${key}`);
     }
 
-    await tab.setControlValue("toolbarScale", 2.4);
-    assert.strictEqual(settings.toolbarScale, 1.5);
-    await tab.setControlValue("toolbarScale", 0.2);
-    assert.strictEqual(settings.toolbarScale, 0.7);
-    await tab.setControlValue("toolbarScale", 1.25);
-    assert.strictEqual(settings.toolbarScale, 1.25);
+    assert.strictEqual(controls.find((d) => d.control.key === "toolbarScale"), undefined);
+    assert.strictEqual(controls.find((d) => d.control.key === "toolbarWrap"), undefined);
+    assert.strictEqual(controls.find((d) => d.control.key === "toolbarMaxWidth"), undefined);
 
-    await tab.setControlValue("toolbarMaxWidth", "480");
-    assert.strictEqual(settings.toolbarMaxWidth, 480);
-    assert.strictEqual(tab.getControlValue("toolbarMaxWidth"), "480");
-
-    await tab.setControlValue("toolbarMaxWidth", "  ");
-    assert.strictEqual(settings.toolbarMaxWidth, null);
-    assert.strictEqual(tab.getControlValue("toolbarMaxWidth"), "");
+    await tab.setControlValue("toolbarPlacement", "left");
+    assert.strictEqual(settings.toolbarPlacement, "left");
+    await tab.setControlValue("toolbarPlacement", "floating");
+    assert.strictEqual(settings.toolbarPlacement, "left");
   });
 
   test("stylus and drawing customization settings validate bounds and allowed options", async () => {

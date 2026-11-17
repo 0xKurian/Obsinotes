@@ -123,10 +123,10 @@ NotePages includes dedicated stylus side-button handling configurable under **Se
 
 ## 🧭 Workspace & Navigation
 
-- **Customizable Floating Toolbar Dock:**
-  - Drag the grip handle to move the toolbar anywhere, or snap it to **Top**, **Bottom**, **Left**, **Right**, or **Floating** mode.
-  - Drag the resize handle or open the **Customize Toolbar** popover (click the grip handle or right-click the dock) to adjust **Scale (`70%–150%`)**, **Max Width**, **Auto-wrap**, **Notebook Title visibility**, **Zoom controls**, and **Auto-dim while drawing**.
-  - Responsive auto-fit automatically wraps or converts side-docked toolbars into a 2-column layout on narrow screens.
+- **Fixed Edge-Docked Toolbar:**
+  - Drag the grip handle to snap the toolbar cleanly to **Top**, **Bottom**, **Left**, or **Right**—or click the grip handle (or right-click the dock) to switch positions from the toolbar popover.
+  - Maintains a fixed, predictable size without automatic row-wrapping or stretching, scrolling horizontally (top/bottom) or vertically (left/right) on narrow panes.
+  - Toggle **Notebook Title visibility**, **Zoom controls**, and **Auto-dim while drawing** from the toolbar popover or Settings.
 - **Focus Mode (`F`):** Collapse the toolbar to maximize your writing canvas.
 - **Pages Sidebar (`B`), Bookmarks & Titles:**
   - View live page thumbnails, filter or star **bookmarked** pages, and assign **custom page titles**.
@@ -248,14 +248,11 @@ Open **Obsidian Settings → Community Plugins → NotePages** (with built-in se
 ### Toolbar & Workspace
 | Setting | Options / Range | Description |
 | :--- | :--- | :--- |
-| **Toolbar placement** | `Top`, `Bottom`, `Left`, `Right`, `Floating` | Dock anchor position inside the notebook view. |
-| **Toolbar scale** | `0.7` to `1.5` (`70%–150%`) | Overall button, icon, and spacing scale. |
+| **Toolbar placement** | `Top`, `Bottom`, `Left`, `Right` | Fixed edge position inside the notebook view (also changeable by dragging the grip handle). |
 | **Dim toolbar while drawing** | Toggle (`On` / `Off`) | Lower toolbar opacity during active strokes. |
-| **Auto-wrap toolbar buttons** | Toggle (`On` / `Off`) | Wrap toolbar buttons onto multiple rows in narrow panes. |
-| **Toolbar maximum width (px)** | `200` to `1600` (or empty) | Optional width cap for the floating dock. |
-| **Show notebook title / zoom controls** | Toggles (`On` / `Off`) | Show or hide the title pill and zoom stepper on the dock. |
+| **Show notebook title / zoom controls** | Toggles (`On` / `Off`) | Show or hide the title pill and zoom stepper on the toolbar. |
 | **Autosave interval (ms)** | `>= 300` | Debounce delay before writing updates safely to disk. |
-| **Reset toolbar layout / pen presets** | Action buttons | Restore default toolbar layout or quick pen presets. |
+| **Reset toolbar layout / pen presets** | Action buttons | Restore default toolbar placement/visibility or quick pen presets. |
 
 ---
 

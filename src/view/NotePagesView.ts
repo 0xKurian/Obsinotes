@@ -1671,7 +1671,7 @@ export class NotePagesView
 
   getToolbarPlacement(): ToolbarPlacement {
     const isPlacement = (value: unknown): value is ToolbarPlacement =>
-      value === "top" || value === "bottom" || value === "left" || value === "right" || value === "floating";
+      value === "top" || value === "bottom" || value === "left" || value === "right";
     const settingPlacement = this.plugin?.settings?.toolbarPlacement;
     if (isPlacement(settingPlacement)) {
       return settingPlacement;
@@ -1682,9 +1682,9 @@ export class NotePagesView
   getToolbarLayoutConfig(): ToolbarLayoutConfig {
     const s = this.plugin?.settings;
     return {
-      scale: s?.toolbarScale ?? 1.0,
-      maxWidth: s?.toolbarMaxWidth ?? null,
-      wrap: s?.toolbarWrap ?? false,
+      scale: 1.0,
+      maxWidth: null,
+      wrap: false,
       showTitle: s?.toolbarShowTitle ?? true,
       showZoomControls: s?.toolbarShowZoomControls ?? true
     };
@@ -1695,15 +1695,9 @@ export class NotePagesView
     if (!s) {
       return;
     }
-    if (partial.scale !== undefined) {
-      s.toolbarScale = partial.scale;
-    }
-    if (partial.maxWidth !== undefined) {
-      s.toolbarMaxWidth = partial.maxWidth;
-    }
-    if (partial.wrap !== undefined) {
-      s.toolbarWrap = partial.wrap;
-    }
+    s.toolbarScale = 1.0;
+    s.toolbarMaxWidth = null;
+    s.toolbarWrap = false;
     if (partial.showTitle !== undefined) {
       s.toolbarShowTitle = partial.showTitle;
     }
@@ -1768,7 +1762,6 @@ export class NotePagesView
       return;
     }
     this.toolbarResizeObserver = new ResizeObserver(() => {
-      this.toolbar?.syncResponsiveDockFit();
       this.syncScrollerTopPadding();
     });
     if (this.canvasStageEl) {

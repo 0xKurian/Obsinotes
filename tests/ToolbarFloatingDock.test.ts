@@ -410,7 +410,7 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(btnMedium.hasClass("is-active"), false);
   });
 
-  test("applyLayoutConfig updates CSS custom properties, clamps bounds, and toggles layout classes", () => {
+  test("applyLayoutConfig keeps fixed toolbar size and toggles visibility classes", () => {
     const root = createMockElement("div", "notepages-view-container");
     const delegate = createMockDelegate({
       getToolbarLayoutConfig: () => ({
@@ -432,41 +432,46 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
     assert.strictEqual(wrapper.hasClass("is-hide-zoom"), false);
     assert.strictEqual(wrapper.hasClass("is-custom-width"), false);
 
-    // Apply custom resized palette layout and clamped bounds
+    // Fixed toolbar ignores arbitrary scale/width/wrap overrides while applying visibility toggles
     toolbar.applyLayoutConfig({
-      scale: 2.0, // should clamp to 1.5
+      scale: 2.0,
       maxWidth: 420,
       wrap: true,
       showTitle: false,
       showZoomControls: false
     });
 
-    assert.strictEqual(toolbar.layoutConfig.scale, 1.5);
-    assert.strictEqual(wrapper.style["--np-toolbar-scale"], "1.5");
-    assert.strictEqual(wrapper.style["--np-toolbar-max-width"], "420px");
-    assert.strictEqual(wrapper.hasClass("is-toolbar-wrap"), true);
+    assert.strictEqual(toolbar.layoutConfig.scale, 1.0);
+    assert.strictEqual(toolbar.layoutConfig.maxWidth, null);
+    assert.strictEqual(toolbar.layoutConfig.wrap, false);
+    assert.strictEqual(wrapper.style["--np-toolbar-scale"], "1");
+    assert.strictEqual(wrapper.style["--np-toolbar-max-width"], "calc(100% - 24px)");
+    assert.strictEqual(wrapper.hasClass("is-toolbar-wrap"), false);
+    assert.strictEqual(wrapper.hasClass("is-custom-width"), false);
     assert.strictEqual(wrapper.hasClass("is-hide-title"), true);
     assert.strictEqual(wrapper.hasClass("is-hide-zoom"), true);
-    assert.strictEqual(wrapper.hasClass("is-custom-width"), true);
-
-    // Lower clamp check
-    toolbar.applyLayoutConfig({
-      scale: 0.3, // should clamp to 0.7
-      maxWidth: 50, // should clamp to 180
-      wrap: false,
-      showTitle: true,
-      showZoomControls: true
-    });
-    assert.strictEqual(toolbar.layoutConfig.scale, 0.7);
-    assert.strictEqual(toolbar.layoutConfig.maxWidth, 180);
   });
 
-  test("dock includes resize handle and switches placement cleanly", () => {
+  test("dock omits resize handle, switches 4 edge placements cleanly, and snaps drag to nearest edge", () => {
     const root = createMockElement("div", "notepages-view-container");
+    (root as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 1000, bottom: 800, width: 1000, height: 800 } as DOMRect);
+
+    const listeners = new Map<unknown, Map<string, Array<(ev: unknown) => void>>>();
     let savedPlacement = "top";
     const delegate = createMockDelegate({
       onSetToolbarPlacement: (p) => {
         savedPlacement = p;
+      },
+      registerDomEvent: (el: unknown, type: string, cb: (ev: unknown) => void) => {
+        if (!listeners.has(el)) {
+          listeners.set(el, new Map());
+        }
+        const elMap = listeners.get(el)!;
+        if (!elMap.has(type)) {
+          elMap.set(type, []);
+        }
+        elMap.get(type)!.push(cb);
       }
     });
     const toolbar = new NotePagesToolbar(delegate);
@@ -474,13 +479,39 @@ describe("NotePages Floating Dock Toolbar Feature", () => {
 
     const dock = toolbar.toolbarEl as unknown as MockDomElement;
     const resizeHandle = dock.children.find((c) => c.hasClass("notepages-dock-resize-handle"));
-    assert.ok(resizeHandle, "Main dock must contain interactive resize handle");
+    assert.strictEqual(resizeHandle, undefined, "Fixed toolbar must not include resize handle");
 
     const wrapper = toolbar.toolbarWrapperEl as unknown as MockDomElement;
+    (wrapper as unknown as { parentElement: unknown }).parentElement = root;
     toolbar.setPlacement("left");
     assert.strictEqual(savedPlacement, "left");
     assert.strictEqual(wrapper.hasClass("is-position-left"), true);
     assert.strictEqual(wrapper.hasClass("is-position-top"), false);
+
+    // Dragging near bottom edge snaps to "bottom" rather than leaving floating
+    let currentRect = { left: 20, top: 380, right: 100, bottom: 420, width: 80, height: 40 };
+    (wrapper as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      currentRect as DOMRect;
+    const dragHandle = (toolbar as unknown as { dragHandleEl: MockDomElement }).dragHandleEl;
+    const handleListeners = listeners.get(dragHandle)!;
+    (handleListeners.get("pointerdown") ?? [])[0]({
+      pointerId: 3,
+      clientX: 40,
+      clientY: 400,
+      stopPropagation: () => {},
+      preventDefault: () => {}
+    });
+    (handleListeners.get("pointermove") ?? [])[0]({
+      pointerId: 3,
+      clientX: 450,
+      clientY: 740,
+      stopPropagation: () => {},
+      preventDefault: () => {}
+    });
+    currentRect = { left: 350, top: 730, right: 650, bottom: 774, width: 300, height: 44 };
+    (handleListeners.get("pointerup") ?? [])[0]({ pointerId: 3 });
+    assert.strictEqual(savedPlacement, "bottom");
+    assert.strictEqual(wrapper.hasClass("is-position-bottom"), true);
   });
 
   test("toolbar customize popover opens independently and stays mutually exclusive with page popover", () => {

@@ -2144,110 +2144,16 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   cursor: grabbing;
 }
 
-.notepages-dock-resize-handle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 10px;
-  height: calc(24px * var(--np-toolbar-scale));
-  cursor: ew-resize;
-  flex-shrink: 0;
-  margin-left: 2px;
-  border-radius: 4px;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.notepages-dock-resize-handle::before {
-  content: "";
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-  background-color: var(--text-faint);
-  opacity: 0.45;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
-}
-
-.notepages-dock-resize-handle:hover::before,
-.notepages-toolbar-float-wrapper.is-dock-resizing .notepages-dock-resize-handle::before {
-  opacity: 1;
-  background-color: var(--interactive-accent);
-}
-
-.notepages-dock-resize-handle[data-resize-width]::after {
-  content: attr(data-resize-width);
-  position: absolute;
-  top: -28px;
-  right: 0;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background-color: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  color: var(--text-normal);
-  font-size: 10px;
-  font-family: var(--font-monospace);
-  white-space: nowrap;
-  pointer-events: none;
-  box-shadow: var(--shadow-s);
-}
-
-.notepages-toolbar-float-wrapper.is-dock-dragging,
-.notepages-toolbar-float-wrapper.is-dock-resizing {
+.notepages-toolbar-float-wrapper.is-dock-dragging {
   transition: none;
   opacity: 0.96;
-}
-
-.notepages-toolbar-float-wrapper.is-dock-dragging {
   cursor: grabbing;
-}
-
-.notepages-toolbar-float-wrapper.is-custom-width .notepages-floating-dock {
-  width: min(var(--np-toolbar-max-width), calc(100% - 24px));
-  max-width: min(var(--np-toolbar-max-width), calc(100% - 24px));
-}
-
-.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-floating-dock,
-.notepages-toolbar-float-wrapper.is-auto-wrap .notepages-floating-dock {
-  height: auto;
-  max-height: none;
-  flex-wrap: wrap;
-  justify-content: center;
-  border-radius: calc(16px * var(--np-toolbar-scale));
-  padding: calc(5px * var(--np-toolbar-scale)) calc(20px * var(--np-toolbar-scale)) calc(5px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
-  gap: calc(3px * var(--np-toolbar-scale)) calc(5px * var(--np-toolbar-scale));
-  overflow-x: visible;
-}
-
-.notepages-toolbar-float-wrapper.is-toolbar-wrap.is-dock-collapsed .notepages-floating-dock,
-.notepages-toolbar-float-wrapper.is-auto-wrap.is-dock-collapsed .notepages-floating-dock {
-  padding: calc(4px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
-}
-
-.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-floating-dock > .notepages-toolbar-separator,
-.notepages-toolbar-float-wrapper.is-auto-wrap .notepages-floating-dock > .notepages-toolbar-separator {
-  display: none;
-}
-
-.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-dock-resize-handle,
-.notepages-toolbar-float-wrapper.is-auto-wrap .notepages-dock-resize-handle {
-  position: absolute;
-  right: 5px;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 55%;
-  min-height: 20px;
-  margin-left: 0;
-}
-
-.notepages-toolbar-float-wrapper.is-toolbar-wrap .notepages-dock-section,
-.notepages-toolbar-float-wrapper.is-auto-wrap .notepages-dock-section {
-  flex-wrap: wrap;
-  justify-content: safe center;
-  max-width: 100%;
-  min-width: 0;
-  flex-shrink: 1;
+  right: auto;
+  bottom: auto;
+  padding: 0;
+  transform: none;
+  align-items: flex-start;
+  max-width: calc(100% - 16px);
 }
 
 .notepages-view-container .notepages-toolbar-float-wrapper.is-hide-title button.notepages-title-btn,
@@ -2341,11 +2247,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   display: none;
 }
 
-.notepages-toolbar-float-wrapper.is-position-left .notepages-dock-resize-handle,
-.notepages-toolbar-float-wrapper.is-position-right .notepages-dock-resize-handle {
-  display: none;
-}
-
 .notepages-toolbar-float-wrapper.is-position-left .notepages-subtoolbar-float,
 .notepages-toolbar-float-wrapper.is-position-right .notepages-subtoolbar-float {
   flex-direction: column;
@@ -2384,29 +2285,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   max-width: none;
 }
 
-.notepages-toolbar-float-wrapper.is-vertical-2col .notepages-dock-section {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  justify-items: center;
-  align-items: center;
-  gap: calc(3px * var(--np-toolbar-scale));
-}
-
-.notepages-toolbar-float-wrapper.is-vertical-2col .notepages-dock-section .notepages-toolbar-separator {
-  grid-column: 1 / -1;
-}
-
-.notepages-toolbar-float-wrapper.is-vertical-2col .notepages-dock-zoom-group {
-  grid-column: 1 / -1;
-  flex-direction: row;
-  padding: calc(1px * var(--np-toolbar-scale)) calc(3px * var(--np-toolbar-scale));
-}
-
-.notepages-toolbar-float-wrapper.is-vertical-2col .notepages-floating-dock {
-  max-width: calc(220px * var(--np-toolbar-scale));
-  padding: calc(8px * var(--np-toolbar-scale)) calc(6px * var(--np-toolbar-scale));
-}
-
 .notepages-toolbar-float-wrapper.is-position-left .notepages-page-popover,
 .notepages-toolbar-float-wrapper.is-position-left .notepages-page-popover.notepages-toolbar-popover {
   top: 0;
@@ -2425,40 +2303,6 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   transform: none;
 }
 
-.notepages-toolbar-float-wrapper.is-position-floating {
-  right: auto;
-  padding: 0;
-  transform: none;
-  align-items: flex-start;
-  max-width: calc(100% - 16px);
-}
-
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-floating-dock,
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-subtoolbar-float {
-  max-width: min(var(--np-toolbar-max-width), 100%);
-}
-
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover,
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.notepages-toolbar-popover {
-  top: calc(100% + 8px);
-  bottom: auto;
-  right: 0;
-  left: auto;
-  transform: none;
-}
-
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-above,
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.notepages-toolbar-popover.is-popover-above {
-  top: auto;
-  bottom: calc(100% + 8px);
-}
-
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.is-popover-align-left,
-.notepages-toolbar-float-wrapper.is-position-floating .notepages-page-popover.notepages-toolbar-popover.is-popover-align-left {
-  right: auto;
-  left: 0;
-}
-
 .notepages-popover-size-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -2468,17 +2312,10 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
 
 .notepages-popover-dock-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
 }
 
-.notepages-popover-scale-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-}
-
-.notepages-page-popover .notepages-popover-scale-grid button.notepages-popover-item,
 .notepages-page-popover .notepages-popover-size-grid button.notepages-popover-item {
   height: 32px;
   min-height: 32px;

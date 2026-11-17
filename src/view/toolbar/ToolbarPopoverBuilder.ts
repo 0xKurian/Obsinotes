@@ -17,12 +17,6 @@ export interface PagePopoverRefs {
 }
 
 export interface ToolbarPopoverRefs {
-  toolbarScalePresets: Map<number, HTMLElement>;
-  toolbarScaleSlider: HTMLInputElement;
-  toolbarScaleBadge: HTMLElement;
-  toolbarWidthSlider: HTMLInputElement;
-  toolbarWidthBadge: HTMLElement;
-  toolbarWrapToggleBtn: HTMLElement;
   toolbarTitleToggleBtn: HTMLElement;
   toolbarZoomToggleBtn: HTMLElement;
   dockPlacementButtons: Map<ToolbarPlacement, HTMLElement>;
@@ -329,13 +323,13 @@ export function buildToolbarPopover(
   });
   header.createSpan({
     cls: "notepages-popover-title",
-    text: "Toolbar size & position"
+    text: "Toolbar position & display"
   });
   const resetAllBtn = header.createEl("button", {
     cls: "notepages-popover-mini-btn",
     text: "Reset"
   });
-  resetAllBtn.setAttribute("title", "Reset toolbar scale, width, wrap, and position to defaults");
+  resetAllBtn.setAttribute("title", "Reset toolbar position and visibility to defaults");
   delegate.registerDomEvent(resetAllBtn, "click", () => {
     host.setPlacement("top");
     delegate.onSetToolbarFloatingPos?.(null);
@@ -348,116 +342,52 @@ export function buildToolbarPopover(
     });
   });
 
-  const sizeLayoutSection = toolbarPopoverEl.createDiv({
+  const dockSection = toolbarPopoverEl.createDiv({
     cls: "notepages-popover-section"
   });
-  sizeLayoutSection.createDiv({
+  dockSection.createDiv({
     cls: "notepages-popover-section-label",
-    text: "Button & icon scale"
+    text: "Toolbar position"
   });
 
-  const scaleGrid = sizeLayoutSection.createDiv({
-    cls: "notepages-popover-grid notepages-popover-scale-grid"
+  const dockGrid = dockSection.createDiv({
+    cls: "notepages-popover-grid notepages-popover-dock-grid"
   });
 
-  const toolbarScalePresets = new Map<number, HTMLElement>();
-  const scalePresets: Array<{ scale: number; label: string }> = [
-    { scale: 0.8, label: "Mini" },
-    { scale: 0.9, label: "Compact" },
-    { scale: 1.0, label: "Normal" },
-    { scale: 1.2, label: "Large" },
-    { scale: 1.35, label: "XL" }
+  const dockPlacementButtons = new Map<ToolbarPlacement, HTMLElement>();
+  const dockPositions: Array<{ pos: ToolbarPlacement; label: string; icon: string }> = [
+    { pos: "top", label: "Top", icon: "arrow-up" },
+    { pos: "bottom", label: "Bottom", icon: "arrow-down" },
+    { pos: "left", label: "Left", icon: "arrow-left" },
+    { pos: "right", label: "Right", icon: "arrow-right" }
   ];
 
-  for (const sp of scalePresets) {
-    const btn = scaleGrid.createEl("button", {
-      cls: Math.abs(layoutConfig.scale - sp.scale) < 0.03 ? "notepages-popover-item is-active" : "notepages-popover-item"
+  for (const dp of dockPositions) {
+    const btn = dockGrid.createEl("button", {
+      cls: dp.pos === currentPlacement ? "notepages-popover-item is-active" : "notepages-popover-item"
     });
-    btn.createSpan({ cls: "notepages-popover-item-text", text: sp.label });
-    btn.setAttribute("title", `Set toolbar scale to ${Math.round(sp.scale * 100)}%`);
-    toolbarScalePresets.set(sp.scale, btn);
+    const iconSpan = btn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(iconSpan, dp.icon);
+    btn.createSpan({ cls: "notepages-popover-item-text", text: dp.label });
+    btn.setAttribute("title", `Dock toolbar to ${dp.label}`);
+    dockPlacementButtons.set(dp.pos, btn);
     delegate.registerDomEvent(btn, "click", () => {
-      host.updateLayoutConfig({ scale: sp.scale });
+      host.setPlacement(dp.pos);
+      delegate.onSetToolbarFloatingPos?.(null);
+      host.closeToolbarPopover();
     });
   }
 
-  const scaleSliderRow = sizeLayoutSection.createDiv({
-    cls: "notepages-popover-slider-row"
-  });
-  scaleSliderRow.createSpan({ cls: "notepages-popover-sublabel", text: "Scale:" });
-  const toolbarScaleSlider = scaleSliderRow.createEl("input", {
-    cls: "notepages-popover-range"
-  });
-  toolbarScaleSlider.type = "range";
-  toolbarScaleSlider.min = "70";
-  toolbarScaleSlider.max = "150";
-  toolbarScaleSlider.step = "5";
-  toolbarScaleSlider.value = String(Math.round(layoutConfig.scale * 100));
-  const toolbarScaleBadge = scaleSliderRow.createSpan({
-    cls: "notepages-popover-value-badge",
-    text: `${Math.round(layoutConfig.scale * 100)}%`
-  });
-  delegate.registerDomEvent(toolbarScaleSlider, "input", () => {
-    const nextScale = Math.round(Number(toolbarScaleSlider.value)) / 100;
-    host.applyLayoutConfig({ ...host.getLayoutConfig(), scale: nextScale });
-  });
-  delegate.registerDomEvent(toolbarScaleSlider, "change", () => {
-    const nextScale = Math.round(Number(toolbarScaleSlider.value)) / 100;
-    host.updateLayoutConfig({ scale: nextScale });
-  });
-
-  const widthSection = toolbarPopoverEl.createDiv({
+  const displaySection = toolbarPopoverEl.createDiv({
     cls: "notepages-popover-section"
   });
-  widthSection.createDiv({
+  displaySection.createDiv({
     cls: "notepages-popover-section-label",
-    text: "Width & visibility"
+    text: "Display"
   });
 
-  const widthSliderRow = widthSection.createDiv({
-    cls: "notepages-popover-slider-row"
-  });
-  widthSliderRow.createSpan({ cls: "notepages-popover-sublabel", text: "Width:" });
-  const toolbarWidthSlider = widthSliderRow.createEl("input", {
-    cls: "notepages-popover-range"
-  });
-  toolbarWidthSlider.type = "range";
-  toolbarWidthSlider.min = "220";
-  toolbarWidthSlider.max = "1000";
-  toolbarWidthSlider.step = "20";
-  toolbarWidthSlider.value = String(layoutConfig.maxWidth ?? 680);
-  const toolbarWidthBadge = widthSliderRow.createSpan({
-    cls: "notepages-popover-value-badge",
-    text: layoutConfig.maxWidth !== null ? `${layoutConfig.maxWidth}px` : "Auto"
-  });
-  const autoWidthBtn = widthSliderRow.createEl("button", {
-    cls: "notepages-popover-mini-btn",
-    text: "Auto"
-  });
-  autoWidthBtn.setAttribute("title", "Reset toolbar width to single-row automatic");
-  delegate.registerDomEvent(autoWidthBtn, "click", () => {
-    host.updateLayoutConfig({ maxWidth: null, wrap: false });
-  });
-  delegate.registerDomEvent(toolbarWidthSlider, "input", () => {
-    const nextW = parseInt(toolbarWidthSlider.value, 10);
-    host.applyLayoutConfig({ ...host.getLayoutConfig(), maxWidth: nextW, wrap: true });
-  });
-  delegate.registerDomEvent(toolbarWidthSlider, "change", () => {
-    const nextW = parseInt(toolbarWidthSlider.value, 10);
-    host.updateLayoutConfig({ maxWidth: nextW, wrap: true });
-  });
-
-  const togglesRow = widthSection.createDiv({
+  const togglesRow = displaySection.createDiv({
     cls: "notepages-popover-toggles-row"
-  });
-
-  const toolbarWrapToggleBtn = togglesRow.createEl("button", {
-    cls: layoutConfig.wrap ? "notepages-popover-chip is-active" : "notepages-popover-chip",
-    text: "Wrap rows"
-  });
-  toolbarWrapToggleBtn.setAttribute("title", "Wrap toolbar buttons into multiple rows when space is narrow");
-  delegate.registerDomEvent(toolbarWrapToggleBtn, "click", () => {
-    host.updateLayoutConfig({ wrap: !host.getLayoutConfig().wrap });
   });
 
   const toolbarTitleToggleBtn = togglesRow.createEl("button", {
@@ -478,52 +408,7 @@ export function buildToolbarPopover(
     host.updateLayoutConfig({ showZoomControls: !host.getLayoutConfig().showZoomControls });
   });
 
-  const dockSection = toolbarPopoverEl.createDiv({
-    cls: "notepages-popover-section"
-  });
-  dockSection.createDiv({
-    cls: "notepages-popover-section-label",
-    text: "Toolbar position"
-  });
-
-  const dockGrid = dockSection.createDiv({
-    cls: "notepages-popover-grid notepages-popover-dock-grid"
-  });
-
-  const dockPlacementButtons = new Map<ToolbarPlacement, HTMLElement>();
-  const dockPositions: Array<{ pos: ToolbarPlacement; label: string; icon: string }> = [
-    { pos: "top", label: "Top", icon: "arrow-up" },
-    { pos: "bottom", label: "Bottom", icon: "arrow-down" },
-    { pos: "left", label: "Left", icon: "arrow-left" },
-    { pos: "right", label: "Right", icon: "arrow-right" },
-    { pos: "floating", label: "Free", icon: "move" }
-  ];
-
-  for (const dp of dockPositions) {
-    const btn = dockGrid.createEl("button", {
-      cls: dp.pos === currentPlacement ? "notepages-popover-item is-active" : "notepages-popover-item"
-    });
-    const iconSpan = btn.createSpan({ cls: "notepages-popover-item-icon" });
-    setIcon(iconSpan, dp.icon);
-    btn.createSpan({ cls: "notepages-popover-item-text", text: dp.label });
-    btn.setAttribute("title", `Dock toolbar to ${dp.label}`);
-    dockPlacementButtons.set(dp.pos, btn);
-    delegate.registerDomEvent(btn, "click", () => {
-      host.setPlacement(dp.pos);
-      if (dp.pos !== "floating") {
-        delegate.onSetToolbarFloatingPos?.(null);
-      }
-      host.closeToolbarPopover();
-    });
-  }
-
   return {
-    toolbarScalePresets,
-    toolbarScaleSlider,
-    toolbarScaleBadge,
-    toolbarWidthSlider,
-    toolbarWidthBadge,
-    toolbarWrapToggleBtn,
     toolbarTitleToggleBtn,
     toolbarZoomToggleBtn,
     dockPlacementButtons

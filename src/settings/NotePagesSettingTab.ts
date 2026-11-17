@@ -73,8 +73,7 @@ const TOOLBAR_PLACEMENT_OPTIONS: Record<ToolbarPlacement, string> = {
   top: "Top",
   bottom: "Bottom",
   left: "Left",
-  right: "Right",
-  floating: "Floating"
+  right: "Right"
 };
 
 const HOTKEY_CATEGORY_TITLES: Record<HotkeyCategory, string> = {
@@ -204,37 +203,22 @@ export class NotePagesSettingTab extends PluginSettingTab {
       items: [
         {
           name: "Toolbar placement",
-          desc: "Anchor position of the floating toolbar dock inside the notebook view.",
+          desc: "Dock position of the fixed toolbar inside the notebook view (top, bottom, left, or right).",
           control: { type: "dropdown", key: "toolbarPlacement", options: TOOLBAR_PLACEMENT_OPTIONS }
         },
         {
-          name: "Toolbar scale",
-          desc: "Adjust overall size of floating toolbar buttons, icons, and spacing (70% to 150%).",
-          control: { type: "slider", key: "toolbarScale", min: 0.7, max: 1.5, step: 0.05 }
-        },
-        {
           name: "Dim toolbar while drawing",
-          desc: "Reduce floating toolbar opacity during active pen strokes so it stays out of the way.",
+          desc: "Reduce toolbar opacity during active pen strokes so it stays out of the way.",
           control: { type: "toggle", key: "toolbarDimWhileDrawing" }
         },
         {
-          name: "Auto-wrap toolbar buttons",
-          desc: "Automatically wrap toolbar buttons onto multiple rows when space is narrow or resized.",
-          control: { type: "toggle", key: "toolbarWrap" }
-        },
-        {
-          name: "Toolbar maximum width (px)",
-          desc: "Optional max width in pixels (200 to 1600). Leave empty for automatic width.",
-          control: { type: "text", key: "toolbarMaxWidth" }
-        },
-        {
           name: "Show notebook title on toolbar",
-          desc: "Display the clickable notebook title pill on the floating dock.",
+          desc: "Display the clickable notebook title pill on the toolbar.",
           control: { type: "toggle", key: "toolbarShowTitle" }
         },
         {
           name: "Show zoom controls on toolbar",
-          desc: "Display zoom stepper buttons and percentage pill on the floating dock.",
+          desc: "Display zoom stepper buttons and percentage pill on the toolbar.",
           control: { type: "toggle", key: "toolbarShowZoomControls" }
         },
         {
@@ -244,7 +228,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
         },
         {
           name: "Reset toolbar layout",
-          desc: "Restore default toolbar scale, width, wrapping, dimming, and position.",
+          desc: "Restore default toolbar position, dimming, and visibility.",
           action: () => {
             void this.resetToolbarLayout(true);
           }
@@ -359,10 +343,6 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
   override getControlValue(key: string): unknown {
     const settings = this.plugin.settings as unknown as Record<string, unknown>;
-    if (key === "toolbarMaxWidth") {
-      const v = settings[key];
-      return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
-    }
     return settings[key];
   }
 
@@ -412,28 +392,6 @@ export class NotePagesSettingTab extends PluginSettingTab {
       const parsed = this.parseFiniteNumber(value);
       if (parsed !== null) {
         settings[key] = Math.round(Math.min(1000, Math.max(0, parsed)));
-        await this.plugin.saveSettings();
-      }
-      return;
-    }
-    if (key === "toolbarScale") {
-      const parsed = this.parseFiniteNumber(value);
-      if (parsed !== null) {
-        settings[key] = Math.round(Math.min(1.5, Math.max(0.7, parsed)) * 100) / 100;
-        await this.plugin.saveSettings();
-      }
-      return;
-    }
-    if (key === "toolbarMaxWidth") {
-      const raw = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
-      if (!raw) {
-        settings[key] = null;
-        await this.plugin.saveSettings();
-        return;
-      }
-      const parsed = parseInt(raw, 10);
-      if (!isNaN(parsed) && parsed >= 200) {
-        settings[key] = Math.min(1600, Math.round(parsed));
         await this.plugin.saveSettings();
       }
       return;
@@ -910,33 +868,29 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Toolbar placement")
-      .setDesc("Anchor position of the floating toolbar dock inside the notebook view.")
+      .setDesc("Dock position of the fixed toolbar inside the notebook view (top, bottom, left, or right).")
       .addDropdown((dropdown) => {
         Object.entries(TOOLBAR_PLACEMENT_OPTIONS).forEach(([val, label]) => {
           dropdown.addOption(val, label);
         });
+        const currentPlacement = this.plugin.settings.toolbarPlacement;
         dropdown
-          .setValue(this.plugin.settings.toolbarPlacement ?? "top")
+          .setValue(
+            currentPlacement === "top" ||
+              currentPlacement === "bottom" ||
+              currentPlacement === "left" ||
+              currentPlacement === "right"
+              ? currentPlacement
+              : "top"
+          )
           .onChange(async (value) => {
             await this.setControlValue("toolbarPlacement", value);
           });
       });
 
     new Setting(containerEl)
-      .setName("Toolbar scale")
-      .setDesc("Adjust overall size of floating toolbar buttons, icons, and spacing (70% to 150%).")
-      .addSlider((slider) => {
-        slider
-          .setLimits(0.7, 1.5, 0.05)
-          .setValue(this.plugin.settings.toolbarScale ?? 1.0)
-          .onChange(async (value) => {
-            await this.setControlValue("toolbarScale", value);
-          });
-      });
-
-    new Setting(containerEl)
       .setName("Dim toolbar while drawing")
-      .setDesc("Reduce floating toolbar opacity during active pen strokes so it stays out of the way.")
+      .setDesc("Reduce toolbar opacity during active pen strokes so it stays out of the way.")
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.toolbarDimWhileDrawing ?? true)
@@ -946,31 +900,8 @@ export class NotePagesSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Auto-wrap toolbar buttons")
-      .setDesc("Automatically wrap toolbar buttons onto multiple rows when space is narrow or resized.")
-      .addToggle((toggle) => {
-        toggle
-          .setValue(this.plugin.settings.toolbarWrap ?? false)
-          .onChange(async (value) => {
-            await this.setControlValue("toolbarWrap", value);
-          });
-      });
-
-    new Setting(containerEl)
-      .setName("Toolbar maximum width (px)")
-      .setDesc("Optional max width in pixels (200 to 1600). Leave empty for automatic width.")
-      .addText((text) => {
-        text
-          .setPlaceholder("Auto")
-          .setValue(this.plugin.settings.toolbarMaxWidth ? String(this.plugin.settings.toolbarMaxWidth) : "")
-          .onChange(async (value) => {
-            await this.setControlValue("toolbarMaxWidth", value);
-          });
-      });
-
-    new Setting(containerEl)
       .setName("Show notebook title on toolbar")
-      .setDesc("Display the clickable notebook title pill on the floating dock.")
+      .setDesc("Display the clickable notebook title pill on the toolbar.")
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.toolbarShowTitle ?? true)
@@ -981,7 +912,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Show zoom controls on toolbar")
-      .setDesc("Display zoom stepper buttons and percentage pill on the floating dock.")
+      .setDesc("Display zoom stepper buttons and percentage pill on the toolbar.")
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.toolbarShowZoomControls ?? true)
@@ -1014,7 +945,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Reset toolbar layout")
-      .setDesc("Restore default toolbar scale, width, wrapping, dimming, and position.")
+      .setDesc("Restore default toolbar position, dimming, and visibility.")
       .addButton((button) => {
         button
           .setButtonText("Reset defaults")
