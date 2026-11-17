@@ -61,10 +61,13 @@ const ERASER_MODE_OPTIONS: Record<EraserMode, string> = {
 };
 
 const STYLUS_BUTTON_OPTIONS: Record<StylusButtonAction, string> = {
-  hold: "Hold to erase (temporary eraser)",
-  toggle: "Toggle eraser on press",
+  hold: "Hold to erase (desktop / compatible styluses)",
+  toggle: "Toggle eraser on press (recommended for Android / Samsung S Pen)",
   off: "Disabled"
 };
+
+const STYLUS_BUTTON_DESC =
+  "Map the stylus side button to the eraser. On Android / Samsung S Pen, use Toggle eraser on press (press while hovering, then release to erase), because Android WebView pauses pen drag events while the button remains held. Hold to erase works on desktop and compatible stylus drivers.";
 
 const TOOLBAR_PLACEMENT_OPTIONS: Record<ToolbarPlacement, string> = {
   top: "Top",
@@ -189,7 +192,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
         },
         {
           name: "Stylus side button",
-          desc: "Map the stylus side button within hover or touch range to the eraser (hold the side button while touching or dragging on tablets where hover shortcuts are intercepted).",
+          desc: STYLUS_BUTTON_DESC,
           control: { type: "dropdown", key: "stylusButtonAction", options: STYLUS_BUTTON_OPTIONS }
         }
       ]
@@ -891,7 +894,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Stylus side button")
-      .setDesc("Map the stylus side button within hover or touch range to the eraser (hold the side button while touching or dragging on tablets where hover shortcuts are intercepted).")
+      .setDesc(STYLUS_BUTTON_DESC)
       .addDropdown((dropdown) => {
         Object.entries(STYLUS_BUTTON_OPTIONS).forEach(([val, label]) => {
           dropdown.addOption(val, label);
