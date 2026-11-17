@@ -149,6 +149,7 @@ export class NotePagesView
 
   rootContainerEl!: HTMLElement;
   mainAreaEl!: HTMLElement;
+  canvasStageEl!: HTMLElement;
   scrollerEl!: HTMLElement;
   pagesContainerEl!: HTMLElement;
   statusAreaEl!: HTMLElement;
@@ -852,7 +853,8 @@ export class NotePagesView
       cls: "notepages-pen-cursor is-hidden"
     });
 
-    this.toolbar.build(this.rootContainerEl);
+    this.buildMainArea();
+    this.toolbar.build(this.canvasStageEl);
     this.toolbar.setSelectionSubMode(this.selectionSubMode);
     this.toolbar.setActiveColor(this.inkingController.currentColor);
     this.toolbar.setActiveWidth(this.inkingController.currentWidth);
@@ -863,8 +865,9 @@ export class NotePagesView
       this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan"
     );
     this.minimap = new NotePagesMinimap(this);
-    this.minimap.build(this.rootContainerEl);
-    this.buildMainArea();
+    this.minimap.build(this.canvasStageEl);
+    this.setupToolbarResizeObserver();
+    this.syncScrollerTopPadding();
     this.buildStatusArea();
     this.registerKeyboardShortcuts();
   }
@@ -2031,11 +2034,13 @@ export class NotePagesView
 
     this.sidebar.build(this.mainAreaEl);
 
-    this.scrollerEl = this.mainAreaEl.createDiv({
+    this.canvasStageEl = this.mainAreaEl.createDiv({
+      cls: "notepages-canvas-stage"
+    });
+
+    this.scrollerEl = this.canvasStageEl.createDiv({
       cls: "notepages-scroller"
     });
-    this.setupToolbarResizeObserver();
-    this.syncScrollerTopPadding();
     this.registerDomEvent(this.scrollerEl, "scroll", () => {
       this.handleScroll();
     });

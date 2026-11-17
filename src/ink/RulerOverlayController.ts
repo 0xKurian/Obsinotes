@@ -186,6 +186,7 @@ export class RulerOverlayController {
     this.activeStrokeLocks.clear();
     if (this.rulerEl) {
       this.rulerEl.addClass("is-hidden");
+      this.rulerEl.toggle(false);
     }
     this.host.onVisibilityChanged?.(false);
   }
@@ -409,6 +410,7 @@ export class RulerOverlayController {
       return;
     }
     this.rulerEl.toggleClass("is-hidden", !this.state.visible);
+    this.rulerEl.toggle(this.state.visible);
     if (!this.state.visible) {
       return;
     }
