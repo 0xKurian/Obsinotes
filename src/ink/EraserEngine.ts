@@ -1,5 +1,6 @@
 import { PointSample, ShapeObject, StrokeObject } from "../types";
 import { StrokeGeometry } from "./StrokeGeometry";
+import { PageSpatialIndex } from "../geometry/PageSpatialIndex";
 
 export interface EraseResult {
   remaining: StrokeObject[];
@@ -95,32 +96,47 @@ export class EraserEngine {
     strokes: StrokeObject[],
     eraserX: number,
     eraserY: number,
-    radius: number
+    radius: number,
+    spatialIndex?: PageSpatialIndex
   ): EraseResult {
-    const remaining: StrokeObject[] = [];
+    const candidates = spatialIndex
+      ? spatialIndex.queryStrokes({
+          minX: eraserX - radius,
+          minY: eraserY - radius,
+          maxX: eraserX + radius,
+          maxY: eraserY + radius
+        })
+      : strokes;
+
+    const deletedSet = new Set<string>();
     const deletedIds: string[] = [];
 
-    for (const stroke of strokes) {
+    for (const stroke of candidates) {
       if (this.hitTestStroke(stroke, eraserX, eraserY, radius)) {
+        deletedSet.add(stroke.id);
         deletedIds.push(stroke.id);
-      } else {
-        remaining.push(stroke);
       }
     }
 
+    if (deletedIds.length === 0) {
+      return { remaining: strokes, deletedIds: [] };
+    }
+
+    const remaining = strokes.filter((s) => !deletedSet.has(s.id));
     return { remaining, deletedIds };
   }
 
   static eraseByStrokeTrajectory(
     strokes: StrokeObject[],
     points: { x: number; y: number }[],
-    radius: number
+    radius: number,
+    spatialIndex?: PageSpatialIndex
   ): EraseResult {
     if (points.length === 0) {
       return { remaining: strokes, deletedIds: [] };
     }
     if (points.length === 1) {
-      return this.eraseByStroke(strokes, points[0].x, points[0].y, radius);
+      return this.eraseByStroke(strokes, points[0].x, points[0].y, radius, spatialIndex);
     }
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -135,10 +151,14 @@ export class EraserEngine {
     const chunkMaxX = maxX + radius;
     const chunkMaxY = maxY + radius;
 
-    const remaining: StrokeObject[] = [];
+    const candidates = spatialIndex
+      ? spatialIndex.queryStrokes({ minX: chunkMinX, minY: chunkMinY, maxX: chunkMaxX, maxY: chunkMaxY })
+      : strokes;
+
+    const deletedSet = new Set<string>();
     const deletedIds: string[] = [];
 
-    for (const stroke of strokes) {
+    for (const stroke of candidates) {
       const b = stroke.bounds;
       if (
         chunkMaxX < b.minX ||
@@ -146,7 +166,6 @@ export class EraserEngine {
         chunkMaxY < b.minY ||
         chunkMinY > b.maxY
       ) {
-        remaining.push(stroke);
         continue;
       }
 
@@ -159,12 +178,16 @@ export class EraserEngine {
       }
 
       if (hit) {
+        deletedSet.add(stroke.id);
         deletedIds.push(stroke.id);
-      } else {
-        remaining.push(stroke);
       }
     }
 
+    if (deletedIds.length === 0) {
+      return { remaining: strokes, deletedIds: [] };
+    }
+
+    const remaining = strokes.filter((s) => !deletedSet.has(s.id));
     return { remaining, deletedIds };
   }
 
@@ -172,14 +195,27 @@ export class EraserEngine {
     strokes: StrokeObject[],
     eraserX: number,
     eraserY: number,
-    radius: number
+    radius: number,
+    spatialIndex?: PageSpatialIndex
   ): { updatedStrokes: StrokeObject[]; changed: boolean } {
-    let changed = false;
-    const resultStrokes: StrokeObject[] = [];
+    const candidates = spatialIndex
+      ? spatialIndex.queryStrokes({
+          minX: eraserX - radius,
+          minY: eraserY - radius,
+          maxX: eraserX + radius,
+          maxY: eraserY + radius
+        })
+      : strokes;
 
-    for (const stroke of strokes) {
+    if (candidates.length === 0) {
+      return { updatedStrokes: strokes, changed: false };
+    }
+
+    const hitMap = new Map<string, StrokeObject[]>();
+    let changed = false;
+
+    for (const stroke of candidates) {
       if (!this.hitTestStroke(stroke, eraserX, eraserY, radius)) {
-        resultStrokes.push(stroke);
         continue;
       }
 
@@ -207,10 +243,11 @@ export class EraserEngine {
         segments.push(currentSegment);
       }
 
+      const splitStrokes: StrokeObject[] = [];
       for (const seg of segments) {
         if (seg.length > 0) {
           const newBounds = StrokeGeometry.computeBoundingBox(seg, Math.max(2, stroke.width));
-          resultStrokes.push({
+          splitStrokes.push({
             ...stroke,
             id: `stroke_${Math.random().toString(36).substring(2, 9)}`,
             points: seg,
@@ -218,9 +255,24 @@ export class EraserEngine {
           });
         }
       }
+      hitMap.set(stroke.id, splitStrokes);
     }
 
-    return { updatedStrokes: resultStrokes, changed };
+    if (!changed) {
+      return { updatedStrokes: strokes, changed: false };
+    }
+
+    const resultStrokes: StrokeObject[] = [];
+    for (const stroke of strokes) {
+      const replacement = hitMap.get(stroke.id);
+      if (replacement !== undefined) {
+        resultStrokes.push(...replacement);
+      } else {
+        resultStrokes.push(stroke);
+      }
+    }
+
+    return { updatedStrokes: resultStrokes, changed: true };
   }
 
   static hitTestShape(
@@ -369,32 +421,47 @@ export class EraserEngine {
     shapes: ShapeObject[],
     eraserX: number,
     eraserY: number,
-    radius: number
+    radius: number,
+    spatialIndex?: PageSpatialIndex
   ): EraseShapesResult {
-    const remaining: ShapeObject[] = [];
+    const candidates = spatialIndex
+      ? spatialIndex.queryShapes({
+          minX: eraserX - radius,
+          minY: eraserY - radius,
+          maxX: eraserX + radius,
+          maxY: eraserY + radius
+        })
+      : shapes;
+
+    const deletedSet = new Set<string>();
     const deletedIds: string[] = [];
 
-    for (const shape of shapes) {
+    for (const shape of candidates) {
       if (this.hitTestShape(shape, eraserX, eraserY, radius)) {
+        deletedSet.add(shape.id);
         deletedIds.push(shape.id);
-      } else {
-        remaining.push(shape);
       }
     }
 
+    if (deletedIds.length === 0) {
+      return { remaining: shapes, deletedIds: [] };
+    }
+
+    const remaining = shapes.filter((sh) => !deletedSet.has(sh.id));
     return { remaining, deletedIds };
   }
 
   static eraseShapesTrajectory(
     shapes: ShapeObject[],
     points: { x: number; y: number }[],
-    radius: number
+    radius: number,
+    spatialIndex?: PageSpatialIndex
   ): EraseShapesResult {
     if (points.length === 0) {
       return { remaining: shapes, deletedIds: [] };
     }
     if (points.length === 1) {
-      return this.eraseShapes(shapes, points[0].x, points[0].y, radius);
+      return this.eraseShapes(shapes, points[0].x, points[0].y, radius, spatialIndex);
     }
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -409,10 +476,14 @@ export class EraserEngine {
     const chunkMaxX = maxX + radius;
     const chunkMaxY = maxY + radius;
 
-    const remaining: ShapeObject[] = [];
+    const candidates = spatialIndex
+      ? spatialIndex.queryShapes({ minX: chunkMinX, minY: chunkMinY, maxX: chunkMaxX, maxY: chunkMaxY })
+      : shapes;
+
+    const deletedSet = new Set<string>();
     const deletedIds: string[] = [];
 
-    for (const shape of shapes) {
+    for (const shape of candidates) {
       const b = shape.bounds;
       if (
         chunkMaxX < b.minX ||
@@ -420,7 +491,6 @@ export class EraserEngine {
         chunkMaxY < b.minY ||
         chunkMinY > b.maxY
       ) {
-        remaining.push(shape);
         continue;
       }
 
@@ -433,12 +503,16 @@ export class EraserEngine {
       }
 
       if (hit) {
+        deletedSet.add(shape.id);
         deletedIds.push(shape.id);
-      } else {
-        remaining.push(shape);
       }
     }
 
+    if (deletedIds.length === 0) {
+      return { remaining: shapes, deletedIds: [] };
+    }
+
+    const remaining = shapes.filter((sh) => !deletedSet.has(sh.id));
     return { remaining, deletedIds };
   }
 }

@@ -20,9 +20,32 @@ export interface CreatePageOptions {
 
 export class PageManager {
   private document: NotebookDocument;
+  private pageById: Map<string, PageData> = new Map();
+  private pageIndexById: Map<string, number> = new Map();
+  private pageByNumber: Map<number, PageData> = new Map();
 
   constructor(document: NotebookDocument) {
     this.document = document;
+    this.rebuildIndexes();
+  }
+
+  private rebuildIndexes(): void {
+    this.pageById.clear();
+    this.pageIndexById.clear();
+    this.pageByNumber.clear();
+    const pages = this.document.pages;
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      this.pageById.set(page.id, page);
+      this.pageIndexById.set(page.id, i);
+      this.pageByNumber.set(page.pageNumber, page);
+    }
+  }
+
+  private ensureIndexFresh(): void {
+    if (this.pageById.size !== this.document.pages.length) {
+      this.rebuildIndexes();
+    }
   }
 
   getDocument(): NotebookDocument {
@@ -38,7 +61,16 @@ export class PageManager {
   }
 
   getPage(pageId: string): PageData | undefined {
-    return this.document.pages.find((p) => p.id === pageId);
+    this.ensureIndexFresh();
+    const cached = this.pageById.get(pageId);
+    if (cached) {
+      return cached;
+    }
+    const found = this.document.pages.find((p) => p.id === pageId);
+    if (found) {
+      this.rebuildIndexes();
+    }
+    return found;
   }
 
   getPageByIndex(index: number): PageData | undefined {
@@ -46,11 +78,29 @@ export class PageManager {
   }
 
   getPageByNumber(pageNumber: number): PageData | undefined {
-    return this.document.pages.find((p) => p.pageNumber === pageNumber);
+    this.ensureIndexFresh();
+    const cached = this.pageByNumber.get(pageNumber);
+    if (cached && cached.pageNumber === pageNumber) {
+      return cached;
+    }
+    const found = this.document.pages.find((p) => p.pageNumber === pageNumber);
+    if (found) {
+      this.rebuildIndexes();
+    }
+    return found;
   }
 
   getPageIndex(pageId: string): number {
-    return this.document.pages.findIndex((p) => p.id === pageId);
+    this.ensureIndexFresh();
+    const cached = this.pageIndexById.get(pageId);
+    if (cached !== undefined && this.document.pages[cached]?.id === pageId) {
+      return cached;
+    }
+    const idx = this.document.pages.findIndex((p) => p.id === pageId);
+    if (idx !== -1) {
+      this.rebuildIndexes();
+    }
+    return idx;
   }
 
   addPage(options?: CreatePageOptions): PageData {
@@ -314,6 +364,7 @@ export class PageManager {
     for (let i = 0; i < this.document.pages.length; i++) {
       this.document.pages[i].pageNumber = i + 1;
     }
+    this.rebuildIndexes();
     this.document.metadata.updatedAt = Date.now();
   }
 

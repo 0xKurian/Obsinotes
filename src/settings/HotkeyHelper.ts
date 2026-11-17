@@ -17,6 +17,7 @@ const BARE_MODIFIER_KEYS = new Set<string>(["Control", "Shift", "Alt", "Meta"]);
 
 export const HOTKEY_ACTION_METADATA: readonly HotkeyActionMetadata[] = [
   { id: "toolPen", label: "Pen", category: "tools", defaultBinding: { modifiers: [], key: "p" } },
+  { id: "toolPencil", label: "Pencil", category: "tools", defaultBinding: { modifiers: [], key: "g" } },
   { id: "toolHighlighter", label: "Highlighter", category: "tools", defaultBinding: { modifiers: [], key: "h" } },
   { id: "toolEraser", label: "Eraser", category: "tools", defaultBinding: { modifiers: [], key: "e" } },
   { id: "toolLasso", label: "Lasso select", category: "tools", defaultBinding: { modifiers: [], key: "l" } },
@@ -26,6 +27,8 @@ export const HOTKEY_ACTION_METADATA: readonly HotkeyActionMetadata[] = [
   { id: "toolSticky", label: "Sticky note", category: "tools", defaultBinding: { modifiers: [], key: "n" } },
   { id: "toolText", label: "Text box", category: "tools", defaultBinding: { modifiers: [], key: "t" } },
   { id: "toolImage", label: "Insert image", category: "tools", defaultBinding: { modifiers: [], key: "i" } },
+  { id: "toggleRuler", label: "Toggle ruler guide", category: "canvas", defaultBinding: { modifiers: [], key: "u" } },
+  { id: "toggleFocusMode", label: "Toggle focus mode", category: "canvas", defaultBinding: { modifiers: [], key: "f" } },
   { id: "undo", label: "Undo", category: "editing", defaultBinding: { modifiers: ["Mod"], key: "z" } },
   { id: "redo", label: "Redo", category: "editing", defaultBinding: { modifiers: ["Mod", "Shift"], key: "z" } },
   { id: "redoAlt", label: "Redo (alternate)", category: "editing", defaultBinding: { modifiers: ["Mod"], key: "y" } },

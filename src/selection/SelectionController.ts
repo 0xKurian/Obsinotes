@@ -8,6 +8,7 @@ import {
   ImageObject
 } from "../types";
 import { SelectionEngine } from "./SelectionEngine";
+import { PageSpatialIndexRegistry } from "../geometry/PageSpatialIndex";
 import { StrokeGeometry } from "../ink/StrokeGeometry";
 import { ShapeRecognizer } from "../shape/ShapeRecognizer";
 
@@ -415,6 +416,7 @@ export class SelectionController {
       const isClick = pathDist < 12;
 
       if (isClick && this.dragStartPoint) {
+        const spatialIndex = PageSpatialIndexRegistry.getOrBuild(page);
         const hit = SelectionEngine.hitTestSingleElement(
           page.strokes,
           page.shapes,
@@ -422,7 +424,8 @@ export class SelectionController {
           this.dragStartPoint.y,
           10,
           page.texts,
-          page.images
+          page.images,
+          spatialIndex
         );
 
         if (hit?.stroke) {
@@ -480,22 +483,19 @@ export class SelectionController {
         }
       } else if (this.lassoPoints.length >= 3) {
         const lassoBounds = SelectionEngine.computePolygonBoundingBox(this.lassoPoints);
-        const selectedStrokes = page.strokes.filter((s) =>
-          SelectionEngine.isStrokeSelectedByLasso(s, this.lassoPoints, 0.45, lassoBounds)
-        );
-        const selectedShapes = page.shapes.filter((sh) =>
-          SelectionEngine.isShapeSelectedByLasso(sh, this.lassoPoints, lassoBounds)
-        );
-        const selectedImages = page.images
-          ? page.images.filter((img) =>
-              SelectionEngine.isImageSelectedByLasso(img, this.lassoPoints, lassoBounds)
-            )
-          : [];
-        const selectedTexts = page.texts
-          ? page.texts.filter((t) =>
-              SelectionEngine.isTextSelectedByLasso(t, this.lassoPoints, lassoBounds)
-            )
-          : [];
+        const spatialIndex = PageSpatialIndexRegistry.getOrBuild(page);
+        const selectedStrokes = spatialIndex
+          .queryStrokes(lassoBounds)
+          .filter((s) => SelectionEngine.isStrokeSelectedByLasso(s, this.lassoPoints, 0.45, lassoBounds));
+        const selectedShapes = spatialIndex
+          .queryShapes(lassoBounds)
+          .filter((sh) => SelectionEngine.isShapeSelectedByLasso(sh, this.lassoPoints, lassoBounds));
+        const selectedImages = spatialIndex
+          .queryImages(lassoBounds)
+          .filter((img) => SelectionEngine.isImageSelectedByLasso(img, this.lassoPoints, lassoBounds));
+        const selectedTexts = spatialIndex
+          .queryTexts(lassoBounds)
+          .filter((t) => SelectionEngine.isTextSelectedByLasso(t, this.lassoPoints, lassoBounds));
 
         if (
           selectedStrokes.length > 0 ||

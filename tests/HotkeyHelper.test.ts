@@ -99,6 +99,6 @@ describe("HotkeyHelper", () => {
     });
     assert.strictEqual(countCustomizedHotkeys(sanitized), 2);
     assert.strictEqual(areHotkeyBindingsEqual({ modifiers: ["Alt", "Mod"], key: "A" }, { modifiers: ["Mod", "Alt"], key: "a" }), true);
-    assert.strictEqual(HOTKEY_ACTION_METADATA.length, 27);
+    assert.strictEqual(HOTKEY_ACTION_METADATA.length, 30);
   });
 });

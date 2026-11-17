@@ -795,6 +795,70 @@ export class ResizePageCommand implements HistoryCommand {
   }
 }
 
+export class SetPageBookmarkCommand implements HistoryCommand {
+  readonly id: string;
+  readonly description: string;
+  private page: PageData;
+  private prevBookmarked: boolean | undefined;
+  private nextBookmarked: boolean;
+  private onMutate: (page: PageData) => void;
+
+  constructor(page: PageData, bookmarked: boolean, onMutate: (page: PageData) => void) {
+    this.id = "cmd-bookmark-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    this.page = page;
+    this.prevBookmarked = page.bookmarked;
+    this.nextBookmarked = bookmarked;
+    this.onMutate = onMutate;
+    this.description = bookmarked ? "Bookmark page" : "Remove page bookmark";
+  }
+
+  execute(): void {
+    this.page.bookmarked = this.nextBookmarked ? true : undefined;
+    this.onMutate(this.page);
+  }
+
+  undo(): void {
+    this.page.bookmarked = this.prevBookmarked ? true : undefined;
+    this.onMutate(this.page);
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
+export class SetPageTitleCommand implements HistoryCommand {
+  readonly id: string;
+  readonly description = "Rename page";
+  private page: PageData;
+  private prevTitle: string | undefined;
+  private nextTitle: string | undefined;
+  private onMutate: (page: PageData) => void;
+
+  constructor(page: PageData, title: string, onMutate: (page: PageData) => void) {
+    this.id = "cmd-page-title-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6);
+    this.page = page;
+    this.prevTitle = page.title;
+    const trimmed = title.trim();
+    this.nextTitle = trimmed.length > 0 ? trimmed : undefined;
+    this.onMutate = onMutate;
+  }
+
+  execute(): void {
+    this.page.title = this.nextTitle;
+    this.onMutate(this.page);
+  }
+
+  undo(): void {
+    this.page.title = this.prevTitle;
+    this.onMutate(this.page);
+  }
+
+  redo(): void {
+    this.execute();
+  }
+}
+
 export class HistoryManager {
   private undoStack: HistoryCommand[] = [];
   private redoStack: HistoryCommand[] = [];

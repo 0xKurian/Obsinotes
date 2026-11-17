@@ -9,7 +9,7 @@ import {
   View
 } from "obsidian";
 import { NotePagesView } from "./view/NotePagesView";
-import { NotePagesSettings, DEFAULT_SETTINGS } from "./settings/NotePagesSettings";
+import { NotePagesSettings, DEFAULT_SETTINGS, sanitizePenPresets } from "./settings/NotePagesSettings";
 import { NotePagesSettingTab } from "./settings/NotePagesSettingTab";
 import { sanitizeHotkeyMap } from "./settings/HotkeyHelper";
 import {
@@ -230,6 +230,22 @@ export default class NotePagesPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-grid-overview",
+      name: "Open page grid overview",
+      checkCallback: (checking: boolean) => {
+        const activeView = this.app.workspace.getActiveViewOfType(NotePagesView);
+        if (!activeView) {
+          return false;
+        }
+        if (checking) {
+          return true;
+        }
+        activeView.openPageGridOverview();
+        return true;
+      }
+    });
+
+    this.addCommand({
       id: "import-pdf-new-notebook",
       name: "Import PDF as new notebook",
       callback: () => {
@@ -294,7 +310,9 @@ export default class NotePagesPlugin extends Plugin {
 
     const activeViewCommands: { id: string; name: string; run: (view: NotePagesView) => void }[] = [
       { id: "select-tool-pen", name: "Select pen tool", run: (v) => v.onSelectTool("pressure") },
+      { id: "select-tool-pencil", name: "Select pencil tool", run: (v) => v.onSelectTool("pencil") },
       { id: "select-tool-highlighter", name: "Select highlighter tool", run: (v) => v.onSelectTool("highlighter") },
+      { id: "toggle-ruler", name: "Toggle ruler straightedge", run: (v) => { v.onToggleRuler(); } },
       { id: "select-tool-eraser", name: "Select eraser tool", run: (v) => v.onSelectTool("eraser") },
       {
         id: "select-tool-lasso",
@@ -344,6 +362,7 @@ export default class NotePagesPlugin extends Plugin {
     const loadedData = (await this.loadData()) as Partial<NotePagesSettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
     this.settings.customHotkeys = sanitizeHotkeyMap(loadedData?.customHotkeys);
+    this.settings.penPresets = sanitizePenPresets(loadedData?.penPresets);
   }
 
   async saveSettings(): Promise<void> {

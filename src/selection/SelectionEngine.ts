@@ -8,6 +8,7 @@ import {
   ImageObject
 } from "../types";
 import { EraserEngine } from "../ink/EraserEngine";
+import { PageSpatialIndex } from "../geometry/PageSpatialIndex";
 
 export class SelectionEngine {
   static pointInPolygon(
@@ -201,17 +202,29 @@ export class SelectionEngine {
     y: number,
     tolerance = 8,
     texts: TextObject[] = [],
-    images: ImageObject[] = []
+    images: ImageObject[] = [],
+    spatialIndex?: PageSpatialIndex
   ): { stroke?: StrokeObject; shape?: ShapeObject; text?: TextObject; image?: ImageObject } | null {
-    for (let i = strokes.length - 1; i >= 0; i--) {
-      const s = strokes[i];
+    const queryBox: StrokeBoundingBox = {
+      minX: x - tolerance,
+      minY: y - tolerance,
+      maxX: x + tolerance,
+      maxY: y + tolerance
+    };
+    const candidateStrokes = spatialIndex ? spatialIndex.queryStrokes(queryBox) : strokes;
+    const candidateShapes = spatialIndex ? spatialIndex.queryShapes(queryBox) : shapes;
+    const candidateTexts = spatialIndex ? spatialIndex.queryTexts(queryBox) : texts;
+    const candidateImages = spatialIndex ? spatialIndex.queryImages(queryBox) : images;
+
+    for (let i = candidateStrokes.length - 1; i >= 0; i--) {
+      const s = candidateStrokes[i];
       if (EraserEngine.hitTestStroke(s, x, y, tolerance)) {
         return { stroke: s };
       }
     }
 
-    for (let i = shapes.length - 1; i >= 0; i--) {
-      const sh = shapes[i];
+    for (let i = candidateShapes.length - 1; i >= 0; i--) {
+      const sh = candidateShapes[i];
       const b = sh.bounds;
       if (
         x >= b.minX - tolerance &&
@@ -223,8 +236,8 @@ export class SelectionEngine {
       }
     }
 
-    for (let i = texts.length - 1; i >= 0; i--) {
-      const t = texts[i];
+    for (let i = candidateTexts.length - 1; i >= 0; i--) {
+      const t = candidateTexts[i];
       const w = t.width || 100;
       const h = t.height || 30;
       if (x >= t.x - tolerance && x <= t.x + w + tolerance && y >= t.y - tolerance && y <= t.y + h + tolerance) {
@@ -232,8 +245,8 @@ export class SelectionEngine {
       }
     }
 
-    for (let i = images.length - 1; i >= 0; i--) {
-      const img = images[i];
+    for (let i = candidateImages.length - 1; i >= 0; i--) {
+      const img = candidateImages[i];
       if (x >= img.x - tolerance && x <= img.x + img.width + tolerance && y >= img.y - tolerance && y <= img.y + img.height + tolerance) {
         return { image: img };
       }

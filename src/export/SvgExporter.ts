@@ -93,6 +93,15 @@ export function renderShapeToSvg(shape: ShapeObject): string {
   const strokeWidth = shape.strokeWidth;
   const fill = shape.fillColor || "none";
   const geo = shape.geometryData;
+  const dashAttr =
+    shape.strokePattern === "dashed" || shape.strokePattern === "dotted"
+      ? ` stroke-dasharray="${StrokeGeometry.getLineDashArray(shape.strokePattern, strokeWidth).join(",")}" stroke-linecap="round"`
+      : "";
+
+  const injectDash = (svgEl: string): string => {
+    if (!dashAttr) return svgEl;
+    return svgEl.replace(/\/>/, `${dashAttr}/>`);
+  };
 
   switch (shape.type) {
     case "line": {
@@ -100,14 +109,14 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const y1 = geo.y1 ?? 0;
       const x2 = geo.x2 ?? 0;
       const y2 = geo.y2 ?? 0;
-      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round"/>`;
+      return injectDash(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round"/>`);
     }
 
     case "circle": {
       const cx = geo.cx ?? 0;
       const cy = geo.cy ?? 0;
       const r = geo.r ?? 0;
-      return `<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}"/>`;
+      return injectDash(`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}"/>`);
     }
 
     case "ellipse": {
@@ -115,7 +124,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const cy = geo.cy ?? 0;
       const rx = geo.rx ?? 0;
       const ry = geo.ry ?? 0;
-      return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}"/>`;
+      return injectDash(`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}"/>`);
     }
 
     case "rectangle": {
@@ -123,7 +132,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const y = geo.y ?? shape.bounds.minY;
       const w = geo.width ?? Math.max(1, shape.bounds.maxX - shape.bounds.minX);
       const h = geo.height ?? Math.max(1, shape.bounds.maxY - shape.bounds.minY);
-      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`;
+      return injectDash(`<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`);
     }
 
     case "rounded-rectangle": {
@@ -132,7 +141,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const w = geo.width ?? Math.max(1, shape.bounds.maxX - shape.bounds.minX);
       const h = geo.height ?? Math.max(1, shape.bounds.maxY - shape.bounds.minY);
       const rad = Math.min(geo.radius || 10, w / 2, h / 2);
-      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rad}" ry="${rad}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`;
+      return injectDash(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rad}" ry="${rad}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`);
     }
 
     case "triangle": {
@@ -142,7 +151,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const y2 = geo.y2 ?? shape.bounds.minY;
       const x3 = geo.x3 ?? shape.bounds.maxX;
       const y3 = geo.y3 ?? shape.bounds.maxY;
-      return `<polygon points="${x1},${y1} ${x2},${y2} ${x3},${y3}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`;
+      return injectDash(`<polygon points="${x1},${y1} ${x2},${y2} ${x3},${y3}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`);
     }
 
     case "diamond": {
@@ -152,7 +161,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const h = geo.height ?? Math.max(1, shape.bounds.maxY - shape.bounds.minY);
       const midX = x + w / 2;
       const midY = y + h / 2;
-      return `<polygon points="${midX},${y} ${x + w},${midY} ${midX},${y + h} ${x},${midY}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`;
+      return injectDash(`<polygon points="${midX},${y} ${x + w},${midY} ${midX},${y + h} ${x},${midY}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`);
     }
 
     case "arrow": {
@@ -166,7 +175,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const a1y = y2 - headLength * Math.sin(angle - Math.PI / 6);
       const a2x = x2 - headLength * Math.cos(angle + Math.PI / 6);
       const a2y = y2 - headLength * Math.sin(angle + Math.PI / 6);
-      return `<g><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round"/><polygon points="${x2},${y2} ${a1x},${a1y} ${a2x},${a2y}" fill="${stroke}" stroke="${stroke}" stroke-width="1"/></g>`;
+      return `<g><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round"${dashAttr}/><polygon points="${x2},${y2} ${a1x},${a1y} ${a2x},${a2y}" fill="${stroke}" stroke="${stroke}" stroke-width="1"/></g>`;
     }
 
     case "star": {
@@ -184,7 +193,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
         const a = (i * Math.PI) / 5 - Math.PI / 2;
         pts.push(`${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`);
       }
-      return `<polygon points="${pts.join(" ")}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`;
+      return injectDash(`<polygon points="${pts.join(" ")}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`);
     }
 
     case "callout": {
@@ -199,7 +208,7 @@ export function renderShapeToSvg(shape: ShapeObject): string {
       const tailX = x + w * 0.25;
 
       const path = `M ${x + rad} ${y} L ${x + w - rad} ${y} Q ${x + w} ${y} ${x + w} ${y + rad} L ${x + w} ${y + bodyH - rad} Q ${x + w} ${y + bodyH} ${x + w - rad} ${y + bodyH} L ${tailX + tailW} ${y + bodyH} L ${tailX} ${y + h} L ${tailX + tailW / 2} ${y + bodyH} L ${x + rad} ${y + bodyH} Q ${x} ${y + bodyH} ${x} ${y + bodyH - rad} L ${x} ${y + rad} Q ${x} ${y} ${x + rad} ${y} Z`;
-      return `<path d="${path}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`;
+      return injectDash(`<path d="${path}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="${fill}" stroke-linejoin="round"/>`);
     }
 
     default:
@@ -208,6 +217,25 @@ export function renderShapeToSvg(shape: ShapeObject): string {
 }
 
 export function renderStrokeToSvg(stroke: StrokeObject): string {
+  if (stroke.strokePattern === "dashed" || stroke.strokePattern === "dotted") {
+    if (stroke.points.length === 0) {
+      return "";
+    }
+    const dash = StrokeGeometry.getLineDashArray(stroke.strokePattern, stroke.width).join(",");
+    let d = `M ${stroke.points[0].x.toFixed(2)} ${stroke.points[0].y.toFixed(2)}`;
+    for (let i = 1; i < stroke.points.length; i++) {
+      d += ` L ${stroke.points[i].x.toFixed(2)} ${stroke.points[i].y.toFixed(2)}`;
+    }
+    const opacity =
+      stroke.tool === "highlighter"
+        ? 0.35
+        : stroke.tool === "pencil"
+          ? StrokeGeometry.computePencilOpacity(stroke)
+          : stroke.opacity ?? 1;
+    const blendStyle = stroke.tool === "highlighter" ? ` style="mix-blend-mode: multiply;"` : "";
+    return `<path d="${d}" fill="none" stroke="${stroke.color}" stroke-width="${Math.max(1, stroke.width)}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${Number(opacity.toFixed(2))}"${blendStyle}/>`;
+  }
+
   const cached = StrokeGeometry.getCachedGeometry(stroke);
   const outline = cached ? cached.outline : StrokeGeometry.generateOutline(stroke.points, stroke.tool, stroke.width);
   if (outline.length === 0) {
@@ -221,7 +249,7 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
     return `<path d="${d}" fill="${color}" fill-opacity="0.35" style="mix-blend-mode: multiply;"/>`;
   }
 
-  const opacity = stroke.opacity ?? 1;
+  const opacity = stroke.tool === "pencil" ? Number(StrokeGeometry.computePencilOpacity(stroke).toFixed(2)) : stroke.opacity ?? 1;
   return `<path d="${d}" fill="${color}" fill-opacity="${opacity}"/>`;
 }
 

@@ -159,6 +159,12 @@ export class DocumentSerializer {
     if (typeof p.id !== "string" || p.id.trim() === "") {
       errors.push(`${prefix}.id must be a non-empty string`);
     }
+    if (p.title !== undefined && typeof p.title !== "string") {
+      errors.push(`${prefix}.title must be a string`);
+    }
+    if (p.bookmarked !== undefined && typeof p.bookmarked !== "boolean") {
+      errors.push(`${prefix}.bookmarked must be a boolean`);
+    }
     if (typeof p.pageNumber !== "number" || p.pageNumber < 1) {
       errors.push(`${prefix}.pageNumber must be a positive integer`);
     }
@@ -264,6 +270,14 @@ export class DocumentSerializer {
     if (typeof s.opacity !== "number" || s.opacity < 0 || s.opacity > 1) {
       errors.push(`${prefix}.opacity must be a number between 0 and 1`);
     }
+    if (
+      s.strokePattern !== undefined &&
+      s.strokePattern !== "solid" &&
+      s.strokePattern !== "dashed" &&
+      s.strokePattern !== "dotted"
+    ) {
+      errors.push(`${prefix}.strokePattern must be 'solid', 'dashed', or 'dotted'`);
+    }
     const points = s.points;
     if (!Array.isArray(points)) {
       errors.push(`${prefix}.points must be an array`);
@@ -321,6 +335,14 @@ export class DocumentSerializer {
     }
     if (typeof sh.strokeWidth !== "number" || sh.strokeWidth <= 0) {
       errors.push(`${prefix}.strokeWidth must be a positive number`);
+    }
+    if (
+      sh.strokePattern !== undefined &&
+      sh.strokePattern !== "solid" &&
+      sh.strokePattern !== "dashed" &&
+      sh.strokePattern !== "dotted"
+    ) {
+      errors.push(`${prefix}.strokePattern must be 'solid', 'dashed', or 'dotted'`);
     }
     if (!sh.geometryData || typeof sh.geometryData !== "object") {
       errors.push(`${prefix}.geometryData must be an object`);
@@ -508,11 +530,53 @@ export class DocumentSerializer {
     };
   }
 
+  private static round2(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  private static compactStrokeForSave(stroke: StrokeObject): StrokeObject {
+    const compactPoints = stroke.points.map((pt) => {
+      const compactPt: StrokeObject["points"][number] = {
+        x: this.round2(pt.x),
+        y: this.round2(pt.y),
+        pressure: this.round2(pt.pressure),
+        timestamp: Math.round(pt.timestamp)
+      };
+      if (pt.tiltX !== undefined && pt.tiltX !== 0) {
+        compactPt.tiltX = Math.round(pt.tiltX);
+      }
+      if (pt.tiltY !== undefined && pt.tiltY !== 0) {
+        compactPt.tiltY = Math.round(pt.tiltY);
+      }
+      return compactPt;
+    });
+
+    return {
+      ...stroke,
+      points: compactPoints,
+      bounds: {
+        minX: this.round2(stroke.bounds.minX),
+        minY: this.round2(stroke.bounds.minY),
+        maxX: this.round2(stroke.bounds.maxX),
+        maxY: this.round2(stroke.bounds.maxY)
+      }
+    };
+  }
+
   static serializeDocument(doc: NotebookDocument): string {
     const pageCount = doc.pages.length;
     const title = doc.metadata.title;
     const updatedDate = new Date(doc.metadata.updatedAt).toISOString();
-    const jsonBlock = JSON.stringify(doc, null, 2);
+    const compactDoc: NotebookDocument = {
+      ...doc,
+      pages: doc.pages.map((page) => ({
+        ...page,
+        strokes: Array.isArray(page.strokes)
+          ? page.strokes.map((stroke) => this.compactStrokeForSave(stroke))
+          : []
+      }))
+    };
+    const jsonBlock = JSON.stringify(compactDoc);
 
     const wikilinks = new Set<string>();
     for (const page of doc.pages) {

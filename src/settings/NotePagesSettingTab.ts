@@ -1,7 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type NotePagesPlugin from "../main";
-import { DEFAULT_SETTINGS } from "./NotePagesSettings";
+import { DEFAULT_SETTINGS, createDefaultPenPresets } from "./NotePagesSettings";
 import {
   HOTKEY_ACTION_METADATA,
   HotkeyActionMetadata,
@@ -49,6 +49,7 @@ const TEMPLATE_OPTIONS: Record<PaperTemplateType, string> = {
 
 const DEFAULT_TOOL_OPTIONS: Record<DefaultToolPreset, string> = {
   pressure: "Pen",
+  pencil: "Pencil",
   highlighter: "Highlighter",
   lasso: "Lasso select",
   select: "Pan / hand"
@@ -167,6 +168,11 @@ export class NotePagesSettingTab extends PluginSettingTab {
           control: { type: "toggle", key: "shapeRecognitionEnabled" }
         },
         {
+          name: "Show pen nib hover preview",
+          desc: "Display a size and color preview ring beneath the pointer or hovering stylus.",
+          control: { type: "toggle", key: "showPenHoverCursor" }
+        },
+        {
           name: "Draw with finger",
           desc: "Allow drawing with finger touch on touchscreens instead of only panning and zooming.",
           control: { type: "toggle", key: "drawWithFinger" }
@@ -238,6 +244,13 @@ export class NotePagesSettingTab extends PluginSettingTab {
           desc: "Restore default toolbar scale, width, wrapping, dimming, and position.",
           action: () => {
             void this.resetToolbarLayout(true);
+          }
+        },
+        {
+          name: "Reset pen presets",
+          desc: "Restore the quick pen preset slots on the drawing sub-dock to their defaults.",
+          action: () => {
+            void this.resetPenPresets();
           }
         }
       ]
@@ -515,9 +528,16 @@ export class NotePagesSettingTab extends PluginSettingTab {
     }
   }
 
+  private async resetPenPresets(): Promise<void> {
+    this.plugin.settings.penPresets = createDefaultPenPresets();
+    await this.plugin.saveSettings();
+    new Notice("Quick pen presets reset to defaults");
+  }
+
   private async resetAllSettings(useDefinitionUpdate: boolean): Promise<void> {
     this.plugin.settings = {
       ...DEFAULT_SETTINGS,
+      penPresets: createDefaultPenPresets(),
       customHotkeys: {}
     };
     await this.plugin.saveSettings();
@@ -825,6 +845,17 @@ export class NotePagesSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Show pen nib hover preview")
+      .setDesc("Display a size and color preview ring beneath the pointer or hovering stylus.")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.showPenHoverCursor ?? true)
+          .onChange(async (value) => {
+            await this.setControlValue("showPenHoverCursor", value);
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Draw with finger")
       .setDesc("Allow drawing with finger touch on touchscreens instead of only panning and zooming.")
       .addToggle((toggle) => {
@@ -964,6 +995,17 @@ export class NotePagesSettingTab extends PluginSettingTab {
           .setValue(String(this.plugin.settings.autosaveIntervalMs))
           .onChange(async (value) => {
             await this.setControlValue("autosaveIntervalMs", value);
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Reset pen presets")
+      .setDesc("Restore the quick pen preset slots on the drawing sub-dock to their defaults.")
+      .addButton((button) => {
+        button
+          .setButtonText("Reset presets")
+          .onClick(() => {
+            void this.resetPenPresets();
           });
       });
 

@@ -104,7 +104,7 @@ describe("StorageManager", () => {
             resolveFirstModify = r;
           });
         }
-        const match = data.match(/"title": "([^"]+)"/);
+        const match = data.match(/"title":\s*"([^"]+)"/);
         modifiedHistory.push({
           path: file.path,
           title: match ? match[1] : ""

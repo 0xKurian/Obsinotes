@@ -6,7 +6,6 @@ import {
   Scope,
   KeymapEventHandler,
   Modifier,
-  Menu,
   Modal,
   App,
   normalizePath,
@@ -28,9 +27,11 @@ import {
   ToolType,
   PaperTemplateType,
   PageOrientation,
+  PenPreset,
   StrokeObject,
   ShapeObject,
   ShapeType,
+  StrokePattern,
   SelectionSubMode,
   TextObject,
   ImageObject,
@@ -47,28 +48,26 @@ import {
 import { PageManager } from "../model/PageManager";
 import { TemplateRenderer } from "../renderer/TemplateRenderer";
 import { InkingController } from "../ink/InkingController";
-import { StrokeGeometry } from "../ink/StrokeGeometry";
-import { StylusButtonState } from "../ink/StylusButtonHelper";
+import { RulerOverlayController } from "../ink/RulerOverlayController";
 import { SelectionController } from "../selection/SelectionController";
-import { SelectionEngine } from "../selection/SelectionEngine";
-import { ShapeRecognizer } from "../shape/ShapeRecognizer";
 import {
   HistoryManager,
   AddStrokeCommand,
-  AddShapeCommand,
   ConvertShapeCommand,
   EraseStrokesCommand,
   TransformElementsCommand,
   DeleteElementsCommand,
-  AddElementsCommand,
   MoveElementsAcrossPagesCommand,
   AddTextCommand,
   ModifyTextCommand,
   AddImageCommand,
   ModifyImageCommand,
   DeletePageCommand,
-  ResizePageCommand
+  ResizePageCommand,
+  SetPageBookmarkCommand,
+  SetPageTitleCommand
 } from "../history/HistoryManager";
+import { createDefaultPenPresets } from "../settings/NotePagesSettings";
 import { DocumentSerializer } from "../storage/DocumentSerializer";
 import { StorageManager } from "../storage/StorageManager";
 import { TextController, TextFormattingOptions } from "../text/TextController";
@@ -81,9 +80,15 @@ import { NotePagesMinimap, NotePagesMinimapDelegate } from "./NotePagesMinimap";
 import { PageSizeModal, PageSizeModalResult } from "../modal/PageSizeModal";
 import { ExportModal } from "../modal/ExportModal";
 import { QuickRenameModal } from "../modal/QuickRenameModal";
+import { PageGridOverviewModal } from "../modal/PageGridOverviewModal";
 import { ExportEngine } from "../export/ExportEngine";
 import { PerformanceMonitor } from "../performance/PerformanceMonitor";
 import { PageVirtualizer } from "../performance/PageVirtualizer";
+import { PageSpatialIndexRegistry } from "../geometry/PageSpatialIndex";
+import { ViewportZoomController } from "./ViewportZoomController";
+import { SelectionDragCoordinator } from "./SelectionDragCoordinator";
+import { PageCanvasHost } from "./PageCanvasHost";
+import { GestureInputRouter } from "./GestureInputRouter";
 
 class ConfirmResetModal extends Modal {
   private message: string;
@@ -117,7 +122,10 @@ class ConfirmResetModal extends Modal {
   }
 }
 
-export class NotePagesView extends TextFileView implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate, NotePagesMinimapDelegate {
+export class NotePagesView
+  extends TextFileView
+  implements NotePagesImportDelegate, NotePagesSidebarDelegate, NotePagesToolbarDelegate, NotePagesMinimapDelegate
+{
   plugin: NotePagesPlugin;
   importHandler: NotePagesImportHandler;
   sidebar: NotePagesSidebar;
@@ -150,28 +158,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   statusSaveInfoEl!: HTMLElement;
 
   currentPageNumber: number = 1;
-  pageElements: Map<number, HTMLElement> = new Map();
-  committedCanvasMap: Map<string, HTMLCanvasElement> = new Map();
-  activeCanvasMap: Map<string, HTMLCanvasElement> = new Map();
-  templateCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   pageIntersectionObserver: IntersectionObserver | null = null;
   private toolbarResizeObserver: ResizeObserver | null = null;
   performanceMonitor: PerformanceMonitor = new PerformanceMonitor();
   pageVirtualizer!: PageVirtualizer;
 
-  clipboard: {
-    strokes: StrokeObject[];
-    shapes: ShapeObject[];
-    texts: TextObject[];
-    images: ImageObject[];
-  } | null = null;
+  private zoomController!: ViewportZoomController;
+  private canvasHost!: PageCanvasHost;
+  private dragCoordinator!: SelectionDragCoordinator;
+  private gestureRouter!: GestureInputRouter;
+  private rulerController!: RulerOverlayController;
 
-  isPanning: boolean = false;
-  panStartX: number = 0;
-  panStartY: number = 0;
-  panScrollLeft: number = 0;
-  panScrollTop: number = 0;
-  isSpacePressed: boolean = false;
   currentTextOptions: {
     fontSize: number;
     fontWeight: string;
@@ -188,61 +185,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     color: "#1e293b"
   };
 
-  zoomLevel: number = 1.0;
-  private canvasResolutionTimeout: number | null = null;
-  private touchPointers: Map<number, { clientX: number; clientY: number }> = new Map();
-  private touchStartCoords: Map<number, { x: number; y: number }> = new Map();
-  private touchTapCandidate: { maxCount: number; startTime: number; maxDistance: number } | null = null;
-  private touchPinchDistance: number = 0;
-  private touchPinchStartZoom: number = 1.0;
-  private isTouchPinching: boolean = false;
-  private stylusButtonState: StylusButtonState = new StylusButtonState();
   private registeredKeyHandlers: KeymapEventHandler[] = [];
   private eraserCursorEl!: HTMLElement;
+  private penCursorEl!: HTMLElement;
+  private thumbnailDebounceTimers: Map<string, number> = new Map();
   penWidth: number = 2.5;
   highlighterWidth: number = 14.0;
   isSidebarCollapsed: boolean = false;
-
-  dragOverlayEl!: HTMLElement;
-  dragOverlayCanvas!: HTMLCanvasElement;
-  isDraggingSelection: boolean = false;
-  dragStartClientX: number = 0;
-  dragStartClientY: number = 0;
-  dragInitialOverlayX: number = 0;
-  dragInitialOverlayY: number = 0;
-  dragOverlayPadding: number = 16;
-  dragBoxWidth: number = 0;
-  dragBoxHeight: number = 0;
-
-  isDraggingTextRect: boolean = false;
-  dragTextPage: PageData | null = null;
-  dragTextPageFrame: HTMLElement | null = null;
-  dragTextCanvas: HTMLCanvasElement | null = null;
-  dragTextStartX: number = 0;
-  dragTextStartY: number = 0;
-  dragTextCurrentX: number = 0;
-  dragTextCurrentY: number = 0;
-
   currentStickyColor: string = "#fef08a";
-
   currentShapeType: ShapeType = "rectangle";
   shapeFillEnabled: boolean = false;
-
-  isDraggingShape: boolean = false;
-  dragShapePage: PageData | null = null;
-  dragShapeCanvas: HTMLCanvasElement | null = null;
-  dragShapeStartX: number = 0;
-  dragShapeStartY: number = 0;
-  dragShapeCurrentX: number = 0;
-  dragShapeCurrentY: number = 0;
-
-  isDraggingConnector: boolean = false;
-  dragConnectorPage: PageData | null = null;
-  dragConnectorCanvas: HTMLCanvasElement | null = null;
-  dragConnectorStartX: number = 0;
-  dragConnectorStartY: number = 0;
-  dragConnectorCurrentX: number = 0;
-  dragConnectorCurrentY: number = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: NotePagesPlugin) {
     super(leaf);
@@ -289,7 +241,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
               })
             );
           } else {
-            const prev = page.texts.find(t => t.id === text.id) || text;
+            const prev = page.texts.find((t) => t.id === text.id) || text;
             this.historyManager.execute(
               new ModifyTextCommand(page, prev, text, () => {
                 this.handleMutation(page);
@@ -507,7 +459,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
                 const frameEl = this.getPageFrame(page.pageNumber);
                 if (frameEl) {
                   this.textController.renderPageTexts(page, frameEl);
-                  this.imageController.renderPageImages(page, frameEl, p => this.resolveResourcePath(p));
+                  this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
                 }
               },
               texts,
@@ -517,8 +469,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         }
       },
       onRequestRedraw: (pageId: string) => {
-        this.redrawCommittedCanvas(pageId);
-        const activeCanvas = this.activeCanvasMap.get(pageId);
+        this.canvasHost.redrawCommittedCanvas(pageId);
+        const activeCanvas = this.canvasHost.getActiveCanvas(pageId);
         if (activeCanvas && this.selectionController.getActivePageId() !== pageId) {
           const ctx = activeCanvas.getContext("2d");
           ctx?.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
@@ -554,8 +506,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
             sourceShapes,
             targetShapes,
             (src, tgt) => {
-              this.redrawCommittedCanvas(src.id);
-              this.redrawCommittedCanvas(tgt.id);
+              this.canvasHost.redrawCommittedCanvas(src.id);
+              this.canvasHost.redrawCommittedCanvas(tgt.id);
               const srcFrame = this.getPageFrame(src.pageNumber);
               if (srcFrame) {
                 this.textController.renderPageTexts(src, srcFrame);
@@ -583,7 +535,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.updateActivePage(targetPage.pageNumber);
       },
       onMoveStart: (sourcePageId: string, bounds: StrokeBoundingBox, clientX?: number, clientY?: number) => {
-        this.startSelectionDrag(sourcePageId, bounds, clientX, clientY);
+        this.dragCoordinator.startSelectionDrag(sourcePageId, bounds, clientX, clientY);
       }
     });
 
@@ -591,21 +543,155 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.sidebar = new NotePagesSidebar(this);
     this.toolbar = new NotePagesToolbar(this);
 
-    this.pageVirtualizer = new PageVirtualizer({
-      getTotalPages: () => this.pageManager?.getPages().length ?? 0,
-      mountPageCanvases: (pageNumber: number) => {
-        this.mountPageCanvases(pageNumber);
+    this.pageVirtualizer = new PageVirtualizer(
+      {
+        getTotalPages: () => this.pageManager?.getPages().length ?? 0,
+        mountPageCanvases: (pageNumber: number) => {
+          this.canvasHost.mountPageCanvases(pageNumber);
+        },
+        unmountPageCanvases: (pageNumber: number) => {
+          this.canvasHost.unmountPageCanvases(pageNumber);
+        },
+        isPageDrawing: (pageNumber: number) => {
+          const page = this.pageManager?.getPageByNumber(pageNumber);
+          return page ? this.inkingController.isCurrentlyDrawing(page.id) : false;
+        }
       },
-      unmountPageCanvases: (pageNumber: number) => {
-        this.unmountPageCanvases(pageNumber);
-      },
-      isPageDrawing: (pageNumber: number) => {
-        const page = this.pageManager?.getPageByNumber(pageNumber);
-        return page ? this.inkingController.isCurrentlyDrawing(page.id) : false;
+      {
+        virtualizationThreshold: 4,
+        bufferPages: 2
       }
-    }, {
-      virtualizationThreshold: 4,
-      bufferPages: 2
+    );
+
+    this.canvasHost = new PageCanvasHost({
+      getPage: (pageId) => this.pageManager?.getPage(pageId),
+      getPageByNumber: (pageNumber) => this.pageManager?.getPageByNumber(pageNumber),
+      getCurrentPageNumber: () => this.currentPageNumber,
+      getCanvasScale: () => this.zoomController.getCanvasScale(),
+      getInkingController: () => this.inkingController,
+      getSelectionController: () => this.selectionController,
+      getPdfBackgroundManager: () => this.pdfBackgroundManager,
+      getPageVirtualizer: () => this.pageVirtualizer,
+      getPerformanceMonitor: () => this.performanceMonitor,
+      isTextEditing: () => this.textController.isEditing(),
+      updateThumbnailStrokes: (page) => this.updateThumbnailStrokes(page)
+    });
+
+    this.zoomController = new ViewportZoomController({
+      getScrollerEl: () => this.scrollerEl,
+      getPagesContainerEl: () => this.pagesContainerEl,
+      getPages: () => this.pageManager?.getPages() ?? [],
+      getMountedPageNumbers: () => {
+        const mountedList = this.pageVirtualizer?.getMountedPages?.() || [];
+        return mountedList.length > 0
+          ? new Set(mountedList)
+          : new Set([this.currentPageNumber, 1, 2, 3]);
+      },
+      getTemplateCanvas: (pageId) => this.canvasHost.getTemplateCanvas(pageId),
+      getCommittedCanvas: (pageId) => this.canvasHost.getCommittedCanvas(pageId),
+      getActiveCanvas: (pageId) => this.canvasHost.getActiveCanvas(pageId),
+      redrawCommittedCanvas: (pageId) => this.canvasHost.redrawCommittedCanvas(pageId),
+      onZoomUpdated: (zoom) => {
+        this.toolbar.updateZoomDisplay(zoom);
+        this.updateStatusDisplay();
+        if (this.minimap) {
+          this.minimap.onZoomChanged(zoom);
+        }
+        this.gestureRouter.updateEraserCursorSize();
+        this.rulerController?.syncDom();
+      }
+    });
+
+    this.dragCoordinator = new SelectionDragCoordinator({
+      getPagesContainerEl: () => this.pagesContainerEl,
+      getPages: () => this.pageManager?.getPages() ?? [],
+      getPage: (pageId) => this.pageManager?.getPage(pageId),
+      getPageByNumber: (pageNumber) => this.pageManager?.getPageByNumber(pageNumber),
+      getCurrentPageNumber: () => this.currentPageNumber,
+      getZoomLevel: () => this.zoomController.getZoomLevel(),
+      getPageElement: (pageNumber) => this.canvasHost.getPageElement(pageNumber),
+      getPageFrame: (pageNumber) => this.getPageFrame(pageNumber),
+      getActiveCanvas: (pageId) => this.canvasHost.getActiveCanvas(pageId),
+      mountPageCanvases: (pageNumber) => this.canvasHost.mountPageCanvases(pageNumber),
+      getSelectionController: () => this.selectionController,
+      getHistoryManager: () => this.historyManager,
+      handleMutation: (page) => this.handleMutation(page),
+      renderPageTexts: (page, frameEl) => this.textController.renderPageTexts(page, frameEl),
+      renderPageImages: (page, frameEl) =>
+        this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p))
+    });
+
+    this.rulerController = new RulerOverlayController({
+      getPagesContainerEl: () => this.pagesContainerEl,
+      getScrollerEl: () => this.scrollerEl,
+      getZoomLevel: () => this.zoomController.getZoomLevel(),
+      getPageElement: (pageNumber) => this.canvasHost.getPageElement(pageNumber),
+      getCurrentPageNumber: () => this.currentPageNumber,
+      onVisibilityChanged: (visible) => {
+        this.toolbar?.setRulerActive(visible);
+      },
+      registerDomEvent: (el, type, callback, options) => {
+        this.registerDomEvent(el as HTMLElement, type, callback as (ev: Event) => unknown, options);
+      }
+    });
+
+    this.gestureRouter = new GestureInputRouter({
+      app: this.app,
+      getRootContainerEl: () => this.rootContainerEl,
+      getScrollerEl: () => this.scrollerEl,
+      getPagesContainerEl: () => this.pagesContainerEl,
+      getEraserCursorEl: () => this.eraserCursorEl,
+      getPenCursorEl: () => this.penCursorEl,
+      shouldShowPenCursor: () => this.plugin.settings.showPenHoverCursor !== false,
+      getFilePath: () => this.file?.path || "",
+      getCurrentPageNumber: () => this.currentPageNumber,
+      getPageByNumber: (pageNumber) => this.pageManager?.getPageByNumber(pageNumber),
+      getAllPages: () => this.pageManager?.getPages() ?? [],
+      getInkingController: () => this.inkingController,
+      getSelectionController: () => this.selectionController,
+      getTextController: () => this.textController,
+      getImageController: () => this.imageController,
+      getHistoryManager: () => this.historyManager,
+      getCanvasHost: () => this.canvasHost,
+      getZoomController: () => this.zoomController,
+      getDragCoordinator: () => this.dragCoordinator,
+      getRulerController: () => this.rulerController,
+      getSelectionSubMode: () => this.selectionSubMode,
+      getCurrentShapeType: () => this.currentShapeType,
+      isShapeFillEnabled: () => this.shapeFillEnabled,
+      getShapeFillColor: () => this.getShapeFillColor(),
+      getCurrentStickyColor: () => this.currentStickyColor,
+      getCurrentTextOptions: () => this.currentTextOptions,
+      getDrawWithFinger: () => Boolean(this.plugin.settings.drawWithFinger),
+      getTwoFingerTapUndoRedo: () => this.plugin.settings.twoFingerTapUndoRedo !== false,
+      getStylusButtonAction: () => this.plugin.settings.stylusButtonAction ?? "hold",
+      isDarkColor: (hex) => this.isDarkColor(hex),
+      resolveResourcePath: (path) => this.resolveResourcePath(path),
+      blurFocusedToolbarControl: () => this.blurFocusedToolbarControl(),
+      setToolbarDrawingActive: (active) => this.toolbar.setDrawingActive(active),
+      setToolbarActiveTool: (tool) => this.toolbar.setActiveTool(tool, this.currentShapeType, false),
+      setActiveTool: (tool, commitPendingText) => this.setActiveTool(tool, commitPendingText),
+      onUndo: () => this.onUndo(),
+      onRedo: () => this.onRedo(),
+      handleMutation: (page) => this.handleMutation(page),
+      insertTextBox: (targetPageId, clientX, clientY) => this.insertTextBox(targetPageId, clientX, clientY),
+      insertStickyNote: (targetPageId, clientX, clientY) => this.insertStickyNote(targetPageId, clientX, clientY),
+      openImagePicker: () => this.openImagePicker(),
+      openPdfPicker: (forceNew) => this.openPdfPicker(forceNew),
+      addNewPage: () => this.addNewPage(),
+      duplicateCurrentPage: () => this.duplicateCurrentPage(),
+      openQuickRenameModal: () => this.openQuickRenameModal(),
+      openExportModal: () => this.openExportModal(),
+      promptAndImportLocalPdf: (file, forceNew, targetPage) =>
+        this.promptAndImportLocalPdf(file, forceNew, targetPage),
+      promptAndImportVaultPdf: (file, forceNew, targetPage) =>
+        this.promptAndImportVaultPdf(file, forceNew, targetPage),
+      registerDomEvent: (el, type, callback, options) => {
+        this.registerDomEvent(el, type, callback as (ev: Event) => unknown, options);
+      },
+      registerWindowDomEvent: (type, callback, options) => {
+        this.registerDomEvent(window, type, callback as (ev: Event) => unknown, options);
+      }
     });
 
     this.inkingController.setPerformanceMonitor(this.performanceMonitor);
@@ -676,7 +762,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   canAcceptExtension(extension: string): boolean {
-    return extension === "gnote" || extension === "notepages";
+    return extension.toLowerCase() === "gnote" || extension.toLowerCase() === "md";
   }
 
   async onLoadFile(file: TFile): Promise<void> {
@@ -684,31 +770,30 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       if (this.pagesContainerEl) {
         this.pagesContainerEl.empty();
       }
-      window.setTimeout(() => {
-        void this.leaf.setViewState({
-          type: "markdown",
-          state: { file: file.path }
-        });
-      }, 0);
+      await this.leaf.setViewState({
+        type: "markdown",
+        state: { file: file.path }
+      });
       return;
     }
+
     await super.onLoadFile(file);
-    this.toolbar?.updateTitle(this.getNotebookTitle());
+    this.updateStatusDisplay();
+    this.toolbar.updateTitle(this.getNotebookTitle());
   }
 
   async onRename(file: TFile): Promise<void> {
     await super.onRename(file);
-    const newTitle = file.basename.replace(/\.gnote$/, "");
     if (this.document && this.document.metadata) {
-      this.document.metadata.title = newTitle;
+      this.document.metadata.title = file.basename;
     }
-    this.toolbar?.updateTitle(newTitle);
+    this.toolbar?.updateTitle(this.getNotebookTitle());
     this.updateStatusDisplay();
   }
 
   getNotebookTitle(): string {
     if (this.file instanceof TFile) {
-      return this.file.basename.replace(/\.gnote$/, "");
+      return this.file.basename;
     }
     if (this.document?.metadata?.title) {
       return this.document.metadata.title;
@@ -718,12 +803,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   getDisplayText(): string {
     if (this.file instanceof TFile) {
-      return this.file.basename.replace(/\.gnote$/, "");
+      return this.file.basename;
     }
     if (this.document?.metadata?.title) {
       return this.document.metadata.title;
     }
-    return "Notepages notebook";
+    return "Notebook";
   }
 
   getIcon(): string {
@@ -743,15 +828,28 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       cls: "notepages-view-container"
     });
 
-    this.registerDomEvent(this.rootContainerEl, "contextmenu", (e: MouseEvent) => {
-      if (this.stylusButtonState.shouldSuppressContextMenu((e as PointerEvent).pointerType, this.isPanning)) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }, true);
+    this.registerDomEvent(
+      this.rootContainerEl,
+      "contextmenu",
+      (e: MouseEvent) => {
+        if (
+          this.gestureRouter.stylusButtonState.shouldSuppressContextMenu(
+            (e as PointerEvent).pointerType,
+            this.gestureRouter.isPanning
+          )
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true
+    );
 
     this.eraserCursorEl = this.rootContainerEl.createDiv({
       cls: "notepages-eraser-cursor is-hidden"
+    });
+    this.penCursorEl = this.rootContainerEl.createDiv({
+      cls: "notepages-pen-cursor is-hidden"
     });
 
     this.toolbar.build(this.rootContainerEl);
@@ -791,6 +889,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const customHotkeys = this.plugin?.settings?.customHotkeys;
     const actionHandlers: Record<HotkeyActionId, (e: KeyboardEvent) => boolean | void> = {
       toolPen: () => this.setActiveTool("pressure"),
+      toolPencil: () => this.setActiveTool("pencil"),
       toolHighlighter: () => this.setActiveTool("highlighter"),
       toolEraser: () => this.setActiveTool("eraser"),
       toolLasso: () => {
@@ -804,6 +903,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       toolSticky: () => this.setActiveTool("sticky"),
       toolText: () => this.setActiveTool("text"),
       toolImage: () => this.openImagePicker(),
+      toggleRuler: () => {
+        this.onToggleRuler();
+      },
+      toggleFocusMode: () => {
+        this.onToggleFocusMode();
+      },
       undo: () => {
         this.clearActiveSelectionCanvas();
         this.historyManager.undo();
@@ -820,21 +925,21 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         if (!this.selectionController.hasSelection()) {
           return true;
         }
-        this.duplicateActiveSelection();
+        this.dragCoordinator.duplicateActiveSelection();
         return false;
       },
       copySelection: () => {
         if (!this.selectionController.hasSelection()) {
           return true;
         }
-        this.copySelection();
+        this.dragCoordinator.copySelection();
         return false;
       },
       pasteSelection: () => {
-        if (!this.clipboard) {
+        if (!this.dragCoordinator.hasClipboard()) {
           return true;
         }
-        this.pasteSelection();
+        this.dragCoordinator.pasteSelection();
         return false;
       },
       deleteSelection: () => this.handleDeleteShortcut(),
@@ -848,9 +953,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         const next = Math.min(30, Math.round((current + 0.5) * 10) / 10);
         this.setActiveWidth(next);
       },
-      zoomIn: () => this.changeZoom(0.1),
-      zoomOut: () => this.changeZoom(-0.1),
-      zoomReset: () => this.resetZoom(),
+      zoomIn: () => this.zoomController.changeZoom(0.1),
+      zoomOut: () => this.zoomController.changeZoom(-0.1),
+      zoomReset: () => this.zoomController.resetZoom(),
       toggleSidebar: () => this.toggleSidebar(),
       addPage: () => this.addNewPage(),
       toggleOrientation: () => this.onToggleOrientation(),
@@ -920,7 +1025,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   private handleDeleteShortcut(): boolean | void {
     if (this.selectionController.hasSelection()) {
-      this.deleteActiveSelection();
+      this.dragCoordinator.deleteActiveSelection();
       return false;
     }
     const selectedImgId = this.imageController.getSelectedImageId();
@@ -957,16 +1062,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.textController?.isEditing()) {
       this.textController.commitActiveEdit();
     }
-    if (this.canvasResolutionTimeout !== null) {
-      window.clearTimeout(this.canvasResolutionTimeout);
-      this.canvasResolutionTimeout = null;
-    }
+    this.zoomController.destroy();
+    this.rulerController.destroy();
     this.clearThumbnailDebounceTimers();
-    this.touchPointers.clear();
-    this.touchStartCoords.clear();
-    this.touchTapCandidate = null;
-    this.stylusButtonState.reset();
-    this.isTouchPinching = false;
+    this.gestureRouter.resetState();
+    this.dragCoordinator.clearOverlayRef();
     if (this.saveStatusResetTimer !== null) {
       window.clearTimeout(this.saveStatusResetTimer);
       this.saveStatusResetTimer = null;
@@ -982,9 +1082,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
-    this.committedCanvasMap.clear();
-    this.activeCanvasMap.clear();
-    this.templateCanvasMap.clear();
+    this.canvasHost.clearAll();
     this.contentEl.empty();
   }
 
@@ -992,16 +1090,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.textController?.isEditing()) {
       this.textController.commitActiveEdit();
     }
-    if (this.canvasResolutionTimeout !== null) {
-      window.clearTimeout(this.canvasResolutionTimeout);
-      this.canvasResolutionTimeout = null;
-    }
+    this.zoomController.destroy();
+    this.rulerController.destroy();
     this.clearThumbnailDebounceTimers();
-    this.touchPointers.clear();
-    this.touchStartCoords.clear();
-    this.touchTapCandidate = null;
-    this.stylusButtonState.reset();
-    this.isTouchPinching = false;
+    this.gestureRouter.resetState();
+    this.dragCoordinator.clearOverlayRef();
     this.pageIntersectionObserver?.disconnect();
     this.pageVirtualizer.destroy();
     this.selectionController?.destroy();
@@ -1010,10 +1103,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
-    this.pageElements.clear();
-    this.committedCanvasMap.clear();
-    this.activeCanvasMap.clear();
-    this.templateCanvasMap.clear();
+    this.canvasHost.clearAll();
 
     if (this.pagesContainerEl) {
       this.pagesContainerEl.empty();
@@ -1197,7 +1287,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   onSelectTool(tool: ToolType): void {
-    this.stylusButtonState.clearToggleHistory();
+    this.gestureRouter.stylusButtonState.clearToggleHistory();
     this.setActiveTool(tool);
   }
 
@@ -1209,12 +1299,203 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.setActiveWidth(width);
   }
 
+  onSelectStrokePattern(pattern: StrokePattern): void {
+    this.inkingController.setStrokePattern(pattern);
+    this.toolbar?.setStrokePattern(pattern);
+  }
+
+  getStrokePattern(): StrokePattern {
+    return this.inkingController.currentStrokePattern;
+  }
+
+  onToggleRuler(): boolean {
+    const visible = this.rulerController.toggle();
+    this.toolbar?.setRulerActive(visible);
+    return visible;
+  }
+
+  isRulerVisible(): boolean {
+    return this.rulerController?.isVisible() ?? false;
+  }
+
+  onToggleFocusMode(): boolean {
+    this.toolbar?.toggleCollapse();
+    return this.toolbar?.isCollapsed ?? false;
+  }
+
+  getPenPresets(): PenPreset[] {
+    if (!this.plugin.settings.penPresets || this.plugin.settings.penPresets.length === 0) {
+      this.plugin.settings.penPresets = createDefaultPenPresets();
+    }
+    return this.plugin.settings.penPresets;
+  }
+
+  onSelectPenPreset(preset: PenPreset): void {
+    this.setActiveTool(preset.tool);
+    this.setActiveColor(preset.color);
+    this.setActiveWidth(preset.width);
+    this.onSelectStrokePattern(preset.strokePattern ?? "solid");
+    this.toolbar?.refreshPenPresets();
+  }
+
+  onSavePenPreset(index: number): void {
+    const presets = this.getPenPresets();
+    if (index < 0 || index >= presets.length) {
+      return;
+    }
+    const currentTool = this.inkingController.activeTool;
+    const isInk =
+      currentTool === "pen" ||
+      currentTool === "pressure" ||
+      currentTool === "fountain" ||
+      currentTool === "pencil" ||
+      currentTool === "highlighter";
+    if (!isInk) {
+      return;
+    }
+    const nextPresets = presets.map((item) => ({ ...item }));
+    const color = this.inkingController.currentColor;
+    const width = Math.round(this.inkingController.currentWidth * 10) / 10;
+    const pattern = this.inkingController.currentStrokePattern ?? "solid";
+    const toolName = currentTool === "pencil" ? "Pencil" : currentTool === "highlighter" ? "Highlight" : "Pen";
+    nextPresets[index] = {
+      ...nextPresets[index],
+      label: `${toolName} ${width} pt`,
+      tool: currentTool,
+      color,
+      width,
+      strokePattern: pattern
+    };
+    this.plugin.settings.penPresets = nextPresets;
+    void this.plugin.saveSettings();
+    this.toolbar?.refreshPenPresets();
+    new Notice(`Saved pen preset ${index + 1}`);
+  }
+
+  onOpenGridOverview(): void {
+    this.openPageGridOverview();
+  }
+
+  openPageGridOverview(): void {
+    if (!this.pageManager) {
+      return;
+    }
+    const modal = new PageGridOverviewModal(this.app, {
+      getPages: () => this.pageManager?.getPages() ?? [],
+      getCurrentPageNumber: () => this.currentPageNumber,
+      onJumpToPage: (pageNumber) => this.scrollToPage(pageNumber),
+      onAddPage: () => this.onAddNewPage(),
+      onReorderPage: (fromIndex, toIndex) => {
+        if (!this.pageManager) return false;
+        const ok = this.pageManager.reorderPages(fromIndex, toIndex);
+        if (ok) {
+          this.renderDocument();
+          this.requestSave();
+          this.scrollToPage(toIndex + 1);
+        }
+        return ok;
+      },
+      onDuplicatePages: (pageIds) => {
+        if (!this.pageManager) return;
+        let lastDup: PageData | null = null;
+        for (const pageId of pageIds) {
+          const dup = this.pageManager.duplicatePage(pageId);
+          if (dup) {
+            lastDup = dup;
+          }
+        }
+        if (lastDup) {
+          this.renderDocument();
+          this.requestSave();
+          this.updateStatusDisplay();
+        }
+      },
+      onDeletePages: (pageIds) => {
+        if (!this.pageManager || !this.document) return;
+        const pageSet = new Set(pageIds);
+        if (pageSet.size >= this.document.pages.length) {
+          new Notice("Cannot delete every page in a notebook");
+          return;
+        }
+        const remaining = this.document.pages.filter((p) => !pageSet.has(p.id));
+        if (remaining.length === 0) return;
+        for (let i = 0; i < remaining.length; i++) {
+          remaining[i].pageNumber = i + 1;
+        }
+        this.document.pages = remaining;
+        this.pageManager = new PageManager(this.document);
+        this.currentPageNumber = Math.max(1, Math.min(this.currentPageNumber, remaining.length));
+        this.renderDocument();
+        this.requestSave();
+        this.updateStatusDisplay();
+      },
+      onBookmarkPages: (pageIds, bookmarked) => {
+        if (!this.pageManager) return;
+        for (const pageId of pageIds) {
+          const page = this.pageManager.getPage(pageId);
+          if (page && Boolean(page.bookmarked) !== bookmarked) {
+            this.executePageBookmarkMutation(page, bookmarked);
+          }
+        }
+      },
+      onRenamePage: (pageId, nextTitle) => {
+        this.onRenamePage(pageId, nextTitle);
+      }
+    });
+    modal.open();
+  }
+
+  onTogglePageBookmark(pageId: string): void {
+    const page = this.pageManager?.getPage(pageId);
+    if (!page) {
+      return;
+    }
+    this.executePageBookmarkMutation(page, !page.bookmarked);
+  }
+
+  onRenamePage(pageId: string, nextTitle: string): void {
+    const page = this.pageManager?.getPage(pageId);
+    if (!page) {
+      return;
+    }
+    const normalized = nextTitle.trim();
+    const current = (page.title ?? "").trim();
+    if (normalized === current) {
+      this.sidebar?.refreshPageCardMeta(page);
+      return;
+    }
+    this.historyManager.execute(
+      new SetPageTitleCommand(page, normalized, (mutated) => {
+        this.sidebar?.refreshPageCardMeta(mutated);
+        if (this.document) {
+          this.document.metadata.updatedAt = Date.now();
+        }
+        this.requestSave();
+      })
+    );
+  }
+
+  private executePageBookmarkMutation(page: PageData, bookmarked: boolean): void {
+    this.historyManager.execute(
+      new SetPageBookmarkCommand(page, bookmarked, (mutated) => {
+        this.sidebar?.refreshPageCardMeta(mutated);
+        if (this.document) {
+          this.document.metadata.updatedAt = Date.now();
+        }
+        this.requestSave();
+      })
+    );
+  }
+
   onSelectEraserMode(mode: EraserMode): void {
-    this.setEraserMode(mode);
+    this.inkingController.setEraserMode(mode);
+    this.toolbar.setEraserMode(mode);
   }
 
   onSelectEraserRadius(radius: number): void {
-    this.setEraserRadius(radius);
+    this.inkingController.setEraserRadius(radius);
+    this.toolbar.setEraserRadius(radius);
+    this.gestureRouter.updateEraserCursorSize();
   }
 
   getActiveEraserRadius(): number {
@@ -1232,11 +1513,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   onDuplicateSelection(): void {
-    this.duplicateActiveSelection();
+    this.dragCoordinator.duplicateActiveSelection();
   }
 
   onDeleteSelection(): void {
-    this.deleteActiveSelection();
+    this.dragCoordinator.deleteActiveSelection();
   }
 
   onSelectPaperTemplate(type: PaperTemplateType): void {
@@ -1266,11 +1547,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   onChangeZoom(delta: number): void {
-    this.changeZoom(delta);
+    this.zoomController.changeZoom(delta);
   }
 
   onResetZoom(): void {
-    this.resetZoom();
+    this.zoomController.resetZoom();
   }
 
   onOpenPdfPicker(): void {
@@ -1347,7 +1628,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.minimap) {
       this.minimap.update(true);
     }
-    new Notice(`Updated paper color`);
+    new Notice("Updated paper color");
   }
 
   onSelectLineColor(color: string): void {
@@ -1361,7 +1642,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
     this.renderDocument();
     this.requestSave();
-    new Notice(`Updated line color`);
+    new Notice("Updated line color");
   }
 
   getNotebookPaperColor(): string | undefined {
@@ -1446,7 +1727,10 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   shouldSuppressToolbarContextMenu(e: MouseEvent): boolean {
-    return this.stylusButtonState.shouldSuppressContextMenu((e as PointerEvent).pointerType, this.isPanning);
+    return this.gestureRouter.stylusButtonState.shouldSuppressContextMenu(
+      (e as PointerEvent).pointerType,
+      this.gestureRouter.isPanning
+    );
   }
 
   refreshToolbarLayout(): void {
@@ -1466,7 +1750,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (s) {
       this.inkingController.setShapeRecognition(s.shapeRecognitionEnabled ?? true);
       this.inkingController.setPalmRejectionDelay(s.palmRejectionDelayMs ?? 350);
+      if (s.showPenHoverCursor === false) {
+        this.gestureRouter?.hidePenCursor();
+      }
     }
+    this.toolbar?.refreshPenPresets();
     this.refreshToolbarLayout();
     this.refreshKeyboardShortcuts();
   }
@@ -1512,7 +1800,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
 
     if (result.applyToAll) {
-      this.pageManager.resizeAllPages(result.preset, result.preset === "Custom" ? result.dimensions : undefined, result.orientation);
+      this.pageManager.resizeAllPages(
+        result.preset,
+        result.preset === "Custom" ? result.dimensions : undefined,
+        result.orientation
+      );
       this.renderDocument();
       this.requestSave();
       if (this.minimap) {
@@ -1556,11 +1848,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getPageElement(pageNumber: number): HTMLElement | undefined {
-    return this.pageElements.get(pageNumber);
+    return this.canvasHost.getPageElement(pageNumber);
   }
 
   getCommittedCanvas(pageId: string): HTMLCanvasElement | undefined {
-    return this.committedCanvasMap.get(pageId);
+    return this.canvasHost.getCommittedCanvas(pageId);
   }
 
   getCurrentPageId(): string | undefined {
@@ -1579,7 +1871,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   scrollToPagePoint(pageNumber: number, xRatio: number, yRatio: number): void {
-    const pageFrame = this.pageElements.get(pageNumber);
+    const pageFrame = this.canvasHost.getPageElement(pageNumber);
     if (!pageFrame || !this.scrollerEl) {
       return;
     }
@@ -1662,7 +1954,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       const pageId = this.selectionController.getActivePageId();
       if (pageId) {
         const page = this.pageManager.getPage(pageId);
-        const activeCanvas = this.activeCanvasMap.get(pageId);
+        const activeCanvas = this.canvasHost.getActiveCanvas(pageId);
         if (page && activeCanvas) {
           this.selectionController.changeColor(color, page, activeCanvas);
         }
@@ -1679,7 +1971,23 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getZoomLevel(): number {
-    return this.zoomLevel;
+    return this.zoomController.getZoomLevel();
+  }
+
+  setZoomLevel(targetZoom: number, anchorClientX?: number, anchorClientY?: number, isContinuous: boolean = false): void {
+    this.zoomController.setZoomLevel(targetZoom, anchorClientX, anchorClientY, isContinuous);
+  }
+
+  zoomByFactor(factor: number, anchorClientX?: number, anchorClientY?: number): void {
+    this.zoomController.zoomByFactor(factor, anchorClientX, anchorClientY);
+  }
+
+  getCanvasScale(): number {
+    return this.zoomController.getCanvasScale();
+  }
+
+  applyZoom(): void {
+    this.zoomController.setZoomLevel(this.zoomController.getZoomLevel());
   }
 
   getActiveTool(): ToolType {
@@ -1732,228 +2040,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.handleScroll();
     });
 
-    this.registerDomEvent(this.scrollerEl, "pointermove", (e: PointerEvent) => {
-      this.stylusButtonState.recordPointerEvent(e.pointerType);
-      this.handleStylusHoverButton(e);
-      if (this.inkingController.activeTool === "eraser" || this.stylusButtonState.temporaryEraserTool !== null) {
-        this.updateEraserCursorPosition(e.clientX, e.clientY);
-      }
-    });
-
-    this.registerDomEvent(this.scrollerEl, "pointerleave", (e: PointerEvent) => {
-      this.hideEraserCursor();
-      if (
-        e.pointerType === "pen" &&
-        this.stylusButtonState.temporaryEraserTool !== null &&
-        !this.inkingController.isCurrentlyDrawing()
-      ) {
-        this.revertTemporaryStylusEraser(null);
-      }
-    });
-
-    this.registerDomEvent(this.scrollerEl, "pointerdown", (e: PointerEvent) => {
-      if (e.pointerType === "touch") {
-        this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
-        this.touchStartCoords.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (!this.touchTapCandidate) {
-          this.touchTapCandidate = { maxCount: 1, startTime: Date.now(), maxDistance: 0 };
-        } else {
-          this.touchTapCandidate.maxCount = Math.max(this.touchTapCandidate.maxCount, this.touchPointers.size);
-        }
-        if (this.touchPointers.size === 2) {
-          if (this.isPanning) {
-            this.finishPan();
-          }
-          const [p1, p2] = Array.from(this.touchPointers.values());
-          this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
-          this.touchPinchStartZoom = this.zoomLevel;
-          this.isTouchPinching = true;
-          return;
-        }
-      }
-      if (this.isPanTrigger(e) || e.target === this.scrollerEl || e.target === this.pagesContainerEl) {
-        if (this.textController.isEditing()) {
-          this.textController.commitActiveEdit();
-        }
-        if (
-          this.isPanTrigger(e) ||
-          (this.inkingController.activeTool === "select" && e.button === 0) ||
-          (this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan" && e.button === 0)
-        ) {
-          this.startPan(e.clientX, e.clientY, this.scrollerEl, e.pointerId);
-          e.preventDefault();
-        }
-      }
-    });
-
-    this.registerDomEvent(this.scrollerEl, "contextmenu", (e: MouseEvent) => {
-      if (this.stylusButtonState.shouldSuppressContextMenu((e as PointerEvent).pointerType, this.isPanning)) {
-        e.preventDefault();
-        return;
-      }
-      e.preventDefault();
-      const clientX = e.clientX;
-      const clientY = e.clientY;
-      const menu = new Menu();
-
-      const hasSelection = this.selectionController.hasSelection();
-      if (hasSelection) {
-        menu.addItem((item) => {
-          item
-            .setTitle("Delete selected")
-            .setIcon("trash")
-            .onClick(() => {
-              this.deleteActiveSelection();
-            });
-        });
-        menu.addItem((item) => {
-          item
-            .setTitle("Clear selection")
-            .setIcon("x")
-            .onClick(() => {
-              this.selectionController.clearSelection();
-            });
-        });
-        menu.addSeparator();
-      }
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Add text box")
-          .setIcon("type")
-          .onClick(() => {
-            this.insertTextBox(undefined, clientX, clientY);
-          });
-      });
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Add sticky note")
-          .setIcon("sticky-note")
-          .onClick(() => {
-            this.insertStickyNote(undefined, clientX, clientY);
-          });
-      });
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Insert image...")
-          .setIcon("image")
-          .onClick(() => {
-            this.openImagePicker();
-          });
-      });
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Import PDF / SVG...")
-          .setIcon("file-text")
-          .onClick(() => {
-            this.openPdfPicker(false);
-          });
-      });
-
-      menu.addSeparator();
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Add page below")
-          .setIcon("plus")
-          .onClick(() => {
-            this.addNewPage();
-          });
-      });
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Duplicate current page")
-          .setIcon("copy")
-          .onClick(() => {
-            this.duplicateCurrentPage();
-          });
-      });
-
-      menu.addSeparator();
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Quick rename notebook...")
-          .setIcon("pencil")
-          .onClick(() => {
-            this.openQuickRenameModal();
-          });
-      });
-
-      menu.addItem((item) => {
-        item
-          .setTitle("Export notebook...")
-          .setIcon("file-down")
-          .onClick(() => {
-            this.openExportModal();
-          });
-      });
-
-      menu.showAtMouseEvent(e);
-    });
-
-    this.registerDomEvent(this.scrollerEl, "wheel", (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        if (this.inkingController.isCurrentlyDrawing()) {
-          return;
-        }
-
-        let dy = e.deltaY;
-        if (e.deltaMode === 1) {
-          dy *= 30;
-        } else if (e.deltaMode === 2) {
-          dy *= 400;
-        }
-
-        if (Math.abs(dy) < 0.1) {
-          return;
-        }
-
-        const MAX_ZOOM_IN_FACTOR = 1.15;
-        const MAX_ZOOM_OUT_FACTOR = 1 / MAX_ZOOM_IN_FACTOR;
-        const rawFactor = Math.exp(-dy * 0.005);
-        const factor = Math.min(MAX_ZOOM_IN_FACTOR, Math.max(MAX_ZOOM_OUT_FACTOR, rawFactor));
-
-        this.zoomByFactor(factor, e.clientX, e.clientY);
-      }
-    }, { passive: false });
-
-    this.registerDomEvent(this.scrollerEl, "dragover", (e: DragEvent) => {
-      if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-      }
-    });
-
-    this.registerDomEvent(this.scrollerEl, "drop", async (e: DragEvent) => {
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0) {
-        const file = files[0];
-        if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-          e.preventDefault();
-          e.stopPropagation();
-          await this.promptAndImportLocalPdf(file, false, this.currentPageNumber);
-        }
-      } else {
-        const textData = e.dataTransfer?.getData("text/plain") || "";
-        const match = textData.match(/^\[\[(.*?)\]\]$/) || textData.match(/^(.*\.pdf)$/i);
-        if (match) {
-          const cleanPath = match[1].replace(/\|.*$/, "");
-          const linkedFile = this.app.metadataCache.getFirstLinkpathDest(cleanPath, this.file?.path || "");
-          if (linkedFile && linkedFile.extension.toLowerCase() === "pdf") {
-            e.preventDefault();
-            e.stopPropagation();
-            await this.promptAndImportVaultPdf(linkedFile, false, this.currentPageNumber);
-          }
-        }
-      }
-    });
-
     this.pagesContainerEl = this.scrollerEl.createDiv({
       cls: "notepages-pages-container"
     });
@@ -1990,201 +2076,16 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       );
     }
 
-    this.ensureDragOverlay();
-
-    this.registerDomEvent(window, "pointermove", (e: PointerEvent) => {
-      this.stylusButtonState.recordPointerEvent(e.pointerType);
-      if (e.pointerType === "touch" && this.touchPointers.has(e.pointerId)) {
-        this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
-        const start = this.touchStartCoords.get(e.pointerId);
-        if (start && this.touchTapCandidate) {
-          const dist = Math.hypot(e.clientX - start.x, e.clientY - start.y);
-          if (dist > this.touchTapCandidate.maxDistance) {
-            this.touchTapCandidate.maxDistance = dist;
-          }
-        }
-        if (this.touchPointers.size === 2 && this.isTouchPinching && this.touchPinchDistance > 10) {
-          this.touchTapCandidate = null;
-          const [p1, p2] = Array.from(this.touchPointers.values());
-          const currentDist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
-          const factor = currentDist / this.touchPinchDistance;
-          const targetZoom = this.touchPinchStartZoom * factor;
-          const midX = (p1.clientX + p2.clientX) / 2;
-          const midY = (p1.clientY + p2.clientY) / 2;
-          this.setZoomLevel(Math.round(targetZoom * 1000) / 1000, midX, midY, true);
-          return;
-        }
-      }
-
-      if (this.isPanning) {
-        this.updatePan(e.clientX, e.clientY);
-        return;
-      }
-      if (this.isDraggingSelection) {
-        this.updateSelectionDrag(e.clientX, e.clientY);
-      }
-      if (this.inkingController.activeTool === "eraser" || this.stylusButtonState.temporaryEraserTool !== null) {
-        this.updateEraserCursorPosition(e.clientX, e.clientY);
-      }
-    });
-
-    this.registerDomEvent(window, "pointerup", (e: PointerEvent) => {
-      if (e) {
-        this.stylusButtonState.recordPointerEvent(e.pointerType);
-      }
-      this.toolbar.setDrawingActive(false);
-      this.revertTemporaryStylusEraser(e);
-      if (e && e.pointerType === "touch") {
-        if (this.touchTapCandidate && !this.isTouchPinching) {
-          if (this.plugin.settings.twoFingerTapUndoRedo !== false) {
-            const duration = Date.now() - this.touchTapCandidate.startTime;
-            if (duration < 280 && this.touchTapCandidate.maxDistance < 20) {
-              if (this.touchTapCandidate.maxCount === 2) {
-                this.onUndo();
-              } else if (this.touchTapCandidate.maxCount === 3) {
-                this.onRedo();
-              }
-            }
-          }
-          this.touchTapCandidate = null;
-        }
-        this.touchPointers.delete(e.pointerId);
-        this.touchStartCoords.delete(e.pointerId);
-        if (this.touchPointers.size < 2 && this.isTouchPinching) {
-          this.isTouchPinching = false;
-          this.touchPinchDistance = 0;
-          this.scheduleCanvasResolutionUpdate(180);
-        }
-      }
-      if (this.isPanning) {
-        this.finishPan();
-        return;
-      }
-      if (this.isDraggingSelection) {
-        this.finishSelectionDrag(e.clientX, e.clientY);
-      }
-    });
-
-    this.registerDomEvent(window, "pointercancel", (e: PointerEvent) => {
-      if (e) {
-        this.stylusButtonState.recordPointerEvent(e.pointerType);
-      }
-      this.toolbar.setDrawingActive(false);
-      this.revertTemporaryStylusEraser(e, true);
-      if (e && e.pointerType === "touch") {
-        this.touchTapCandidate = null;
-        this.touchPointers.delete(e.pointerId);
-        this.touchStartCoords.delete(e.pointerId);
-        if (this.touchPointers.size < 2 && this.isTouchPinching) {
-          this.isTouchPinching = false;
-          this.touchPinchDistance = 0;
-          this.scheduleCanvasResolutionUpdate(180);
-        }
-      }
-      if (this.isPanning) {
-        this.finishPan();
-        return;
-      }
-      if (this.isDraggingSelection) {
-        this.cancelSelectionDrag();
-      }
-    });
-
-    this.registerDomEvent(window, "pointerleave", () => {
-      this.hideEraserCursor();
-      if (this.stylusButtonState.temporaryEraserTool !== null && !this.inkingController.isCurrentlyDrawing()) {
-        this.revertTemporaryStylusEraser(null);
-      }
-    });
-
-    this.registerDomEvent(window, "keydown", (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        if (this.textController.isEditing()) {
-          return;
-        }
-        const targetTag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-        if (targetTag === "input" || targetTag === "textarea" || targetTag === "select") {
-          return;
-        }
-        if (!this.isSpacePressed) {
-          this.isSpacePressed = true;
-          this.rootContainerEl.addClass("is-space-panning");
-          e.preventDefault();
-        }
-      }
-    });
-
-    this.registerDomEvent(window, "keyup", (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        this.isSpacePressed = false;
-        this.rootContainerEl.removeClass("is-space-panning");
-        if (this.inkingController.activeTool !== "select") {
-          this.finishPan();
-        }
-      }
-    });
-
-    this.registerDomEvent(this.rootContainerEl, "paste", async (e: ClipboardEvent) => {
-      if (this.textController.isEditing()) {
-        return;
-      }
-      const items = e.clipboardData?.items;
-      if (!items) {
-        return;
-      }
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file && this.pageManager) {
-            e.preventDefault();
-            const currentPage = this.pageManager.getPageByNumber(this.currentPageNumber);
-            if (currentPage) {
-              const savedPath = await this.imageController.saveBlobToVault(
-                file,
-                "pasted_image",
-                this.file?.path || ""
-              );
-              const resourceUrl = this.resolveResourcePath(savedPath);
-              const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
-              const fittedDims = ImageController.calculateFittedDimensions(
-                naturalDims.width,
-                naturalDims.height,
-                Math.min(450, currentPage.dimensions.width - 80),
-                Math.min(450, currentPage.dimensions.height - 80)
-              );
-              const posX = Math.max(20, Math.round((currentPage.dimensions.width - fittedDims.width) / 2));
-              const posY = Math.max(50, Math.round((currentPage.dimensions.height - fittedDims.height) / 2));
-              const imgObj = this.imageController.createImageObject(
-                savedPath,
-                posX,
-                posY,
-                fittedDims.width,
-                fittedDims.height
-              );
-              this.historyManager.execute(
-                new AddImageCommand(currentPage, imgObj, () => {
-                  this.handleMutation(currentPage);
-                  const frameEl = this.getPageFrame(currentPage.pageNumber);
-                  if (frameEl) {
-                    this.imageController.renderPageImages(currentPage, frameEl, p => this.resolveResourcePath(p));
-                  }
-                })
-              );
-              new Notice("Pasted image into notebook");
-            }
-          }
-          break;
-        } else if (item.type === "application/pdf") {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            await this.promptAndImportLocalPdf(file);
-            break;
-          }
-        }
-      }
-    });
+    this.dragCoordinator.ensureDragOverlay();
+    if (this.rulerController?.isVisible()) {
+      this.rulerController.show();
+    }
+    this.gestureRouter.bindScrollerAndGlobalEvents(
+      this.scrollerEl,
+      this.pagesContainerEl,
+      this.rootContainerEl,
+      this.toolbar?.toolbarWrapperEl
+    );
   }
 
   private buildStatusArea(): void {
@@ -2240,7 +2141,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (tool === "highlighter") {
       this.inkingController.setWidth(this.highlighterWidth);
       this.toolbar.setActiveWidth(this.highlighterWidth);
-    } else if (tool === "pen" || tool === "pressure" || tool === "fountain") {
+    } else if (tool === "pen" || tool === "pressure" || tool === "fountain" || tool === "pencil") {
       this.inkingController.setWidth(this.penWidth);
       this.toolbar.setActiveWidth(this.penWidth);
     } else if (tool === "shape" || tool === "connector") {
@@ -2264,8 +2165,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.rootContainerEl.toggleClass("is-tool-eraser", tool === "eraser");
     this.toolbar.setActiveTool(tool, this.currentShapeType, this.selectionController.hasSelection());
     this.updateStatusDisplay();
-    if (tool !== "eraser" && this.stylusButtonState.temporaryEraserTool === null) {
-      this.hideEraserCursor();
+    if (tool !== "eraser" && this.gestureRouter.stylusButtonState.temporaryEraserTool === null) {
+      this.gestureRouter.hideEraserCursor();
+    }
+    if (tool !== "pen" && tool !== "pressure" && tool !== "fountain" && tool !== "pencil" && tool !== "highlighter") {
+      this.gestureRouter.hidePenCursor();
     }
   }
 
@@ -2282,7 +2186,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       const pageId = this.selectionController.getActivePageId();
       if (pageId) {
         const page = this.pageManager.getPage(pageId);
-        const activeCanvas = this.activeCanvasMap.get(pageId);
+        const activeCanvas = this.canvasHost.getActiveCanvas(pageId);
         if (page && activeCanvas) {
           this.selectionController.changeColor(color, page, activeCanvas);
         }
@@ -2290,7 +2194,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
   }
 
-  private syncTextToolbar(formatting: {
+  private syncTextToolbar(formatting: TextFormattingOptions & {
     fontSize: number;
     fontWeight: string;
     italic: boolean;
@@ -2308,7 +2212,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     } else if (
       this.inkingController.activeTool === "pen" ||
       this.inkingController.activeTool === "pressure" ||
-      this.inkingController.activeTool === "fountain"
+      this.inkingController.activeTool === "fountain" ||
+      this.inkingController.activeTool === "pencil"
     ) {
       this.penWidth = width;
     }
@@ -2320,7 +2225,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       const pageId = this.selectionController.getActivePageId();
       if (pageId) {
         const page = this.pageManager.getPage(pageId);
-        const activeCanvas = this.activeCanvasMap.get(pageId);
+        const activeCanvas = this.canvasHost.getActiveCanvas(pageId);
         if (page && activeCanvas) {
           this.selectionController.changeWidth(width, page, activeCanvas);
         }
@@ -2340,7 +2245,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     if (this.selectionController.hasSelection()) {
       const pageId = this.selectionController.getActivePageId();
       if (pageId) {
-        const activeCanvas = this.activeCanvasMap.get(pageId);
+        const activeCanvas = this.canvasHost.getActiveCanvas(pageId);
         if (activeCanvas) {
           this.selectionController.clearSelection(activeCanvas);
           return;
@@ -2350,52 +2255,17 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     }
   }
 
-  private redrawCommittedCanvas(pageId: string): void {
-    if (!this.pageManager) {
-      return;
-    }
-    const page = this.pageManager.getPage(pageId);
-    if (!page) {
-      return;
-    }
-    const canvas = this.committedCanvasMap.get(pageId);
-    if (!canvas) {
-      return;
-    }
-
-    const isCurrentPageSelected = this.selectionController.getActivePageId() === pageId;
-    const selectedStrokeIds = new Set(
-      isCurrentPageSelected
-        ? this.selectionController.getSelectedStrokes().map((s) => s.id)
-        : []
-    );
-    const selectedShapeIds = new Set(
-      isCurrentPageSelected
-        ? this.selectionController.getSelectedShapes().map((sh) => sh.id)
-        : []
-    );
-
-    const visibleStrokes = page.strokes.filter((s) => !selectedStrokeIds.has(s.id));
-    const visibleShapes = page.shapes.filter((sh) => !selectedShapeIds.has(sh.id));
-
-    this.inkingController.redrawCommittedStrokes(
-      canvas,
-      page.dimensions,
-      visibleStrokes,
-      visibleShapes
-    );
-  }
-
   handleMutation(
     page: PageData,
     options?: { redrawCanvas?: boolean; debounceThumbnail?: boolean; skipThumbnail?: boolean }
   ): void {
+    PageSpatialIndexRegistry.invalidate(page);
     if (this.document) {
       this.document.metadata.updatedAt = Date.now();
     }
     const shouldRedraw = options?.redrawCanvas !== false;
     if (shouldRedraw) {
-      this.redrawCommittedCanvas(page.id);
+      this.canvasHost.redrawCommittedCanvas(page.id);
     }
     if (!options?.skipThumbnail) {
       if (options?.debounceThumbnail) {
@@ -2405,870 +2275,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       }
     }
     this.requestSave();
-  }
-
-  private getTargetPageForClientPoint(clientX: number, clientY: number): {
-    page: PageData;
-    activeCanvas: HTMLCanvasElement;
-    pointOnPage: { x: number; y: number };
-  } | null {
-    if (!this.pageManager) {
-      return null;
-    }
-    const pages = this.pageManager.getPages();
-    if (pages.length === 0) {
-      return null;
-    }
-
-    let closestPage: PageData = pages[0];
-    let closestCanvas: HTMLCanvasElement | null = this.activeCanvasMap.get(pages[0].id) || null;
-    let minDistance = Number.POSITIVE_INFINITY;
-
-    for (const page of pages) {
-      const canvas = this.activeCanvasMap.get(page.id);
-      if (!canvas) {
-        continue;
-      }
-      const rect = canvas.getBoundingClientRect();
-
-      if (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      ) {
-        const scaleX = page.dimensions.width / rect.width;
-        const scaleY = page.dimensions.height / rect.height;
-        return {
-          page,
-          activeCanvas: canvas,
-          pointOnPage: {
-            x: (clientX - rect.left) * scaleX,
-            y: (clientY - rect.top) * scaleY
-          }
-        };
-      }
-
-      const clampedX = Math.max(rect.left, Math.min(clientX, rect.right));
-      const clampedY = Math.max(rect.top, Math.min(clientY, rect.bottom));
-      const dx = clientX - clampedX;
-      const dy = clientY - clampedY;
-      const dist = dx * dx + dy * dy;
-
-      if (dist < minDistance) {
-        minDistance = dist;
-        closestPage = page;
-        closestCanvas = canvas;
-      }
-    }
-
-    if (!closestCanvas) {
-      return null;
-    }
-    const rect = closestCanvas.getBoundingClientRect();
-    const scaleX = closestPage.dimensions.width / rect.width;
-    const scaleY = closestPage.dimensions.height / rect.height;
-
-    return {
-      page: closestPage,
-      activeCanvas: closestCanvas,
-      pointOnPage: {
-        x: (clientX - rect.left) * scaleX,
-        y: (clientY - rect.top) * scaleY
-      }
-    };
-  }
-
-  ensureDragOverlay(): void {
-    if (!this.pagesContainerEl) {
-      return;
-    }
-    if (!this.dragOverlayEl || this.dragOverlayEl.parentElement !== this.pagesContainerEl) {
-      if (this.dragOverlayEl && this.dragOverlayEl.parentElement) {
-        this.dragOverlayEl.remove();
-      }
-      this.dragOverlayEl = this.pagesContainerEl.createDiv({
-        cls: "notepages-drag-overlay"
-      });
-      this.dragOverlayCanvas = this.dragOverlayEl.createEl("canvas", {
-        cls: "notepages-drag-canvas"
-      });
-    }
-  }
-
-  private renderTextObjectToCanvas(ctx: CanvasRenderingContext2D, text: TextObject): void {
-    ctx.save();
-
-    if (text.isSticky) {
-      ctx.fillStyle = text.backgroundColor || "#fef08a";
-      ctx.shadowColor = "rgba(0, 0, 0, 0.15)";
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 2;
-
-      const r = 4;
-      ctx.beginPath();
-      ctx.moveTo(text.x + r, text.y);
-      ctx.lineTo(text.x + text.width - r, text.y);
-      ctx.quadraticCurveTo(text.x + text.width, text.y, text.x + text.width, text.y + r);
-      ctx.lineTo(text.x + text.width, text.y + text.height - r);
-      ctx.quadraticCurveTo(text.x + text.width, text.y + text.height, text.x + text.width - r, text.y + text.height);
-      ctx.lineTo(text.x + r, text.y + text.height);
-      ctx.quadraticCurveTo(text.x, text.y + text.height, text.x, text.y + text.height - r);
-      ctx.lineTo(text.x + r, text.y + r);
-      ctx.quadraticCurveTo(text.x, text.y, text.x + r, text.y);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-    }
-
-    const fontSize = text.fontSize || 16;
-    const fontStyle = text.italic ? "italic" : "normal";
-    const fontWeight = text.fontWeight || "normal";
-    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${text.fontFamily || "sans-serif"}`;
-    ctx.fillStyle = text.color || "#000000";
-
-    const paddingX = text.isSticky ? 12 : 4;
-    const paddingTop = text.isSticky ? 12 : 2;
-    const lineHeight = fontSize * 1.35;
-
-    let textX = text.x + paddingX;
-    if (text.textAlign === "center") {
-      ctx.textAlign = "center";
-      textX = text.x + text.width / 2;
-    } else if (text.textAlign === "right") {
-      ctx.textAlign = "right";
-      textX = text.x + text.width - paddingX;
-    } else {
-      ctx.textAlign = "left";
-    }
-
-    const lines = (text.content || "").split("\n");
-    lines.forEach((line, idx) => {
-      const lineY = text.y + paddingTop + fontSize + idx * lineHeight;
-      ctx.fillText(line, textX, lineY);
-      if (text.underline) {
-        const textMetric = ctx.measureText(line);
-        let underlineStart = textX;
-        if (text.textAlign === "center") {
-          underlineStart = textX - textMetric.width / 2;
-        } else if (text.textAlign === "right") {
-          underlineStart = textX - textMetric.width;
-        }
-        ctx.fillRect(underlineStart, lineY + 2, textMetric.width, 1);
-      }
-    });
-
-    ctx.restore();
-  }
-
-  private renderImageObjectToCanvas(ctx: CanvasRenderingContext2D, img: ImageObject): void {
-    ctx.save();
-    const domImg = this.pagesContainerEl?.querySelector<HTMLImageElement>(
-      `[data-image-id="${img.id}"] img`
-    );
-    if (domImg && domImg.complete && domImg.naturalWidth > 0) {
-      if (typeof img.opacity === "number") {
-        ctx.globalAlpha = img.opacity;
-      }
-      if (img.rotation) {
-        const cx = img.x + img.width / 2;
-        const cy = img.y + img.height / 2;
-        ctx.translate(cx, cy);
-        ctx.rotate((img.rotation * Math.PI) / 180);
-        ctx.drawImage(domImg, -img.width / 2, -img.height / 2, img.width, img.height);
-      } else {
-        ctx.drawImage(domImg, img.x, img.y, img.width, img.height);
-      }
-    } else {
-      ctx.fillStyle = "rgba(59, 130, 246, 0.1)";
-      ctx.strokeStyle = "#3b82f6";
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(img.x, img.y, img.width, img.height);
-      ctx.fillRect(img.x, img.y, img.width, img.height);
-    }
-    ctx.restore();
-  }
-
-  private startSelectionDrag(
-    sourcePageId: string,
-    bounds: StrokeBoundingBox,
-    clientX?: number,
-    clientY?: number
-  ): void {
-    this.ensureDragOverlay();
-    if (!this.pageManager || !this.dragOverlayEl || !this.dragOverlayCanvas) {
-      return;
-    }
-    const sourcePage = this.pageManager.getPage(sourcePageId);
-    if (!sourcePage) {
-      return;
-    }
-
-    if (typeof clientX === "number" && typeof clientY === "number") {
-      this.dragStartClientX = clientX;
-      this.dragStartClientY = clientY;
-    }
-
-    const containerRect = this.pagesContainerEl.getBoundingClientRect();
-    const canvas = this.activeCanvasMap.get(sourcePage.id);
-    const pageWrapper = this.pageElements.get(sourcePage.pageNumber);
-    if (!canvas && !pageWrapper) {
-      return;
-    }
-    const pageRect = canvas ? canvas.getBoundingClientRect() : pageWrapper!.getBoundingClientRect();
-    const pageLeft = (pageRect.left - containerRect.left) / this.zoomLevel;
-    const pageTop = (pageRect.top - containerRect.top) / this.zoomLevel;
-
-    const boxWidth = Math.max(1, bounds.maxX - bounds.minX);
-    const boxHeight = Math.max(1, bounds.maxY - bounds.minY);
-    const padding = 20;
-    const canvasWidth = Math.ceil(boxWidth + padding * 2);
-    const canvasHeight = Math.ceil(boxHeight + padding * 2);
-
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    this.dragOverlayCanvas.width = Math.round(canvasWidth * dpr);
-    this.dragOverlayCanvas.height = Math.round(canvasHeight * dpr);
-    this.dragOverlayCanvas.setCssStyles({
-      width: `${canvasWidth}px`,
-      height: `${canvasHeight}px`
-    });
-
-    const ctx = this.dragOverlayCanvas.getContext("2d");
-    if (ctx) {
-      ctx.save();
-      if (typeof ctx.setTransform === "function") {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-      }
-      ctx.clearRect(0, 0, this.dragOverlayCanvas.width, this.dragOverlayCanvas.height);
-      ctx.restore();
-
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      ctx.translate(padding - bounds.minX, padding - bounds.minY);
-
-      for (const stroke of this.selectionController.getSelectedStrokes()) {
-        StrokeGeometry.renderStroke(ctx, stroke);
-      }
-      for (const shape of this.selectionController.getSelectedShapes()) {
-        ShapeRecognizer.renderShape(ctx, shape);
-      }
-      for (const text of this.selectionController.getSelectedTexts()) {
-        this.renderTextObjectToCanvas(ctx, text);
-      }
-      for (const img of this.selectionController.getSelectedImages()) {
-        this.renderImageObjectToCanvas(ctx, img);
-      }
-      this.selectionController.renderSelectionDashedBox(ctx, bounds);
-
-      ctx.restore();
-    }
-
-    const initialOverlayX = pageLeft + bounds.minX - padding;
-    const initialOverlayY = pageTop + bounds.minY - padding;
-
-    this.dragOverlayEl.setCssStyles({
-      transform: `translate3d(${initialOverlayX}px, ${initialOverlayY}px, 0)`
-    });
-    this.dragOverlayEl.addClass("is-active");
-
-    const sourceCanvas = this.activeCanvasMap.get(sourcePageId);
-    if (sourceCanvas) {
-      const srcCtx = sourceCanvas.getContext("2d");
-      srcCtx?.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
-    }
-
-    for (const text of this.selectionController.getSelectedTexts()) {
-      const el = this.pagesContainerEl?.querySelector<HTMLElement>(`[data-text-id="${text.id}"]`);
-      el?.addClass("is-hidden");
-    }
-    for (const img of this.selectionController.getSelectedImages()) {
-      const el = this.pagesContainerEl?.querySelector<HTMLElement>(`[data-image-id="${img.id}"]`);
-      el?.addClass("is-hidden");
-    }
-
-    this.isDraggingSelection = true;
-    this.dragInitialOverlayX = initialOverlayX;
-    this.dragInitialOverlayY = initialOverlayY;
-    this.dragOverlayPadding = padding;
-    this.dragBoxWidth = boxWidth;
-    this.dragBoxHeight = boxHeight;
-  }
-
-  private updateSelectionDrag(clientX: number, clientY: number): void {
-    if (!this.isDraggingSelection || !this.dragOverlayEl) {
-      return;
-    }
-    const dx = (clientX - this.dragStartClientX) / this.zoomLevel;
-    const dy = (clientY - this.dragStartClientY) / this.zoomLevel;
-    const currentX = this.dragInitialOverlayX + dx;
-    const currentY = this.dragInitialOverlayY + dy;
-    this.dragOverlayEl.setCssStyles({
-      transform: `translate3d(${currentX}px, ${currentY}px, 0)`
-    });
-  }
-
-  private finishSelectionDrag(clientX: number, clientY: number): void {
-    if (!this.isDraggingSelection || !this.dragOverlayEl) {
-      return;
-    }
-    this.isDraggingSelection = false;
-    this.dragOverlayEl.removeClass("is-active");
-
-    this.pagesContainerEl?.querySelectorAll(".is-hidden").forEach((el) => {
-      el.removeClass("is-hidden");
-    });
-
-    const movedDist = Math.hypot(clientX - this.dragStartClientX, clientY - this.dragStartClientY);
-    if (movedDist < 3) {
-      this.cancelSelectionDrag();
-      return;
-    }
-
-    const dx = (clientX - this.dragStartClientX) / this.zoomLevel;
-    const dy = (clientY - this.dragStartClientY) / this.zoomLevel;
-
-    const finalContainerBoxMinX = this.dragInitialOverlayX + dx + this.dragOverlayPadding;
-    const finalContainerBoxMinY = this.dragInitialOverlayY + dy + this.dragOverlayPadding;
-    const finalContainerBoxCenterX = finalContainerBoxMinX + this.dragBoxWidth / 2;
-    const finalContainerBoxCenterY = finalContainerBoxMinY + this.dragBoxHeight / 2;
-
-    const targetInfo = this.findPageAtContainerPoint(
-      finalContainerBoxCenterX,
-      finalContainerBoxCenterY
-    );
-    if (!targetInfo) {
-      this.cancelSelectionDrag();
-      return;
-    }
-
-    const { page: targetPage, pageLeft, pageTop } = targetInfo;
-    const targetPageMinX = finalContainerBoxMinX - pageLeft;
-    const targetPageMinY = finalContainerBoxMinY - pageTop;
-
-    const maxW = Math.max(0, targetPage.dimensions.width - this.dragBoxWidth);
-    const maxH = Math.max(0, targetPage.dimensions.height - this.dragBoxHeight);
-    const clampedMinX = Math.max(0, Math.min(targetPageMinX, maxW));
-    const clampedMinY = Math.max(0, Math.min(targetPageMinY, maxH));
-
-    const targetBox: StrokeBoundingBox = {
-      minX: clampedMinX,
-      minY: clampedMinY,
-      maxX: clampedMinX + this.dragBoxWidth,
-      maxY: clampedMinY + this.dragBoxHeight
-    };
-
-    let targetCanvas = this.activeCanvasMap.get(targetPage.id);
-    if (!targetCanvas || targetCanvas.width <= 1) {
-      this.mountPageCanvases(targetPage.pageNumber);
-      targetCanvas = this.activeCanvasMap.get(targetPage.id);
-    }
-    if (targetCanvas) {
-      this.selectionController.commitMove(targetPage, targetBox, targetCanvas);
-    }
-  }
-
-  private cancelSelectionDrag(): void {
-    if (!this.isDraggingSelection && !this.dragOverlayEl?.hasClass("is-active")) {
-      return;
-    }
-    this.isDraggingSelection = false;
-    this.dragOverlayEl?.removeClass("is-active");
-
-    this.pagesContainerEl?.querySelectorAll(".is-hidden").forEach((el) => {
-      el.removeClass("is-hidden");
-    });
-
-    this.selectionController.cancelMove();
-
-    const activePageId = this.selectionController.getActivePageId();
-    if (activePageId) {
-      const canvas = this.activeCanvasMap.get(activePageId);
-      const bounds = this.selectionController.getCombinedBounds();
-      if (canvas && bounds) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          this.selectionController.renderSelectionOverlay(ctx, canvas, bounds);
-        }
-      }
-    }
-  }
-
-  private findPageAtContainerPoint(
-    _containerX: number,
-    containerY: number
-  ): { page: PageData; pageLeft: number; pageTop: number } | null {
-    if (!this.pageManager) {
-      return null;
-    }
-    const pages = this.pageManager.getPages();
-    if (pages.length === 0) {
-      return null;
-    }
-
-    const containerRect = this.pagesContainerEl.getBoundingClientRect();
-    let closestPage = pages[0];
-    let closestLeft = 0;
-    let closestTop = 0;
-    let minDistance = Number.POSITIVE_INFINITY;
-
-    for (const page of pages) {
-      const canvas = this.activeCanvasMap.get(page.id);
-      const pageWrapper = this.pageElements.get(page.pageNumber);
-      if (!canvas && !pageWrapper) {
-        continue;
-      }
-      const canvasRect = canvas ? canvas.getBoundingClientRect() : pageWrapper!.getBoundingClientRect();
-      const pageLeft = (canvasRect.left - containerRect.left) / this.zoomLevel;
-      const pageTop = (canvasRect.top - containerRect.top) / this.zoomLevel;
-      const pageBottom = pageTop + page.dimensions.height;
-
-      if (containerY >= pageTop && containerY <= pageBottom) {
-        return { page, pageLeft, pageTop };
-      }
-
-      const pageCenterY = pageTop + page.dimensions.height / 2;
-      const distY = Math.abs(containerY - pageCenterY);
-      if (distY < minDistance) {
-        minDistance = distY;
-        closestPage = page;
-        closestLeft = pageLeft;
-        closestTop = pageTop;
-      }
-    }
-
-    return { page: closestPage, pageLeft: closestLeft, pageTop: closestTop };
-  }
-
-  private duplicateActiveSelection(): void {
-    if (!this.selectionController.hasSelection() || !this.pageManager || !this.document) {
-      return;
-    }
-
-    const pageId = this.selectionController.getActivePageId();
-    if (!pageId) return;
-    const page = this.pageManager.getPage(pageId);
-    if (!page) return;
-
-    const offset = 20;
-    const clonedStrokes: StrokeObject[] = this.selectionController.getSelectedStrokes().map((s) => {
-      const newPoints = s.points.map((p) => ({
-        ...p,
-        x: p.x + offset,
-        y: p.y + offset
-      }));
-      return {
-        ...s,
-        id: `stroke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        points: newPoints,
-        bounds: StrokeGeometry.computeBoundingBox(newPoints, s.width)
-      };
-    });
-
-    const clonedShapes: ShapeObject[] = this.selectionController.getSelectedShapes().map((sh) => {
-      const newGeom = { ...sh.geometryData };
-      if (
-        sh.type === "rectangle" ||
-        sh.type === "rounded-rectangle" ||
-        sh.type === "diamond" ||
-        sh.type === "star" ||
-        sh.type === "callout"
-      ) {
-        newGeom.x = (newGeom.x || 0) + offset;
-        newGeom.y = (newGeom.y || 0) + offset;
-      } else if (sh.type === "circle" || sh.type === "ellipse") {
-        newGeom.cx = (newGeom.cx || 0) + offset;
-        newGeom.cy = (newGeom.cy || 0) + offset;
-      } else if (sh.type === "line" || sh.type === "arrow") {
-        newGeom.x1 = (newGeom.x1 || 0) + offset;
-        newGeom.y1 = (newGeom.y1 || 0) + offset;
-        newGeom.x2 = (newGeom.x2 || 0) + offset;
-        newGeom.y2 = (newGeom.y2 || 0) + offset;
-      } else if (sh.type === "triangle") {
-        newGeom.x1 = (newGeom.x1 || 0) + offset;
-        newGeom.y1 = (newGeom.y1 || 0) + offset;
-        newGeom.x2 = (newGeom.x2 || 0) + offset;
-        newGeom.y2 = (newGeom.y2 || 0) + offset;
-        newGeom.x3 = (newGeom.x3 || 0) + offset;
-        newGeom.y3 = (newGeom.y3 || 0) + offset;
-      }
-
-      return {
-        ...sh,
-        id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        bounds: {
-          minX: sh.bounds.minX + offset,
-          minY: sh.bounds.minY + offset,
-          maxX: sh.bounds.maxX + offset,
-          maxY: sh.bounds.maxY + offset
-        },
-        geometryData: newGeom
-      };
-    });
-
-    const clonedTexts: TextObject[] = this.selectionController.getSelectedTexts().map((t) => {
-      const newX = Math.max(0, Math.min(page.dimensions.width - t.width, t.x + offset));
-      const newY = Math.max(0, Math.min(page.dimensions.height - t.height, t.y + offset));
-      return {
-        ...t,
-        id: `text_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        x: newX,
-        y: newY,
-        bounds: {
-          minX: newX,
-          minY: newY,
-          maxX: newX + t.width,
-          maxY: newY + t.height
-        }
-      };
-    });
-
-    const clonedImages: ImageObject[] = this.selectionController.getSelectedImages().map((img) => {
-      const newX = Math.max(0, Math.min(page.dimensions.width - img.width, img.x + offset));
-      const newY = Math.max(0, Math.min(page.dimensions.height - img.height, img.y + offset));
-      return {
-        ...img,
-        id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        x: newX,
-        y: newY,
-        bounds: {
-          minX: newX,
-          minY: newY,
-          maxX: newX + img.width,
-          maxY: newY + img.height
-        }
-      };
-    });
-
-    const activeCanvas = this.activeCanvasMap.get(page.id);
-
-    this.selectionController.setSelection(
-      page.id,
-      clonedStrokes,
-      clonedShapes,
-      activeCanvas,
-      clonedTexts,
-      clonedImages
-    );
-
-    this.historyManager.execute(
-      new AddElementsCommand(
-        page,
-        clonedStrokes,
-        clonedShapes,
-        () => {
-          this.handleMutation(page);
-          const frameEl = this.getPageFrame(page.pageNumber);
-          if (frameEl) {
-            if (clonedTexts.length > 0) {
-              this.textController.renderPageTexts(page, frameEl);
-            }
-            if (clonedImages.length > 0) {
-              this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
-            }
-          }
-        },
-        clonedTexts,
-        clonedImages
-      )
-    );
-    new Notice("Duplicated selection");
-  }
-
-  private deleteActiveSelection(): void {
-    if (!this.selectionController.hasSelection() || !this.pageManager) {
-      return;
-    }
-    const pageId = this.selectionController.getActivePageId();
-    if (!pageId) return;
-    const page = this.pageManager.getPage(pageId);
-    if (!page) return;
-    const activeCanvas = this.activeCanvasMap.get(page.id);
-    if (!activeCanvas) return;
-
-    this.selectionController.deleteSelection(page, activeCanvas);
-  }
-
-  private copySelection(): void {
-    if (!this.selectionController.hasSelection()) {
-      return;
-    }
-    this.clipboard = {
-      strokes: this.selectionController.getSelectedStrokes().map((s) => ({
-        ...s,
-        points: s.points.map((p) => ({ ...p }))
-      })),
-      shapes: this.selectionController.getSelectedShapes().map((sh) => ({
-        ...sh,
-        geometryData: { ...sh.geometryData }
-      })),
-      texts: this.selectionController.getSelectedTexts().map((t) => ({
-        ...t,
-        bounds: t.bounds ? { ...t.bounds } : undefined
-      })),
-      images: this.selectionController.getSelectedImages().map((img) => ({
-        ...img,
-        bounds: img.bounds ? { ...img.bounds } : undefined
-      }))
-    };
-    new Notice("Selection copied");
-  }
-
-  private pasteSelection(): void {
-    if (!this.clipboard || !this.pageManager || !this.document) {
-      return;
-    }
-    const page = this.pageManager.getPageByNumber(this.currentPageNumber);
-    if (!page) return;
-
-    const offset = 25;
-    const pastedStrokes: StrokeObject[] = this.clipboard.strokes.map((s) => {
-      const newPoints = s.points.map((p) => ({
-        ...p,
-        x: p.x + offset,
-        y: p.y + offset
-      }));
-      return {
-        ...s,
-        id: `stroke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        points: newPoints,
-        bounds: StrokeGeometry.computeBoundingBox(newPoints, s.width)
-      };
-    });
-
-    const pastedShapes: ShapeObject[] = this.clipboard.shapes.map((sh) => {
-      const newGeom = { ...sh.geometryData };
-      if (
-        sh.type === "rectangle" ||
-        sh.type === "rounded-rectangle" ||
-        sh.type === "diamond" ||
-        sh.type === "star" ||
-        sh.type === "callout"
-      ) {
-        newGeom.x = (newGeom.x || 0) + offset;
-        newGeom.y = (newGeom.y || 0) + offset;
-      } else if (sh.type === "circle" || sh.type === "ellipse") {
-        newGeom.cx = (newGeom.cx || 0) + offset;
-        newGeom.cy = (newGeom.cy || 0) + offset;
-      } else if (sh.type === "line" || sh.type === "arrow") {
-        newGeom.x1 = (newGeom.x1 || 0) + offset;
-        newGeom.y1 = (newGeom.y1 || 0) + offset;
-        newGeom.x2 = (newGeom.x2 || 0) + offset;
-        newGeom.y2 = (newGeom.y2 || 0) + offset;
-      } else if (sh.type === "triangle") {
-        newGeom.x1 = (newGeom.x1 || 0) + offset;
-        newGeom.y1 = (newGeom.y1 || 0) + offset;
-        newGeom.x2 = (newGeom.x2 || 0) + offset;
-        newGeom.y2 = (newGeom.y2 || 0) + offset;
-        newGeom.x3 = (newGeom.x3 || 0) + offset;
-        newGeom.y3 = (newGeom.y3 || 0) + offset;
-      }
-
-      return {
-        ...sh,
-        id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        bounds: {
-          minX: sh.bounds.minX + offset,
-          minY: sh.bounds.minY + offset,
-          maxX: sh.bounds.maxX + offset,
-          maxY: sh.bounds.maxY + offset
-        },
-        geometryData: newGeom
-      };
-    });
-
-    const pastedTexts: TextObject[] = this.clipboard.texts.map((t) => {
-      const newX = Math.max(0, Math.min(page.dimensions.width - t.width, t.x + offset));
-      const newY = Math.max(0, Math.min(page.dimensions.height - t.height, t.y + offset));
-      return {
-        ...t,
-        id: `text_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        x: newX,
-        y: newY,
-        bounds: {
-          minX: newX,
-          minY: newY,
-          maxX: newX + t.width,
-          maxY: newY + t.height
-        }
-      };
-    });
-
-    const pastedImages: ImageObject[] = this.clipboard.images.map((img) => {
-      const newX = Math.max(0, Math.min(page.dimensions.width - img.width, img.x + offset));
-      const newY = Math.max(0, Math.min(page.dimensions.height - img.height, img.y + offset));
-      return {
-        ...img,
-        id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        x: newX,
-        y: newY,
-        bounds: {
-          minX: newX,
-          minY: newY,
-          maxX: newX + img.width,
-          maxY: newY + img.height
-        }
-      };
-    });
-
-    const activeCanvas = this.activeCanvasMap.get(page.id);
-
-    this.selectionController.setSelection(
-      page.id,
-      pastedStrokes,
-      pastedShapes,
-      activeCanvas,
-      pastedTexts,
-      pastedImages
-    );
-
-    this.historyManager.execute(
-      new AddElementsCommand(
-        page,
-        pastedStrokes,
-        pastedShapes,
-        () => {
-          this.handleMutation(page);
-          const frameEl = this.getPageFrame(page.pageNumber);
-          if (frameEl) {
-            if (pastedTexts.length > 0) {
-              this.textController.renderPageTexts(page, frameEl);
-            }
-            if (pastedImages.length > 0) {
-              this.imageController.renderPageImages(page, frameEl, (p) => this.resolveResourcePath(p));
-            }
-          }
-        },
-        pastedTexts,
-        pastedImages
-      )
-    );
-    new Notice("Pasted elements");
-  }
-
-  private setEraserMode(mode: EraserMode): void {
-    this.inkingController.setEraserMode(mode);
-    this.toolbar.setEraserMode(mode);
-  }
-
-  private setEraserRadius(radius: number): void {
-    this.inkingController.setEraserRadius(radius);
-    this.toolbar.setEraserRadius(radius);
-    this.updateEraserCursorSize();
-  }
-
-  private updateEraserCursorSize(): void {
-    if (!this.eraserCursorEl) {
-      return;
-    }
-    const screenRadius = this.inkingController.eraserRadius * this.zoomLevel;
-    const diameter = screenRadius * 2;
-    this.eraserCursorEl.setCssStyles({
-      width: `${diameter}px`,
-      height: `${diameter}px`
-    });
-  }
-
-  private updateEraserCursorPosition(clientX: number, clientY: number): void {
-    if (!this.eraserCursorEl || !this.rootContainerEl) {
-      return;
-    }
-    const isEraser = this.inkingController.activeTool === "eraser" || this.stylusButtonState.temporaryEraserTool !== null;
-    if (!isEraser) {
-      this.eraserCursorEl.addClass("is-hidden");
-      return;
-    }
-
-    const rootRect = this.rootContainerEl.getBoundingClientRect ? this.rootContainerEl.getBoundingClientRect() : null;
-    if (rootRect) {
-      if (
-        clientX < rootRect.left ||
-        clientX > rootRect.right ||
-        clientY < rootRect.top ||
-        clientY > rootRect.bottom
-      ) {
-        this.eraserCursorEl.addClass("is-hidden");
-        return;
-      }
-    }
-
-    if (this.toolbar && this.toolbar.toolbarWrapperEl && this.toolbar.toolbarWrapperEl.getBoundingClientRect) {
-      const tbRect = this.toolbar.toolbarWrapperEl.getBoundingClientRect();
-      if (
-        clientX >= tbRect.left &&
-        clientX <= tbRect.right &&
-        clientY >= tbRect.top &&
-        clientY <= tbRect.bottom
-      ) {
-        this.eraserCursorEl.addClass("is-hidden");
-        return;
-      }
-    }
-
-    const relX = rootRect ? clientX - rootRect.left : clientX;
-    const relY = rootRect ? clientY - rootRect.top : clientY;
-    const screenRadius = this.inkingController.eraserRadius * this.zoomLevel;
-    const diameter = Math.round(screenRadius * 2);
-
-    this.eraserCursorEl.setCssStyles({
-      width: `${diameter}px`,
-      height: `${diameter}px`,
-      transform: `translate3d(${Math.round(relX - screenRadius)}px, ${Math.round(relY - screenRadius)}px, 0)`
-    });
-    this.eraserCursorEl.removeClass("is-hidden");
-  }
-
-  private hideEraserCursor(): void {
-    if (this.eraserCursorEl) {
-      this.eraserCursorEl.addClass("is-hidden");
-    }
-  }
-
-  private handleStylusHoverButton(e: PointerEvent): void {
-    const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
-    const isActivelyInteracting =
-      this.inkingController.isCurrentlyDrawing() ||
-      this.isPanning ||
-      this.isDraggingSelection ||
-      this.isDraggingTextRect ||
-      this.isDraggingShape ||
-      this.isDraggingConnector;
-    const nextTool = this.stylusButtonState.handleHoverMove(
-      e,
-      stylusAction,
-      this.inkingController.activeTool,
-      isActivelyInteracting
-    );
-    if (nextTool !== null) {
-      this.applyStylusToolTransition(nextTool, stylusAction === "toggle");
-      if (nextTool === "eraser") {
-        this.updateEraserCursorPosition(e.clientX, e.clientY);
-      }
-    }
-  }
-
-  private applyStylusToolTransition(nextTool: ToolType, isPersistentToggle: boolean): void {
-    if (isPersistentToggle) {
-      this.setActiveTool(nextTool, false);
-      return;
-    }
-    this.inkingController.setTool(nextTool);
-    this.rootContainerEl.toggleClass("is-tool-eraser", nextTool === "eraser");
-    this.toolbar.setActiveTool(nextTool, this.currentShapeType, false);
-    if (nextTool !== "eraser") {
-      this.hideEraserCursor();
-    }
-  }
-
-  private revertTemporaryStylusEraser(e: PointerEvent | null, isCancel: boolean = false): void {
-    const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
-    const revertTool = this.stylusButtonState.handlePointerUpOrCancel(e, stylusAction, isCancel);
-    if (revertTool !== null) {
-      this.applyStylusToolTransition(revertTool, false);
-    }
   }
 
   private blurFocusedToolbarControl(): void {
@@ -3294,232 +2300,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.sidebar.toggle();
   }
 
-  private scheduleCanvasResolutionUpdate(delayMs: number = 180): void {
-    if (this.canvasResolutionTimeout !== null) {
-      window.clearTimeout(this.canvasResolutionTimeout);
-    }
-    this.canvasResolutionTimeout = window.setTimeout(() => {
-      this.canvasResolutionTimeout = null;
-      this.updateCanvasResolutions();
-    }, delayMs);
-  }
-
-  private flushCanvasResolutionUpdate(): void {
-    if (this.canvasResolutionTimeout !== null) {
-      window.clearTimeout(this.canvasResolutionTimeout);
-      this.canvasResolutionTimeout = null;
-    }
-    this.updateCanvasResolutions();
-  }
-
-  private applyPagesContainerTransform(): void {
-    if (!this.pagesContainerEl) {
-      return;
-    }
-    if (this.zoomLevel > 1) {
-      const extraHeight = Math.ceil(this.pagesContainerEl.offsetHeight * (this.zoomLevel - 1));
-      const extraWidth = Math.ceil(this.pagesContainerEl.offsetWidth * (this.zoomLevel - 1));
-      const marginX = `${Math.ceil(extraWidth / 2) + 60}px`;
-      this.pagesContainerEl.setCssStyles({
-        transform: `scale(${this.zoomLevel})`,
-        marginBottom: `${extraHeight + 80}px`,
-        marginRight: marginX,
-        marginLeft: marginX
-      });
-    } else {
-      this.pagesContainerEl.setCssStyles({
-        transform: `scale(${this.zoomLevel})`,
-        marginBottom: "0px",
-        marginRight: "0px",
-        marginLeft: "0px"
-      });
-    }
-  }
-
-  setZoomLevel(targetZoom: number, anchorClientX?: number, anchorClientY?: number, isContinuous: boolean = false): void {
-    const clampedZoom = Math.min(5.0, Math.max(0.2, targetZoom));
-    if (Math.abs(clampedZoom - this.zoomLevel) < 0.0005) {
-      return;
-    }
-
-    if (!this.pagesContainerEl || !this.scrollerEl) {
-      this.zoomLevel = clampedZoom;
-      return;
-    }
-
-    let ax = anchorClientX;
-    let ay = anchorClientY;
-    if (ax === undefined || ay === undefined) {
-      const scrollerRect = this.scrollerEl.getBoundingClientRect();
-      ax = scrollerRect.left + scrollerRect.width / 2;
-      ay = scrollerRect.top + scrollerRect.height / 2;
-    }
-
-    const rectBefore = this.pagesContainerEl.getBoundingClientRect();
-    const canAnchor = rectBefore.width > 0 && rectBefore.height > 0;
-    const fracX = canAnchor ? (ax - rectBefore.left) / rectBefore.width : 0.5;
-    const fracY = canAnchor ? (ay - rectBefore.top) / rectBefore.height : 0.5;
-
-    this.zoomLevel = clampedZoom;
-
-    this.applyPagesContainerTransform();
-
-    if (canAnchor) {
-      const rectAfter = this.pagesContainerEl.getBoundingClientRect();
-      const newAx = rectAfter.left + fracX * rectAfter.width;
-      const newAy = rectAfter.top + fracY * rectAfter.height;
-      const diffX = newAx - ax;
-      const diffY = newAy - ay;
-
-      if (Number.isFinite(diffX) && Number.isFinite(diffY)) {
-        this.scrollerEl.scrollLeft += diffX;
-        this.scrollerEl.scrollTop += diffY;
-      }
-    }
-
-    this.toolbar.updateZoomDisplay(this.zoomLevel);
-    this.updateStatusDisplay();
-
-    if (this.minimap) {
-      this.minimap.onZoomChanged(this.zoomLevel);
-    }
-
-    this.updateEraserCursorSize();
-
-    if (isContinuous) {
-      this.scheduleCanvasResolutionUpdate(180);
-    } else {
-      this.flushCanvasResolutionUpdate();
-    }
-  }
-
-  zoomByFactor(factor: number, anchorClientX?: number, anchorClientY?: number): void {
-    const nextZoom = Math.min(5.0, Math.max(0.2, this.zoomLevel * factor));
-    this.setZoomLevel(Math.round(nextZoom * 1000) / 1000, anchorClientX, anchorClientY, true);
-  }
-
-  private changeZoom(delta: number, anchorClientX?: number, anchorClientY?: number): void {
-    const nextZoom = Math.min(5.0, Math.max(0.2, Math.round((this.zoomLevel + delta) * 10) / 10));
-    this.setZoomLevel(nextZoom, anchorClientX, anchorClientY, false);
-  }
-
-  private resetZoom(): void {
-    this.setZoomLevel(1.0);
-  }
-
-  getCanvasScale(): number {
-    const dpr = typeof window !== "undefined" ? (window.devicePixelRatio || 1) : 1;
-    const zoom = Math.max(1, this.zoomLevel);
-    return Math.min(4.0, Math.max(1, Math.round(dpr * zoom * 10) / 10));
-  }
-
-  private updateCanvasResolutions(): void {
-    if (!this.pageManager) {
-      return;
-    }
-    const scale = this.getCanvasScale();
-    const mountedList = this.pageVirtualizer?.getMountedPages?.() || [];
-    const mountedPageNumbers = mountedList.length > 0
-      ? new Set(mountedList)
-      : new Set([this.currentPageNumber, 1, 2, 3]);
-
-    const pages = this.pageManager.getPages();
-    for (const page of pages) {
-      if (!mountedPageNumbers.has(page.pageNumber)) {
-        continue;
-      }
-
-      const targetW = Math.round(page.dimensions.width * scale);
-      const targetH = Math.round(page.dimensions.height * scale);
-
-      const tplCanvas = this.templateCanvasMap.get(page.id);
-      if (tplCanvas && (tplCanvas.width !== targetW || tplCanvas.height !== targetH)) {
-        tplCanvas.width = targetW;
-        tplCanvas.height = targetH;
-        TemplateRenderer.renderTemplate(tplCanvas, page.dimensions, page.template);
-      }
-
-      const comCanvas = this.committedCanvasMap.get(page.id);
-      if (comCanvas && (comCanvas.width !== targetW || comCanvas.height !== targetH)) {
-        comCanvas.width = targetW;
-        comCanvas.height = targetH;
-        this.redrawCommittedCanvas(page.id);
-      }
-
-      const actCanvas = this.activeCanvasMap.get(page.id);
-      if (actCanvas && (actCanvas.width !== targetW || actCanvas.height !== targetH)) {
-        actCanvas.width = targetW;
-        actCanvas.height = targetH;
-        const ctx = actCanvas.getContext("2d");
-        if (ctx && typeof ctx.setTransform === "function") {
-          ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        }
-      }
-    }
-  }
-
-  applyZoom(): void {
-    this.setZoomLevel(this.zoomLevel);
-  }
-
-  private isPanTrigger(e: PointerEvent): boolean {
-    if (this.isSpacePressed) {
-      return true;
-    }
-    if (
-      this.inkingController.activeTool === "select" ||
-      (this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan")
-    ) {
-      return true;
-    }
-    if (e.pointerType === "pen" || this.stylusButtonState.temporaryEraserTool !== null) {
-      return false;
-    }
-    if (e.button === 1 || e.button === 2) {
-      return true;
-    }
-    return false;
-  }
-
-  private startPan(clientX: number, clientY: number, target?: Element, pointerId?: number): void {
-    this.isPanning = true;
-    this.panStartX = clientX;
-    this.panStartY = clientY;
-    this.panScrollLeft = this.scrollerEl.scrollLeft;
-    this.panScrollTop = this.scrollerEl.scrollTop;
-    this.rootContainerEl.addClass("is-panning");
-    this.scrollerEl.addClass("is-panning");
-    const captureTarget = target ?? this.scrollerEl;
-    if (pointerId !== undefined) {
-      try {
-        captureTarget.setPointerCapture(pointerId);
-      } catch (err) {
-        void err;
-      }
-    }
-  }
-
-  private updatePan(clientX: number, clientY: number): void {
-    if (!this.isPanning) {
-      return;
-    }
-    const dx = clientX - this.panStartX;
-    const dy = clientY - this.panStartY;
-    this.scrollerEl.scrollLeft = this.panScrollLeft - dx;
-    this.scrollerEl.scrollTop = this.panScrollTop - dy;
-  }
-
-  private finishPan(): void {
-    if (!this.isPanning) {
-      return;
-    }
-    this.isPanning = false;
-    this.rootContainerEl.removeClass("is-panning");
-    this.scrollerEl.removeClass("is-panning");
-  }
-
   private updateStatusDisplay(): void {
-    const pageCount = this.pageManager ? this.pageManager.getPageCount() : (this.document ? this.document.pages.length : 0);
+    const pageCount = this.pageManager ? this.pageManager.getPageCount() : this.document ? this.document.pages.length : 0;
     const currentPage = this.pageManager?.getPageByNumber(this.currentPageNumber) ?? this.pageManager?.getPages()[0];
     const width = currentPage ? Math.round(currentPage.dimensions.width) : 595;
     const height = currentPage ? Math.round(currentPage.dimensions.height) : 842;
@@ -3536,6 +2318,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       const tool = this.inkingController.activeTool;
       let toolName = tool.toUpperCase();
       if (tool === "pen" || tool === "pressure" || tool === "fountain") toolName = "PEN";
+      else if (tool === "pencil") toolName = "PENCIL";
       else if (tool === "select") toolName = "SELECT / PAN";
       else if (tool === "lasso") toolName = this.selectionSubMode === "pan" ? "HAND / PAN" : "LASSO SELECT";
       else if (tool === "sticky") toolName = "STICKY NOTE";
@@ -3544,7 +2327,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.statusToolInfoEl.setText(`Tool: ${toolName}`);
     }
     if (this.statusZoomInfoEl) {
-      this.statusZoomInfoEl.setText(`Zoom: ${Math.round(this.zoomLevel * 100)}%`);
+      this.statusZoomInfoEl.setText(`Zoom: ${Math.round(this.zoomController.getZoomLevel() * 100)}%`);
     }
     if (this.statusSaveInfoEl) {
       if (pageCount === 0) {
@@ -3556,7 +2339,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   getPageFrame(pageNumber: number): HTMLElement | null {
-    const pageWrapper = this.pageElements.get(pageNumber);
+    const pageWrapper = this.canvasHost.getPageElement(pageNumber);
     if (!pageWrapper) {
       return null;
     }
@@ -3570,25 +2353,22 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     this.clearActiveSelectionCanvas();
 
-    this.committedCanvasMap.forEach((c) => {
+    this.canvasHost.committedCanvasMap.forEach((c) => {
       c.width = 1;
       c.height = 1;
     });
-    this.activeCanvasMap.forEach((c) => {
+    this.canvasHost.activeCanvasMap.forEach((c) => {
       c.width = 1;
       c.height = 1;
     });
-    this.templateCanvasMap.forEach((c) => {
+    this.canvasHost.templateCanvasMap.forEach((c) => {
       c.width = 1;
       c.height = 1;
     });
 
     this.sidebar.clear();
     this.pagesContainerEl.empty();
-    this.pageElements.clear();
-    this.committedCanvasMap.clear();
-    this.activeCanvasMap.clear();
-    this.templateCanvasMap.clear();
+    this.canvasHost.clearAll();
     this.pageVirtualizer.clear();
     this.pageIntersectionObserver?.disconnect();
 
@@ -3599,21 +2379,20 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.renderThumbnail(page, index);
     }
 
-    this.ensureDragOverlay();
+    this.dragCoordinator.ensureDragOverlay();
+    if (this.rulerController?.isVisible()) {
+      this.rulerController.show();
+    }
 
     if (this.pageManager) {
       const activeType = this.pageManager.getNotebookTemplate().type;
       this.toolbar.updatePaperTemplateButtons(activeType);
       const orient = this.pageManager.getNotebookOrientation();
-      this.updateOrientationButtonDisplay(orient);
+      this.toolbar.updateOrientationButtonDisplay(orient);
       this.toolbar.updateTitle(this.getNotebookTitle());
     }
 
     this.updateActivePage(this.currentPageNumber);
-  }
-
-  private updateOrientationButtonDisplay(orient: PageOrientation): void {
-    this.toolbar.updateOrientationButtonDisplay(orient);
   }
 
   renderPage(page: PageData): void {
@@ -3622,7 +2401,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     });
     pageWrapper.dataset.pageNumber = String(page.pageNumber);
     pageWrapper.dataset.pageId = page.id;
-    this.pageElements.set(page.pageNumber, pageWrapper);
+    this.canvasHost.pageElements.set(page.pageNumber, pageWrapper);
 
     const pageFrame = pageWrapper.createDiv({
       cls: "notepages-page-frame"
@@ -3632,7 +2411,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     pageFrame.style.height = `${page.dimensions.height}px`;
     pageFrame.style.backgroundColor = page.template.backgroundColor;
 
-    const scale = this.getCanvasScale();
+    const scale = this.zoomController.getCanvasScale();
     const targetW = Math.round(page.dimensions.width * scale);
     const targetH = Math.round(page.dimensions.height * scale);
 
@@ -3649,7 +2428,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       templateCanvas.dataset.pageHeight = String(page.dimensions.height);
       templateCanvas.width = initialW;
       templateCanvas.height = initialH;
-      this.templateCanvasMap.set(page.id, templateCanvas);
+      this.canvasHost.templateCanvasMap.set(page.id, templateCanvas);
       if (shouldInitialMount) {
         TemplateRenderer.renderTemplate(templateCanvas, page.dimensions, page.template);
       }
@@ -3662,9 +2441,9 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     committedCanvas.dataset.pageHeight = String(page.dimensions.height);
     committedCanvas.width = initialW;
     committedCanvas.height = initialH;
-    this.committedCanvasMap.set(page.id, committedCanvas);
+    this.canvasHost.committedCanvasMap.set(page.id, committedCanvas);
     if (shouldInitialMount) {
-      this.redrawCommittedCanvas(page.id);
+      this.canvasHost.redrawCommittedCanvas(page.id);
     }
 
     const activeCanvas = pageFrame.createEl("canvas", {
@@ -3680,7 +2459,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         actCtx.setTransform(scale, 0, 0, scale, 0, 0);
       }
     }
-    this.activeCanvasMap.set(page.id, activeCanvas);
+    this.canvasHost.activeCanvasMap.set(page.id, activeCanvas);
 
     this.pageVirtualizer.observePage(page.pageNumber, pageWrapper, shouldInitialMount);
 
@@ -3717,1032 +2496,13 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     this.imageController.renderPageImages(page, pageFrame, (path) => this.resolveResourcePath(path));
     this.textController.renderPageTexts(page, pageFrame);
 
-    this.registerDomEvent(pageFrame, "dragover", (e: DragEvent) => {
-      if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-      }
-    });
-
-    this.registerDomEvent(pageFrame, "drop", async (e: DragEvent) => {
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0) {
-        const file = files[0];
-        if (file.type.startsWith("image/")) {
-          e.preventDefault();
-          e.stopPropagation();
-          const rect = pageFrame.getBoundingClientRect();
-          const scaleX = page.dimensions.width / rect.width;
-          const scaleY = page.dimensions.height / rect.height;
-          const dropX = (e.clientX - rect.left) * scaleX;
-          const dropY = (e.clientY - rect.top) * scaleY;
-
-          const savedPath = await this.imageController.saveBlobToVault(
-            file,
-            "dropped_image",
-            this.file?.path || ""
-          );
-          const resourceUrl = this.resolveResourcePath(savedPath);
-          const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
-          const fittedDims = ImageController.calculateFittedDimensions(
-            naturalDims.width,
-            naturalDims.height,
-            Math.min(450, page.dimensions.width - 40),
-            Math.min(450, page.dimensions.height - 40)
-          );
-          const finalX = Math.max(0, Math.min(dropX, page.dimensions.width - fittedDims.width));
-          const finalY = Math.max(0, Math.min(dropY, page.dimensions.height - fittedDims.height));
-          const imgObj = this.imageController.createImageObject(
-            savedPath,
-            finalX,
-            finalY,
-            fittedDims.width,
-            fittedDims.height
-          );
-          this.historyManager.execute(
-            new AddImageCommand(page, imgObj, () => {
-              this.handleMutation(page);
-              this.imageController.renderPageImages(page, pageFrame, (p) => this.resolveResourcePath(p));
-            })
-          );
-          new Notice("Inserted dropped image into notebook");
-        } else if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-          e.preventDefault();
-          e.stopPropagation();
-          await this.promptAndImportLocalPdf(file, false, page.pageNumber);
-        }
-      } else {
-        const textData = e.dataTransfer?.getData("text/plain") || "";
-        const match = textData.match(/^\[\[(.*?)\]\]$/) || textData.match(/^(.*\.pdf)$/i);
-        if (match) {
-          const cleanPath = match[1].replace(/\|.*$/, "");
-          const linkedFile = this.app.metadataCache.getFirstLinkpathDest(cleanPath, this.file?.path || "");
-          if (linkedFile && linkedFile.extension.toLowerCase() === "pdf") {
-            e.preventDefault();
-            e.stopPropagation();
-            await this.promptAndImportVaultPdf(linkedFile, false, page.pageNumber);
-          }
-        }
-      }
-    });
-
-    this.registerDomEvent(activeCanvas, "touchstart", (e: TouchEvent) => {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        const touch = e.changedTouches[i] as Touch & { touchType?: string };
-        if (touch.touchType === "stylus") {
-          e.preventDefault();
-          break;
-        }
-      }
-    }, { passive: false });
-
-    this.registerDomEvent(activeCanvas, "pointerdown", (e: PointerEvent) => {
-      this.blurFocusedToolbarControl();
-      this.stylusButtonState.recordPointerEvent(e.pointerType);
-      this.flushCanvasResolutionUpdate();
-      this.ensurePageCanvasesMounted(page.pageNumber);
-
-      if (e.pointerType === "touch") {
-        this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
-        this.touchStartCoords.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (!this.touchTapCandidate) {
-          this.touchTapCandidate = { maxCount: 1, startTime: Date.now(), maxDistance: 0 };
-        } else {
-          this.touchTapCandidate.maxCount = Math.max(this.touchTapCandidate.maxCount, this.touchPointers.size);
-        }
-        if (this.touchPointers.size === 2) {
-          if (this.inkingController.isCurrentlyDrawing()) {
-            this.inkingController.handlePointerCancel(e);
-          }
-          if (this.isPanning) {
-            this.finishPan();
-          }
-          const [p1, p2] = Array.from(this.touchPointers.values());
-          this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
-          this.touchPinchStartZoom = this.zoomLevel;
-          this.isTouchPinching = true;
-          e.stopPropagation();
-          return;
-        }
-      }
-
-      const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
-      const nextStylusTool = this.stylusButtonState.handlePointerDown(e, stylusAction, this.inkingController.activeTool);
-      if (nextStylusTool !== null) {
-        this.applyStylusToolTransition(nextStylusTool, stylusAction === "toggle");
-      }
-
-      if (this.isPanTrigger(e)) {
-        if (this.textController.isEditing()) {
-          this.textController.commitActiveEdit();
-        }
-        this.startPan(e.clientX, e.clientY, this.scrollerEl, e.pointerId);
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-
-      if (this.imageController.getSelectedImageId()) {
-        this.imageController.deselectImage();
-        this.imageController.renderPageImages(page, pageFrame, (p) => this.resolveResourcePath(p));
-      }
-
-      if (e.pointerType === "touch" && !this.plugin.settings.drawWithFinger) {
-        if (
-          this.touchPointers.size === 1 &&
-          !this.isTouchPinching &&
-          !this.inkingController.isCurrentlyDrawing() &&
-          !this.stylusButtonState.isRecentPenActivity(400)
-        ) {
-          if (this.textController.isEditing()) {
-            this.textController.commitActiveEdit();
-          }
-          this.startPan(e.clientX, e.clientY, this.scrollerEl, e.pointerId);
-          e.preventDefault();
-        }
-        return;
-      }
-
-      this.toolbar.setDrawingActive(true);
-      this.dragStartClientX = e.clientX;
-      this.dragStartClientY = e.clientY;
-
-      const rect = activeCanvas.getBoundingClientRect();
-      const scaleX = page.dimensions.width / rect.width;
-      const scaleY = page.dimensions.height / rect.height;
-      const pageX = (e.clientX - rect.left) * scaleX;
-      const pageY = (e.clientY - rect.top) * scaleY;
-
-      if (this.textController.isEditing()) {
-        this.textController.commitActiveEdit();
-        if (this.inkingController.activeTool !== "text" && this.inkingController.activeTool !== "sticky") {
-          e.stopPropagation();
-          return;
-        }
-      }
-
-      if (this.inkingController.activeTool === "text" || this.inkingController.activeTool === "sticky") {
-        const isSticky = this.inkingController.activeTool === "sticky";
-        const hit = SelectionEngine.hitTestSingleElement(
-          [],
-          [],
-          pageX,
-          pageY,
-          8,
-          page.texts,
-          []
-        );
-        if (hit?.text) {
-          if ((isSticky && hit.text.isSticky) || (!isSticky && !hit.text.isSticky)) {
-            this.textController.startEditing(page, pageFrame, hit.text);
-            e.stopPropagation();
-            return;
-          }
-        }
-
-        this.isDraggingTextRect = true;
-        this.dragTextPage = page;
-        this.dragTextPageFrame = pageFrame;
-        this.dragTextCanvas = activeCanvas;
-        const margin = 10;
-        const clampedX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        const clampedY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-        this.dragTextStartX = clampedX;
-        this.dragTextStartY = clampedY;
-        this.dragTextCurrentX = clampedX;
-        this.dragTextCurrentY = clampedY;
-        try {
-          activeCanvas.setPointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        e.stopPropagation();
-        return;
-      }
-
-      if (this.inkingController.activeTool === "shape") {
-        this.isDraggingShape = true;
-        this.dragShapePage = page;
-        this.dragShapeCanvas = activeCanvas;
-        const margin = 10;
-        const clampedX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        const clampedY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-        this.dragShapeStartX = clampedX;
-        this.dragShapeStartY = clampedY;
-        this.dragShapeCurrentX = clampedX;
-        this.dragShapeCurrentY = clampedY;
-        try {
-          activeCanvas.setPointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        e.stopPropagation();
-        return;
-      }
-
-      if (this.inkingController.activeTool === "connector") {
-        this.isDraggingConnector = true;
-        this.dragConnectorPage = page;
-        this.dragConnectorCanvas = activeCanvas;
-        const margin = 10;
-        const clampedX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        const clampedY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-        this.dragConnectorStartX = clampedX;
-        this.dragConnectorStartY = clampedY;
-        this.dragConnectorCurrentX = clampedX;
-        this.dragConnectorCurrentY = clampedY;
-        try {
-          activeCanvas.setPointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        e.stopPropagation();
-        return;
-      }
-
-      if (this.inkingController.activeTool === "lasso") {
-        this.selectionController.handlePointerDown(e, page, activeCanvas, {
-          x: pageX,
-          y: pageY
-        });
-      } else {
-        e.preventDefault();
-        this.inkingController.handlePointerDown(
-          e,
-          page.id,
-          activeCanvas,
-          committedCanvas,
-          { x: pageX, y: pageY },
-          page.strokes,
-          page.shapes,
-          page.dimensions
-        );
-      }
-    });
-
-    this.registerDomEvent(activeCanvas, "pointermove", (e: PointerEvent) => {
-      this.stylusButtonState.recordPointerEvent(e.pointerType);
-      if (e.pointerType === "pen" && !this.inkingController.isCurrentlyDrawing()) {
-        this.handleStylusHoverButton(e);
-      }
-      this.updateEraserCursorPosition(e.clientX, e.clientY);
-      if (this.isPanning) {
-        this.updatePan(e.clientX, e.clientY);
-        return;
-      }
-
-      if (e.pointerType === "touch" && !this.plugin.settings.drawWithFinger) {
-        return;
-      }
-
-      if (this.isDraggingSelection) {
-        this.updateSelectionDrag(e.clientX, e.clientY);
-        return;
-      }
-
-      const rect = activeCanvas.getBoundingClientRect();
-      const scaleX = page.dimensions.width / rect.width;
-      const scaleY = page.dimensions.height / rect.height;
-
-      if (this.isDraggingTextRect && this.dragTextCanvas === activeCanvas) {
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        const margin = 10;
-        this.dragTextCurrentX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        this.dragTextCurrentY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-        this.renderTextDragPreview(
-          activeCanvas,
-          this.dragTextStartX,
-          this.dragTextStartY,
-          this.dragTextCurrentX,
-          this.dragTextCurrentY,
-          this.inkingController.activeTool === "sticky"
-        );
-        return;
-      }
-
-      if (this.isDraggingShape && this.dragShapeCanvas === activeCanvas) {
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        const margin = 10;
-        this.dragShapeCurrentX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        this.dragShapeCurrentY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-        this.renderShapeDragPreview(
-          activeCanvas,
-          this.dragShapeStartX,
-          this.dragShapeStartY,
-          this.dragShapeCurrentX,
-          this.dragShapeCurrentY
-        );
-        return;
-      }
-
-      if (this.isDraggingConnector && this.dragConnectorCanvas === activeCanvas) {
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        const margin = 10;
-        this.dragConnectorCurrentX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        this.dragConnectorCurrentY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-        this.renderConnectorDragPreview(
-          activeCanvas,
-          this.dragConnectorStartX,
-          this.dragConnectorStartY,
-          this.dragConnectorCurrentX,
-          this.dragConnectorCurrentY
-        );
-        return;
-      }
-
-      if (this.inkingController.activeTool === "lasso") {
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        const targetInfo = this.getTargetPageForClientPoint(e.clientX, e.clientY);
-        this.selectionController.handlePointerMove(
-          activeCanvas,
-          { x: pageX, y: pageY },
-          targetInfo?.page,
-          targetInfo?.activeCanvas,
-          targetInfo?.pointOnPage
-        );
-      } else {
-        if (
-          e.pointerType === "pen" &&
-          this.inkingController.isCurrentlyDrawing(page.id) &&
-          this.inkingController.activeTool !== "eraser"
-        ) {
-          const stylusAction = this.plugin.settings.stylusButtonAction ?? "hold";
-          const meta = this.inkingController.getActiveStrokeMeta();
-          const takeoverTool = this.stylusButtonState.handleActiveStrokeMove(
-            e,
-            stylusAction,
-            this.inkingController.activeTool,
-            meta.elapsedMs,
-            meta.pointCount
-          );
-          if (takeoverTool === "eraser") {
-            const pageX = (e.clientX - rect.left) * scaleX;
-            const pageY = (e.clientY - rect.top) * scaleY;
-            this.inkingController.discardActiveStroke();
-            this.applyStylusToolTransition("eraser", stylusAction === "toggle");
-            this.inkingController.handlePointerDown(
-              e,
-              page.id,
-              activeCanvas,
-              committedCanvas,
-              { x: pageX, y: pageY },
-              page.strokes,
-              page.shapes,
-              page.dimensions
-            );
-            this.updateEraserCursorPosition(e.clientX, e.clientY);
-            return;
-          }
-        }
-        const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
-        const events = coalesced.length > 0 ? coalesced : [e];
-        const coordsList = events.map((ev) => ({
-          x: (ev.clientX - rect.left) * scaleX,
-          y: (ev.clientY - rect.top) * scaleY
-        }));
-        this.inkingController.handlePointerMove(e, coordsList, page.strokes, page.shapes);
-      }
-    });
-
-    this.registerDomEvent(activeCanvas, "pointerup", (e: PointerEvent) => {
-      this.toolbar.setDrawingActive(false);
-      if (this.isPanning) {
-        this.finishPan();
-        return;
-      }
-
-      if (this.isDraggingSelection) {
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        this.finishSelectionDrag(e.clientX, e.clientY);
-        return;
-      }
-
-      if (this.isDraggingTextRect && this.dragTextCanvas === activeCanvas) {
-        this.isDraggingTextRect = false;
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-
-        const ctx = activeCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
-
-        const rect = activeCanvas.getBoundingClientRect();
-        const scaleX = page.dimensions.width / rect.width;
-        const scaleY = page.dimensions.height / rect.height;
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        const margin = 10;
-        this.dragTextCurrentX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        this.dragTextCurrentY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-
-        const rawW = Math.abs(this.dragTextCurrentX - this.dragTextStartX);
-        const rawH = Math.abs(this.dragTextCurrentY - this.dragTextStartY);
-        const x = Math.min(this.dragTextStartX, this.dragTextCurrentX);
-        const y = Math.min(this.dragTextStartY, this.dragTextCurrentY);
-
-        this.dragTextPage = null;
-        this.dragTextPageFrame = null;
-        this.dragTextCanvas = null;
-
-        const maxAvailableW = Math.max(40, page.dimensions.width - margin - x);
-        const maxAvailableH = Math.max(30, page.dimensions.height - margin - y);
-
-        const isSticky = this.inkingController.activeTool === "sticky";
-        const fallbackW = isSticky ? 140 : 220;
-        const fallbackH = isSticky ? 140 : 60;
-
-        const isDarkPaper = this.isDarkColor(page.template.backgroundColor);
-        const resolvedTextColor = this.currentTextOptions.color === "#1e293b" && isDarkPaper
-          ? "#f8fafc"
-          : this.currentTextOptions.color;
-
-        const options: TextFormattingOptions = isSticky
-          ? {
-              isSticky: true,
-              backgroundColor: this.currentStickyColor,
-              color: "#1e293b",
-              fontSize: 16,
-              fontWeight: "normal",
-              italic: false,
-              underline: false,
-              textAlign: "left"
-            }
-          : {
-              ...this.currentTextOptions,
-              color: resolvedTextColor
-            };
-
-        if (rawW > 20 || rawH > 20) {
-          const initialWidth = Math.min(maxAvailableW, Math.max(60, Math.round(rawW)));
-          const initialHeight = Math.min(maxAvailableH, Math.max(30, Math.round(rawH)));
-          this.textController.startEditing(page, pageFrame, undefined, x, y, initialWidth, initialHeight, options);
-        } else {
-          const defaultW = Math.min(fallbackW, maxAvailableW);
-          const defaultH = Math.min(fallbackH, maxAvailableH);
-          const adjustedX = Math.max(margin, Math.min(x, page.dimensions.width - margin - defaultW));
-          const adjustedY = Math.max(margin, Math.min(y, page.dimensions.height - margin - defaultH));
-          this.textController.startEditing(page, pageFrame, undefined, adjustedX, adjustedY, defaultW, defaultH, options);
-        }
-        e.stopPropagation();
-        e.preventDefault();
-        return;
-      }
-
-      if (this.isDraggingShape && this.dragShapeCanvas === activeCanvas) {
-        this.isDraggingShape = false;
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-
-        const ctx = activeCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
-
-        const margin = 10;
-        const rect = activeCanvas.getBoundingClientRect();
-        const scaleX = page.dimensions.width / rect.width;
-        const scaleY = page.dimensions.height / rect.height;
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        this.dragShapeCurrentX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        this.dragShapeCurrentY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-
-        let rawW = Math.abs(this.dragShapeCurrentX - this.dragShapeStartX);
-        let rawH = Math.abs(this.dragShapeCurrentY - this.dragShapeStartY);
-        let x = Math.min(this.dragShapeStartX, this.dragShapeCurrentX);
-        let y = Math.min(this.dragShapeStartY, this.dragShapeCurrentY);
-
-        this.dragShapePage = null;
-        this.dragShapeCanvas = null;
-
-        if (rawW < 12 && rawH < 12) {
-          rawW = 120;
-          rawH = 80;
-          x = Math.max(margin, Math.min(x - rawW / 2, page.dimensions.width - margin - rawW));
-          y = Math.max(margin, Math.min(y - rawH / 2, page.dimensions.height - margin - rawH));
-        }
-
-        const w = Math.round(rawW);
-        const h = Math.round(rawH);
-        const geometryData: Record<string, number> = {};
-
-        switch (this.currentShapeType) {
-          case "rectangle":
-          case "diamond":
-          case "star":
-          case "callout":
-            geometryData.x = x;
-            geometryData.y = y;
-            geometryData.width = w;
-            geometryData.height = h;
-            break;
-          case "rounded-rectangle":
-            geometryData.x = x;
-            geometryData.y = y;
-            geometryData.width = w;
-            geometryData.height = h;
-            geometryData.radius = 10;
-            break;
-          case "circle":
-            geometryData.cx = x + w / 2;
-            geometryData.cy = y + h / 2;
-            geometryData.r = Math.min(w, h) / 2;
-            break;
-          case "triangle":
-            geometryData.x1 = x + w / 2;
-            geometryData.y1 = y;
-            geometryData.x2 = x;
-            geometryData.y2 = y + h;
-            geometryData.x3 = x + w;
-            geometryData.y3 = y + h;
-            break;
-          default:
-            geometryData.x = x;
-            geometryData.y = y;
-            geometryData.width = w;
-            geometryData.height = h;
-            break;
-        }
-
-        const shapeObj: ShapeObject = {
-          id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          elementType: "shape",
-          type: this.currentShapeType,
-          color: this.inkingController.currentColor,
-          strokeWidth: this.inkingController.currentWidth,
-          fillColor: this.shapeFillEnabled ? this.getShapeFillColor() : undefined,
-          bounds: {
-            minX: x,
-            minY: y,
-            maxX: x + w,
-            maxY: y + h
-          },
-          geometryData
-        };
-
-        this.historyManager.execute(
-          new AddShapeCommand(page, shapeObj, () => {
-            this.handleMutation(page);
-          })
-        );
-        return;
-      }
-
-      if (this.isDraggingConnector && this.dragConnectorCanvas === activeCanvas) {
-        this.isDraggingConnector = false;
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-
-        const ctx = activeCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
-
-        const margin = 10;
-        const rect = activeCanvas.getBoundingClientRect();
-        const scaleX = page.dimensions.width / rect.width;
-        const scaleY = page.dimensions.height / rect.height;
-        const pageX = (e.clientX - rect.left) * scaleX;
-        const pageY = (e.clientY - rect.top) * scaleY;
-        this.dragConnectorCurrentX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
-        this.dragConnectorCurrentY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
-
-        const startX = this.dragConnectorStartX;
-        const startY = this.dragConnectorStartY;
-        let endX = this.dragConnectorCurrentX;
-        let endY = this.dragConnectorCurrentY;
-
-        this.dragConnectorPage = null;
-        this.dragConnectorCanvas = null;
-
-        const dist = Math.hypot(endX - startX, endY - startY);
-        if (dist < 10) {
-          endX = Math.min(page.dimensions.width - margin, startX + 80);
-          endY = startY;
-        }
-
-        const padding = 12;
-        const shapeObj: ShapeObject = {
-          id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          elementType: "shape",
-          type: "arrow",
-          color: this.inkingController.currentColor,
-          strokeWidth: this.inkingController.currentWidth,
-          bounds: {
-            minX: Math.min(startX, endX) - padding,
-            minY: Math.min(startY, endY) - padding,
-            maxX: Math.max(startX, endX) + padding,
-            maxY: Math.max(startY, endY) + padding
-          },
-          geometryData: {
-            x1: startX,
-            y1: startY,
-            x2: endX,
-            y2: endY
-          }
-        };
-
-        this.historyManager.execute(
-          new AddShapeCommand(page, shapeObj, () => {
-            this.handleMutation(page);
-          })
-        );
-        return;
-      }
-
-      if (this.inkingController.activeTool === "lasso") {
-        const targetInfo = this.getTargetPageForClientPoint(e.clientX, e.clientY);
-        this.selectionController.handlePointerUp(
-          e,
-          page,
-          activeCanvas,
-          targetInfo?.page,
-          targetInfo?.activeCanvas
-        );
-      } else {
-        this.inkingController.handlePointerUp(e);
-      }
-
-      this.stylusButtonState.recordPointerEvent(e.pointerType);
-      this.revertTemporaryStylusEraser(e);
-    });
-
-    this.registerDomEvent(activeCanvas, "pointercancel", (e: PointerEvent) => {
-      if (this.isPanning) {
-        this.finishPan();
-        return;
-      }
-
-      if (this.isDraggingSelection) {
-        this.cancelSelectionDrag();
-        return;
-      }
-
-      if (this.isDraggingTextRect && this.dragTextCanvas === activeCanvas) {
-        this.isDraggingTextRect = false;
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        this.dragTextPage = null;
-        this.dragTextPageFrame = null;
-        this.dragTextCanvas = null;
-        const ctx = activeCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
-        return;
-      }
-
-      if (this.isDraggingShape && this.dragShapeCanvas === activeCanvas) {
-        this.isDraggingShape = false;
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        this.dragShapePage = null;
-        this.dragShapeCanvas = null;
-        const ctx = activeCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
-        return;
-      }
-
-      if (this.isDraggingConnector && this.dragConnectorCanvas === activeCanvas) {
-        this.isDraggingConnector = false;
-        try {
-          activeCanvas.releasePointerCapture(e.pointerId);
-        } catch (err) {
-          void err;
-        }
-        this.dragConnectorPage = null;
-        this.dragConnectorCanvas = null;
-        const ctx = activeCanvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
-        return;
-      }
-
-      if (this.inkingController.activeTool === "lasso") {
-        this.selectionController.clearSelection(activeCanvas);
-      } else {
-        this.inkingController.handlePointerCancel(e);
-      }
-
-      this.stylusButtonState.recordPointerEvent(e.pointerType);
-      this.revertTemporaryStylusEraser(e, true);
-    });
-
-    this.registerDomEvent(activeCanvas, "dblclick", (e: MouseEvent) => {
-      const tool = this.inkingController.activeTool;
-      if (tool !== "select" && tool !== "lasso" && tool !== "text" && tool !== "sticky") {
-        return;
-      }
-
-      const pointerEvent = e as unknown as PointerEvent;
-      if (pointerEvent.pointerType === "touch" && !this.plugin.settings.drawWithFinger) {
-        return;
-      }
-
-      const rect = activeCanvas.getBoundingClientRect();
-      const scaleX = page.dimensions.width / rect.width;
-      const scaleY = page.dimensions.height / rect.height;
-      const pageX = (e.clientX - rect.left) * scaleX;
-      const pageY = (e.clientY - rect.top) * scaleY;
-      const hit = SelectionEngine.hitTestSingleElement(
-        [],
-        [],
-        pageX,
-        pageY,
-        8,
-        page.texts,
-        []
-      );
-      if (hit?.text) {
-        if (tool === "select" || tool === "lasso" || (tool === "text" && !hit.text.isSticky) || (tool === "sticky" && hit.text.isSticky)) {
-          this.textController.startEditing(page, pageFrame, hit.text);
-        }
-      } else if (tool === "sticky") {
-        const defaultW = 140;
-        const defaultH = 140;
-        const margin = 10;
-        const adjustedX = Math.max(margin, Math.min(pageX, page.dimensions.width - margin - defaultW));
-        const adjustedY = Math.max(margin, Math.min(pageY, page.dimensions.height - margin - defaultH));
-        this.textController.startEditing(
-          page,
-          pageFrame,
-          undefined,
-          adjustedX,
-          adjustedY,
-          defaultW,
-          defaultH,
-          {
-            isSticky: true,
-            backgroundColor: this.currentStickyColor
-          }
-        );
-      } else {
-        const defaultW = 220;
-        const defaultH = 60;
-        const margin = 10;
-        const adjustedX = Math.max(margin, Math.min(pageX, page.dimensions.width - margin - defaultW));
-        const adjustedY = Math.max(margin, Math.min(pageY, page.dimensions.height - margin - defaultH));
-        const isDarkPaper = this.isDarkColor(page.template.backgroundColor);
-        const resolvedTextColor = this.currentTextOptions.color === "#1e293b" && isDarkPaper
-          ? "#f8fafc"
-          : this.currentTextOptions.color;
-        this.textController.startEditing(
-          page,
-          pageFrame,
-          undefined,
-          adjustedX,
-          adjustedY,
-          defaultW,
-          defaultH,
-          {
-            ...this.currentTextOptions,
-            color: resolvedTextColor
-          }
-        );
-      }
-    });
-  }
-
-  private renderTextDragPreview(
-    canvas: HTMLCanvasElement,
-    startX: number,
-    startY: number,
-    currX: number,
-    currY: number,
-    isSticky: boolean = false
-  ): void {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return;
-    }
-    ctx.save();
-    if (typeof ctx.setTransform === "function") {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-
-    const scale = canvas.width / (Number(canvas.dataset?.pageWidth) || canvas.clientWidth || canvas.width);
-    if (typeof ctx.setTransform === "function") {
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    }
-
-    const x = Math.min(startX, currX);
-    const y = Math.min(startY, currY);
-    const w = Math.abs(currX - startX);
-    const h = Math.abs(currY - startY);
-
-    if (w < 4 && h < 4) {
-      return;
-    }
-
-    ctx.save();
-    if (isSticky) {
-      ctx.fillStyle = this.currentStickyColor || "#fef08a";
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.25)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]);
-      ctx.strokeRect(x, y, w, h);
-      const label = `Sticky • ${Math.round(w)} × ${Math.round(h)} pt`;
-      ctx.font = "11px sans-serif";
-      ctx.fillStyle = "#1e293b";
-      ctx.fillText(label, x + 4, Math.max(14, y - 4));
-    } else {
-      ctx.strokeStyle = "rgba(59, 130, 246, 0.9)";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
-      ctx.fillStyle = "rgba(59, 130, 246, 0.08)";
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeRect(x, y, w, h);
-
-      const label = `${Math.round(w)} × ${Math.round(h)} pt`;
-      ctx.font = "11px sans-serif";
-      ctx.fillStyle = "rgba(59, 130, 246, 0.9)";
-      ctx.fillText(label, x + 4, Math.max(14, y - 4));
-    }
-    ctx.restore();
-  }
-
-  private renderShapeDragPreview(
-    canvas: HTMLCanvasElement,
-    startX: number,
-    startY: number,
-    currX: number,
-    currY: number
-  ): void {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return;
-    }
-    ctx.save();
-    if (typeof ctx.setTransform === "function") {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-
-    const scale = canvas.width / (Number(canvas.dataset?.pageWidth) || canvas.clientWidth || canvas.width);
-    if (typeof ctx.setTransform === "function") {
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    }
-
-    const x = Math.min(startX, currX);
-    const y = Math.min(startY, currY);
-    const w = Math.abs(currX - startX);
-    const h = Math.abs(currY - startY);
-
-    if (w < 4 && h < 4) {
-      return;
-    }
-
-    const geometryData: Record<string, number> = {};
-    switch (this.currentShapeType) {
-      case "rectangle":
-      case "diamond":
-      case "star":
-      case "callout":
-        geometryData.x = x;
-        geometryData.y = y;
-        geometryData.width = w;
-        geometryData.height = h;
-        break;
-      case "rounded-rectangle":
-        geometryData.x = x;
-        geometryData.y = y;
-        geometryData.width = w;
-        geometryData.height = h;
-        geometryData.radius = 10;
-        break;
-      case "circle":
-        geometryData.cx = x + w / 2;
-        geometryData.cy = y + h / 2;
-        geometryData.r = Math.min(w, h) / 2;
-        break;
-      case "triangle":
-        geometryData.x1 = x + w / 2;
-        geometryData.y1 = y;
-        geometryData.x2 = x;
-        geometryData.y2 = y + h;
-        geometryData.x3 = x + w;
-        geometryData.y3 = y + h;
-        break;
-      default:
-        geometryData.x = x;
-        geometryData.y = y;
-        geometryData.width = w;
-        geometryData.height = h;
-        break;
-    }
-
-    const previewShape: ShapeObject = {
-      id: "preview_shape",
-      elementType: "shape",
-      type: this.currentShapeType,
-      color: this.inkingController.currentColor,
-      strokeWidth: this.inkingController.currentWidth,
-      fillColor: this.shapeFillEnabled ? this.getShapeFillColor() : undefined,
-      bounds: { minX: x, minY: y, maxX: x + w, maxY: y + h },
-      geometryData
-    };
-
-    ShapeRecognizer.renderShape(ctx, previewShape);
-
-    ctx.save();
-    ctx.strokeStyle = "rgba(59, 130, 246, 0.4)";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    ctx.strokeRect(x, y, w, h);
-    const label = `${this.currentShapeType} • ${Math.round(w)} × ${Math.round(h)} pt`;
-    ctx.font = "11px sans-serif";
-    ctx.fillStyle = "rgba(59, 130, 246, 0.9)";
-    ctx.fillText(label, x + 4, Math.max(14, y - 4));
-    ctx.restore();
-  }
-
-  private renderConnectorDragPreview(
-    canvas: HTMLCanvasElement,
-    startX: number,
-    startY: number,
-    currX: number,
-    currY: number
-  ): void {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return;
-    }
-    ctx.save();
-    if (typeof ctx.setTransform === "function") {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-
-    const scale = canvas.width / (Number(canvas.dataset?.pageWidth) || canvas.clientWidth || canvas.width);
-    if (typeof ctx.setTransform === "function") {
-      ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    }
-
-    const dist = Math.hypot(currX - startX, currY - startY);
-    if (dist < 4) {
-      return;
-    }
-
-    const previewArrow: ShapeObject = {
-      id: "preview_arrow",
-      elementType: "shape",
-      type: "arrow",
-      color: this.inkingController.currentColor,
-      strokeWidth: this.inkingController.currentWidth,
-      bounds: {
-        minX: Math.min(startX, currX),
-        minY: Math.min(startY, currY),
-        maxX: Math.max(startX, currX),
-        maxY: Math.max(startY, currY)
-      },
-      geometryData: {
-        x1: startX,
-        y1: startY,
-        x2: currX,
-        y2: currY
-      }
-    };
-
-    ShapeRecognizer.renderShape(ctx, previewArrow);
-
-    ctx.save();
-    const label = `Arrow • ${Math.round(dist)} pt`;
-    ctx.font = "11px sans-serif";
-    ctx.fillStyle = "rgba(59, 130, 246, 0.9)";
-    ctx.fillText(label, (startX + currX) / 2 + 6, (startY + currY) / 2 - 6);
-    ctx.restore();
+    this.gestureRouter.bindPageInteractionEvents(
+      page,
+      pageFrame,
+      activeCanvas,
+      committedCanvas,
+      this.toolbar?.toolbarWrapperEl
+    );
   }
 
   private getShapeFillColor(): string {
@@ -4766,8 +2526,6 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   appendDeleteButtonToThumbnail(actionsEl: HTMLElement, pageId: string): void {
     this.sidebar.appendDeleteButtonToThumbnail(actionsEl, pageId);
   }
-
-  private thumbnailDebounceTimers: Map<string, number> = new Map();
 
   debouncedUpdateThumbnail(page: PageData, delayMs: number = 600): void {
     const existing = this.thumbnailDebounceTimers.get(page.id);
@@ -4802,14 +2560,14 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       this.clearActiveSelectionCanvas();
     }
     this.currentPageNumber = pageNumber;
-    this.ensurePageCanvasesMounted(pageNumber);
+    this.canvasHost.ensurePageCanvasesMounted(pageNumber);
     if (pageNumber > 1) {
-      this.ensurePageCanvasesMounted(pageNumber - 1);
+      this.canvasHost.ensurePageCanvasesMounted(pageNumber - 1);
     }
     if (this.pageManager && pageNumber < this.pageManager.getPageCount()) {
-      this.ensurePageCanvasesMounted(pageNumber + 1);
+      this.canvasHost.ensurePageCanvasesMounted(pageNumber + 1);
     }
-    const targetEl = this.pageElements.get(pageNumber);
+    const targetEl = this.canvasHost.getPageElement(pageNumber);
     if (targetEl) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -4818,7 +2576,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
   private updateActivePage(pageNumber: number): void {
     this.currentPageNumber = pageNumber;
-    this.ensurePageCanvasesMounted(pageNumber);
+    this.canvasHost.ensurePageCanvasesMounted(pageNumber);
     this.sidebar.updateActivePage(pageNumber);
     this.updateStatusDisplay();
     if (this.minimap) {
@@ -4827,7 +2585,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
   }
 
   private handleScroll(): void {
-    if (!this.scrollerEl || this.pageElements.size === 0) {
+    if (!this.scrollerEl || this.canvasHost.pageElements.size === 0) {
       return;
     }
 
@@ -4839,7 +2597,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     let closestPage = this.currentPageNumber;
     let minDistance = Infinity;
 
-    this.pageElements.forEach((el, num) => {
+    this.canvasHost.pageElements.forEach((el, num) => {
       const rect = el.getBoundingClientRect();
       const distance = Math.abs(rect.top - scrollerRect.top - 40);
       if (distance < minDistance) {
@@ -4867,9 +2625,12 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
 
     const newIndex = this.pageManager.getPageCount() - 1;
     this.renderPage(newPage);
-    this.ensurePageCanvasesMounted(newPage.pageNumber);
+    this.canvasHost.ensurePageCanvasesMounted(newPage.pageNumber);
     this.renderThumbnail(newPage, newIndex);
-    this.ensureDragOverlay();
+    this.dragCoordinator.ensureDragOverlay();
+    if (this.rulerController?.isVisible()) {
+      this.rulerController.show();
+    }
 
     if (this.pageManager.getPageCount() === 2) {
       const firstPage = this.pageManager.getPages()[0];
@@ -4951,40 +2712,11 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
         this.pageIntersectionObserver.unobserve(pageWrapper);
       }
 
-      const committedCanvas = this.committedCanvasMap.get(deletedPage.id);
-      if (committedCanvas) {
-        committedCanvas.width = 1;
-        committedCanvas.height = 1;
-        this.committedCanvasMap.delete(deletedPage.id);
-      }
-
-      const activeCanvas = this.activeCanvasMap.get(deletedPage.id);
-      if (activeCanvas) {
-        activeCanvas.width = 1;
-        activeCanvas.height = 1;
-        this.activeCanvasMap.delete(deletedPage.id);
-      }
-
-      const templateCanvas = this.templateCanvasMap.get(deletedPage.id);
-      if (templateCanvas) {
-        templateCanvas.width = 1;
-        templateCanvas.height = 1;
-        this.templateCanvasMap.delete(deletedPage.id);
-      }
-
-      if (pageWrapper) {
-        const extraCanvases = pageWrapper.querySelectorAll("canvas");
-        extraCanvases.forEach((c) => {
-          c.width = 1;
-          c.height = 1;
-        });
-        pageWrapper.remove();
-      }
-
+      this.canvasHost.cleanupPageCanvases(deletedPage.id, pageWrapper);
       this.sidebar.removeThumbnail(deletedPage.id);
 
       const pages = this.pageManager ? this.pageManager.getPages() : [];
-      this.pageElements.clear();
+      this.canvasHost.pageElements.clear();
 
       for (let index = 0; index < pages.length; index++) {
         const p = pages[index];
@@ -4995,7 +2727,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
           if (watermark) {
             watermark.textContent = String(p.pageNumber);
           }
-          this.pageElements.set(p.pageNumber, wrapper);
+          this.canvasHost.pageElements.set(p.pageNumber, wrapper);
         }
       }
 
@@ -5043,7 +2775,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
       g = parseInt(clean.substring(2, 4), 16) || 0;
       b = parseInt(clean.substring(4, 6), 16) || 0;
     }
-    return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+    return r * 0.299 + g * 0.587 + b * 0.114 < 128;
   }
 
   private createDefaultDocument(): NotebookDocument {
@@ -5230,7 +2962,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     let insertY = 100;
 
     if (clientX !== undefined && clientY !== undefined) {
-      const targetInfo = this.getTargetPageForClientPoint(clientX, clientY);
+      const targetInfo = this.gestureRouter.getTargetPageForClientPoint(clientX, clientY);
       if (targetInfo) {
         targetPage = targetInfo.page;
         targetFrame = this.getPageFrame(targetInfo.page.pageNumber);
@@ -5273,9 +3005,8 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     const adjustedY = Math.max(margin, Math.min(insertY, targetPage.dimensions.height - margin - defaultH));
 
     const isDarkPaper = this.isDarkColor(targetPage.template.backgroundColor);
-    const resolvedTextColor = this.currentTextOptions.color === "#1e293b" && isDarkPaper
-      ? "#f8fafc"
-      : this.currentTextOptions.color;
+    const resolvedTextColor =
+      this.currentTextOptions.color === "#1e293b" && isDarkPaper ? "#f8fafc" : this.currentTextOptions.color;
 
     this.textController.startEditing(
       targetPage,
@@ -5299,7 +3030,7 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     let insertY = 100;
 
     if (clientX !== undefined && clientY !== undefined) {
-      const targetInfo = this.getTargetPageForClientPoint(clientX, clientY);
+      const targetInfo = this.gestureRouter.getTargetPageForClientPoint(clientX, clientY);
       if (targetInfo) {
         targetPage = targetInfo.page;
         targetFrame = this.getPageFrame(targetInfo.page.pageNumber);
@@ -5356,117 +3087,23 @@ export class NotePagesView extends TextFileView implements NotePagesImportDelega
     );
   }
 
+  ensureDragOverlay(): void {
+    this.dragCoordinator.ensureDragOverlay();
+    if (this.rulerController?.isVisible()) {
+      this.rulerController.show();
+    }
+  }
+
   ensurePageCanvasesMounted(pageNumber: number): void {
-    const page = this.pageManager?.getPageByNumber(pageNumber);
-    if (!page) {
-      return;
-    }
-    const committedCanvas = this.committedCanvasMap.get(page.id);
-    const activeCanvas = this.activeCanvasMap.get(page.id);
-    if (!committedCanvas || !activeCanvas || committedCanvas.width <= 1 || activeCanvas.width <= 1) {
-      this.mountPageCanvases(pageNumber);
-    }
+    this.canvasHost.ensurePageCanvasesMounted(pageNumber);
   }
 
   mountPageCanvases(pageNumber: number): void {
-    const page = this.pageManager?.getPageByNumber(pageNumber);
-    if (!page) {
-      return;
-    }
-
-    const scale = this.getCanvasScale();
-    const targetW = Math.round(page.dimensions.width * scale);
-    const targetH = Math.round(page.dimensions.height * scale);
-
-    const committedCanvas = this.committedCanvasMap.get(page.id);
-    if (committedCanvas && (committedCanvas.width <= 1 || committedCanvas.width !== targetW || committedCanvas.height !== targetH)) {
-      committedCanvas.width = targetW;
-      committedCanvas.height = targetH;
-      this.redrawCommittedCanvas(page.id);
-    }
-
-    const templateCanvas = this.templateCanvasMap.get(page.id);
-    if (templateCanvas && (templateCanvas.width <= 1 || templateCanvas.width !== targetW || templateCanvas.height !== targetH)) {
-      templateCanvas.width = targetW;
-      templateCanvas.height = targetH;
-      TemplateRenderer.renderTemplate(templateCanvas, page.dimensions, page.template);
-    }
-
-    const activeCanvas = this.activeCanvasMap.get(page.id);
-    if (activeCanvas && (activeCanvas.width <= 1 || activeCanvas.width !== targetW || activeCanvas.height !== targetH)) {
-      activeCanvas.width = targetW;
-      activeCanvas.height = targetH;
-      const ctx = activeCanvas.getContext("2d");
-      if (ctx && typeof ctx.setTransform === "function") {
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
-      }
-    }
-
-    const pageEl = this.pageElements.get(pageNumber);
-    if (pageEl && page.pdfSource && !page.pdfSource.svgPath) {
-      const frameEl = pageEl.querySelector<HTMLElement>(".notepages-page-frame");
-      if (frameEl) {
-        void this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
-          this.updateThumbnailStrokes(page);
-        });
-      }
-    }
-
-    this.pageVirtualizer?.markPageMounted?.(pageNumber);
-
-    this.performanceMonitor.updatePageCounts(
-      this.pageVirtualizer.getMountedPages().length,
-      this.pageVirtualizer.getCulledPages().length
-    );
+    this.canvasHost.mountPageCanvases(pageNumber);
   }
 
   unmountPageCanvases(pageNumber: number): void {
-    const page = this.pageManager?.getPageByNumber(pageNumber);
-    if (!page) {
-      return;
-    }
-    if (pageNumber === this.currentPageNumber) {
-      return;
-    }
-    if (this.inkingController.isCurrentlyDrawing(page.id)) {
-      return;
-    }
-    if (this.textController.isEditing()) {
-      return;
-    }
-
-    const committedCanvas = this.committedCanvasMap.get(page.id);
-    if (committedCanvas && committedCanvas.width > 1) {
-      committedCanvas.width = 1;
-      committedCanvas.height = 1;
-    }
-
-    const templateCanvas = this.templateCanvasMap.get(page.id);
-    if (templateCanvas && templateCanvas.width > 1) {
-      templateCanvas.width = 1;
-      templateCanvas.height = 1;
-    }
-
-    const activeCanvas = this.activeCanvasMap.get(page.id);
-    if (activeCanvas && activeCanvas.width > 1) {
-      activeCanvas.width = 1;
-      activeCanvas.height = 1;
-    }
-
-    const pageEl = this.pageElements.get(pageNumber);
-    if (pageEl && page.pdfSource && !page.pdfSource.svgPath) {
-      const frameEl = pageEl.querySelector<HTMLElement>(".notepages-page-frame");
-      if (frameEl) {
-        this.pdfBackgroundManager.unrenderPdfBackground(page, frameEl);
-      }
-    }
-
-    this.pageVirtualizer?.markPageUnmounted?.(pageNumber);
-
-    this.performanceMonitor.updatePageCounts(
-      this.pageVirtualizer.getMountedPages().length,
-      this.pageVirtualizer.getCulledPages().length
-    );
+    this.canvasHost.unmountPageCanvases(pageNumber);
   }
 
   getPerformanceMonitor(): PerformanceMonitor {

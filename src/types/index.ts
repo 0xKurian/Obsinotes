@@ -16,15 +16,39 @@ export interface ToolbarLayoutConfig {
   showTitle: boolean;
   showZoomControls: boolean;
 }
-export type ToolType = "select" | "pen" | "pressure" | "fountain" | "highlighter" | "eraser" | "lasso" | "shape" | "connector" | "sticky" | "text" | "image";
-export type DefaultToolPreset = "pressure" | "highlighter" | "lasso" | "select";
+export type ToolType =
+  | "select"
+  | "pen"
+  | "pressure"
+  | "fountain"
+  | "pencil"
+  | "highlighter"
+  | "eraser"
+  | "lasso"
+  | "shape"
+  | "connector"
+  | "sticky"
+  | "text"
+  | "image";
+export type StrokePattern = "solid" | "dashed" | "dotted";
+export type DefaultToolPreset = "pressure" | "pencil" | "highlighter" | "lasso" | "select";
 export type EraserMode = "stroke" | "precision";
 export type StylusButtonAction = "hold" | "toggle" | "off";
 export type SelectionSubMode = "lasso" | "pan";
 export type PaperTemplateType = "blank" | "ruled" | "grid" | "dotted" | "cornell";
 
+export interface PenPreset {
+  id: string;
+  label: string;
+  tool: ToolType;
+  color: string;
+  width: number;
+  strokePattern?: StrokePattern;
+}
+
 export type HotkeyActionId =
   | "toolPen"
+  | "toolPencil"
   | "toolHighlighter"
   | "toolEraser"
   | "toolLasso"
@@ -34,6 +58,8 @@ export type HotkeyActionId =
   | "toolSticky"
   | "toolText"
   | "toolImage"
+  | "toggleRuler"
+  | "toggleFocusMode"
   | "undo"
   | "redo"
   | "redoAlt"
@@ -136,6 +162,7 @@ export interface StrokeObject {
   color: string;
   width: number;
   opacity: number;
+  strokePattern?: StrokePattern;
   points: PointSample[];
   bounds: StrokeBoundingBox;
   createdAt: number;
@@ -162,6 +189,7 @@ export interface ShapeObject {
   color: string;
   strokeWidth: number;
   fillColor?: string;
+  strokePattern?: StrokePattern;
   bounds: StrokeBoundingBox;
   geometryData: Record<string, number>;
   zIndex?: number;
@@ -248,7 +276,10 @@ export function getEffectivePageDimensions(
     };
   }
 
-  const base = PAGE_DIMENSION_PRESETS[preset === "Letter" ? "Letter" : "A4"];
+  const base =
+    preset !== "Custom" && preset in PAGE_DIMENSION_PRESETS
+      ? PAGE_DIMENSION_PRESETS[preset]
+      : PAGE_DIMENSION_PRESETS.A4;
   const minDim = Math.min(base.width, base.height);
   const maxDim = Math.max(base.width, base.height);
 
@@ -262,6 +293,8 @@ export function getEffectivePageDimensions(
 export interface PageData {
   id: string;
   pageNumber: number;
+  title?: string;
+  bookmarked?: boolean;
   dimensions: PageDimensions;
   orientation: PageOrientation;
   template: PaperTemplateConfig;

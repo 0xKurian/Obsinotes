@@ -17,6 +17,9 @@ export interface NotePagesSidebarDelegate {
   requestSave(): void;
   scrollToPage(pageNumber: number): void;
   deletePageAndSyncDom(pageId: string): void;
+  onTogglePageBookmark?(pageId: string): void;
+  onRenamePage?(pageId: string, nextTitle: string): void;
+  onOpenGridOverview?(): void;
   registerDomEvent<K extends keyof HTMLElementEventMap>(
     el: HTMLElement,
     type: K,
@@ -24,10 +27,100 @@ export interface NotePagesSidebarDelegate {
   ): void;
 }
 
+export function renderPageVectorPreview(
+  ctx: CanvasRenderingContext2D,
+  page: PageData,
+  previewWidth: number,
+  previewHeight: number,
+  pageFrame?: HTMLElement | null
+): void {
+  const scaleX = previewWidth / page.dimensions.width;
+  const scaleY = previewHeight / page.dimensions.height;
+
+  ctx.save();
+  ctx.scale(scaleX, scaleY);
+
+  for (const stroke of page.strokes) {
+    if (stroke.tool === "highlighter") {
+      StrokeGeometry.renderStroke(ctx, stroke);
+    }
+  }
+  for (const shape of page.shapes) {
+    ShapeRecognizer.renderShape(ctx, shape);
+  }
+  for (const stroke of page.strokes) {
+    if (stroke.tool !== "highlighter") {
+      StrokeGeometry.renderStroke(ctx, stroke);
+    }
+  }
+  if (Array.isArray(page.texts)) {
+    for (const text of page.texts) {
+      const w = text.width || 100;
+      const h = text.height || 30;
+      if (text.isSticky) {
+        ctx.save();
+        ctx.fillStyle = text.backgroundColor || "#fef08a";
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.fillRect(text.x, text.y, w, h);
+        ctx.strokeRect(text.x, text.y, w, h);
+        ctx.restore();
+      }
+      if (text.content && text.content.trim().length > 0) {
+        ctx.save();
+        ctx.fillStyle = text.color || "#1e293b";
+        const fontSize = Math.max(8, text.fontSize || 14);
+        ctx.font = `${text.italic ? "italic " : ""}${text.fontWeight || "normal"} ${fontSize}px ${text.fontFamily || "sans-serif"}`;
+        ctx.textBaseline = "top";
+        const lines = text.content.split("\n");
+        const pad = text.isSticky ? 8 : 4;
+        const lineHeight = fontSize * 1.25;
+        for (let i = 0; i < lines.length; i++) {
+          const lineY = text.y + pad + i * lineHeight;
+          if (lineY + fontSize > text.y + h) {
+            break;
+          }
+          ctx.fillText(lines[i], text.x + pad, lineY, Math.max(10, w - pad * 2));
+        }
+        ctx.restore();
+      }
+    }
+  }
+  if (Array.isArray(page.images)) {
+    for (const imgObj of page.images) {
+      const imgEl = pageFrame?.querySelector<HTMLImageElement>(
+        `.notepages-image-frame[data-image-id="${imgObj.id}"] img`
+      );
+      if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
+        ctx.save();
+        if (typeof imgObj.opacity === "number") {
+          ctx.globalAlpha = imgObj.opacity;
+        }
+        ctx.drawImage(imgEl, imgObj.x, imgObj.y, imgObj.width, imgObj.height);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.fillStyle = "rgba(148, 163, 184, 0.25)";
+        ctx.strokeStyle = "rgba(100, 116, 139, 0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(imgObj.x, imgObj.y, imgObj.width, imgObj.height);
+        ctx.strokeRect(imgObj.x, imgObj.y, imgObj.width, imgObj.height);
+        ctx.restore();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 export class NotePagesSidebar {
   private delegate: NotePagesSidebarDelegate;
   sidebarEl!: HTMLElement;
   sidebarListEl!: HTMLElement;
+  private filterMode: "all" | "bookmarked" = "all";
+  private filterQuery: string = "";
+  private filterAllBtn?: HTMLButtonElement;
+  private filterBookmarkedBtn?: HTMLButtonElement;
+  private filterSearchInput?: HTMLInputElement;
   thumbnailElements: Map<number, HTMLElement> = new Map();
   thumbnailCanvasMap: Map<string, HTMLCanvasElement> = new Map();
   thumbnailIntersectionObserver: IntersectionObserver | null = null;
@@ -46,7 +139,56 @@ export class NotePagesSidebar {
     const sidebarHeader = this.sidebarEl.createDiv({
       cls: "notepages-sidebar-header"
     });
-    sidebarHeader.createSpan({ text: "PAGES" });
+    sidebarHeader.createSpan({ text: "Pages" });
+
+    const headerActions = sidebarHeader.createDiv({
+      cls: "notepages-sidebar-header-actions"
+    });
+    const gridBtn = headerActions.createEl("button", {
+      cls: "notepages-icon-btn"
+    });
+    gridBtn.setAttribute("type", "button");
+    setIcon(gridBtn, "layout-grid");
+    gridBtn.setAttribute("title", "Open page grid overview");
+    this.delegate.registerDomEvent(gridBtn, "click", () => {
+      this.delegate.onOpenGridOverview?.();
+    });
+
+    const filtersBar = this.sidebarEl.createDiv({
+      cls: "notepages-sidebar-filters"
+    });
+    const filterPills = filtersBar.createDiv({
+      cls: "notepages-sidebar-filter-pills"
+    });
+    this.filterAllBtn = filterPills.createEl("button", {
+      cls: "notepages-filter-pill is-active",
+      text: "All"
+    });
+    this.filterAllBtn.setAttribute("type", "button");
+    this.delegate.registerDomEvent(this.filterAllBtn, "click", () => {
+      this.setFilterMode("all");
+    });
+
+    this.filterBookmarkedBtn = filterPills.createEl("button", {
+      cls: "notepages-filter-pill",
+      text: "Starred"
+    });
+    this.filterBookmarkedBtn.setAttribute("type", "button");
+    this.filterBookmarkedBtn.setAttribute("title", "Show bookmarked pages only");
+    this.delegate.registerDomEvent(this.filterBookmarkedBtn, "click", () => {
+      this.setFilterMode("bookmarked");
+    });
+
+    this.filterSearchInput = filtersBar.createEl("input", {
+      cls: "notepages-sidebar-search",
+      type: "search"
+    });
+    this.filterSearchInput.setAttribute("placeholder", "Filter pages...");
+    this.filterSearchInput.setAttribute("aria-label", "Filter pages by number or title");
+    this.delegate.registerDomEvent(this.filterSearchInput, "input", () => {
+      this.filterQuery = this.filterSearchInput?.value ?? "";
+      this.applyFilters();
+    });
 
     this.sidebarListEl = this.sidebarEl.createDiv({
       cls: "notepages-sidebar-list"
@@ -124,6 +266,17 @@ export class NotePagesSidebar {
     });
     preview.style.backgroundColor = page.template.backgroundColor;
 
+    const bookmarkBtn = preview.createEl("button", {
+      cls: page.bookmarked ? "notepages-bookmark-badge is-bookmarked" : "notepages-bookmark-badge"
+    });
+    bookmarkBtn.setAttribute("type", "button");
+    setIcon(bookmarkBtn, "star");
+    bookmarkBtn.setAttribute("title", page.bookmarked ? "Remove bookmark" : "Bookmark page");
+    this.delegate.registerDomEvent(bookmarkBtn, "click", (e) => {
+      e.stopPropagation();
+      this.delegate.onTogglePageBookmark?.(page.id);
+    });
+
     const previewCanvas = preview.createEl("canvas", {
       cls: "notepages-thumbnail-canvas"
     });
@@ -143,10 +296,19 @@ export class NotePagesSidebar {
       cls: "notepages-thumbnail-footer"
     });
 
-    footer.createDiv({
+    const labelEl = footer.createDiv({
       cls: "notepages-thumbnail-label",
-      text: `Page ${page.pageNumber}`
+      text: this.formatPageLabel(page)
     });
+    labelEl.setAttribute("title", "Double-click to rename page");
+    this.delegate.registerDomEvent(labelEl, "dblclick", (e) => {
+      e.stopPropagation();
+      this.startInlineRename(page.id, labelEl);
+    });
+
+    if (!this.matchesFilter(page)) {
+      card.addClass("is-filtered-out");
+    }
 
     const thumbActions = footer.createDiv({
       cls: "notepages-thumbnail-actions"
@@ -337,83 +499,8 @@ export class NotePagesSidebar {
     previewWidth: number,
     previewHeight: number
   ): void {
-    const scaleX = previewWidth / page.dimensions.width;
-    const scaleY = previewHeight / page.dimensions.height;
-
-    ctx.save();
-    ctx.scale(scaleX, scaleY);
-
-    for (const stroke of page.strokes) {
-      if (stroke.tool === "highlighter") {
-        StrokeGeometry.renderStroke(ctx, stroke);
-      }
-    }
-    for (const shape of page.shapes) {
-      ShapeRecognizer.renderShape(ctx, shape);
-    }
-    for (const stroke of page.strokes) {
-      if (stroke.tool !== "highlighter") {
-        StrokeGeometry.renderStroke(ctx, stroke);
-      }
-    }
-    if (Array.isArray(page.texts)) {
-      for (const text of page.texts) {
-        const w = text.width || 100;
-        const h = text.height || 30;
-        if (text.isSticky) {
-          ctx.save();
-          ctx.fillStyle = text.backgroundColor || "#fef08a";
-          ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
-          ctx.lineWidth = 1;
-          ctx.fillRect(text.x, text.y, w, h);
-          ctx.strokeRect(text.x, text.y, w, h);
-          ctx.restore();
-        }
-        if (text.content && text.content.trim().length > 0) {
-          ctx.save();
-          ctx.fillStyle = text.color || "#1e293b";
-          const fontSize = Math.max(8, text.fontSize || 14);
-          ctx.font = `${text.italic ? "italic " : ""}${text.fontWeight || "normal"} ${fontSize}px ${text.fontFamily || "sans-serif"}`;
-          ctx.textBaseline = "top";
-          const lines = text.content.split("\n");
-          const pad = text.isSticky ? 8 : 4;
-          const lineHeight = fontSize * 1.25;
-          for (let i = 0; i < lines.length; i++) {
-            const lineY = text.y + pad + i * lineHeight;
-            if (lineY + fontSize > text.y + h) {
-              break;
-            }
-            ctx.fillText(lines[i], text.x + pad, lineY, Math.max(10, w - pad * 2));
-          }
-          ctx.restore();
-        }
-      }
-    }
-    if (Array.isArray(page.images)) {
-      const pageFrame = this.delegate.getPageFrame(page.pageNumber);
-      for (const imgObj of page.images) {
-        const imgEl = pageFrame?.querySelector<HTMLImageElement>(
-          `.notepages-image-frame[data-image-id="${imgObj.id}"] img`
-        );
-        if (imgEl && imgEl.complete && imgEl.naturalWidth > 0) {
-          ctx.save();
-          if (typeof imgObj.opacity === "number") {
-            ctx.globalAlpha = imgObj.opacity;
-          }
-          ctx.drawImage(imgEl, imgObj.x, imgObj.y, imgObj.width, imgObj.height);
-          ctx.restore();
-        } else {
-          ctx.save();
-          ctx.fillStyle = "rgba(148, 163, 184, 0.25)";
-          ctx.strokeStyle = "rgba(100, 116, 139, 0.5)";
-          ctx.lineWidth = 1.5;
-          ctx.fillRect(imgObj.x, imgObj.y, imgObj.width, imgObj.height);
-          ctx.strokeRect(imgObj.x, imgObj.y, imgObj.width, imgObj.height);
-          ctx.restore();
-        }
-      }
-    }
-    ctx.restore();
+    const pageFrame = this.delegate.getPageFrame(page.pageNumber);
+    renderPageVectorPreview(ctx, page, previewWidth, previewHeight, pageFrame);
   }
 
   updateActivePage(pageNumber: number): void {
@@ -457,8 +544,9 @@ export class NotePagesSidebar {
         card.dataset.pageIndex = String(index);
         const label = card.querySelector(".notepages-thumbnail-label");
         if (label) {
-          label.textContent = `Page ${p.pageNumber}`;
+          label.textContent = this.formatPageLabel(p);
         }
+        this.refreshPageCardMeta(p);
         this.thumbnailElements.set(p.pageNumber, card);
       }
     }
@@ -473,6 +561,110 @@ export class NotePagesSidebar {
   getThumbnailActionsEl(pageId: string): HTMLElement | null {
     const card = this.sidebarListEl?.querySelector(`[data-page-id="${pageId}"]`);
     return (card?.querySelector(".notepages-thumbnail-actions") as HTMLElement | null) ?? null;
+  }
+
+  refreshPageCardMeta(page: PageData): void {
+    const card = this.sidebarListEl?.querySelector<HTMLElement>(`[data-page-id="${page.id}"]`);
+    if (!card) {
+      return;
+    }
+    const label = card.querySelector(".notepages-thumbnail-label");
+    if (label && !label.querySelector("input")) {
+      label.textContent = this.formatPageLabel(page);
+    }
+    const bookmarkBtn = card.querySelector(".notepages-bookmark-badge");
+    if (bookmarkBtn) {
+      bookmarkBtn.toggleClass("is-bookmarked", Boolean(page.bookmarked));
+      bookmarkBtn.setAttribute("title", page.bookmarked ? "Remove bookmark" : "Bookmark page");
+    }
+    card.toggleClass("is-filtered-out", !this.matchesFilter(page));
+  }
+
+  private setFilterMode(mode: "all" | "bookmarked"): void {
+    this.filterMode = mode;
+    this.filterAllBtn?.toggleClass("is-active", mode === "all");
+    this.filterBookmarkedBtn?.toggleClass("is-active", mode === "bookmarked");
+    this.applyFilters();
+  }
+
+  private applyFilters(): void {
+    const pm = this.delegate.getPageManager();
+    if (!pm || !this.sidebarListEl) {
+      return;
+    }
+    for (const page of pm.getPages()) {
+      const card = this.sidebarListEl.querySelector<HTMLElement>(`[data-page-id="${page.id}"]`);
+      if (card) {
+        card.toggleClass("is-filtered-out", !this.matchesFilter(page));
+      }
+    }
+  }
+
+  private matchesFilter(page: PageData): boolean {
+    if (this.filterMode === "bookmarked" && !page.bookmarked) {
+      return false;
+    }
+    const query = this.filterQuery.trim().toLowerCase();
+    if (!query) {
+      return true;
+    }
+    const label = this.formatPageLabel(page).toLowerCase();
+    return label.includes(query) || String(page.pageNumber).includes(query);
+  }
+
+  private formatPageLabel(page: PageData): string {
+    const title = page.title?.trim();
+    return title && title.length > 0 ? `${page.pageNumber}. ${title}` : `Page ${page.pageNumber}`;
+  }
+
+  private startInlineRename(pageId: string, labelEl: HTMLElement): void {
+    const pm = this.delegate.getPageManager();
+    const page = pm?.getPage(pageId);
+    if (!page || labelEl.querySelector("input")) {
+      return;
+    }
+    const initialTitle = page.title ?? "";
+    labelEl.empty();
+    const input = labelEl.createEl("input", {
+      cls: "notepages-thumbnail-rename-input",
+      type: "text"
+    });
+    input.value = initialTitle;
+    input.setAttribute("placeholder", `Page ${page.pageNumber}`);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    const commit = (save: boolean) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      const nextVal = input.value.trim();
+      const latestPage = this.delegate.getPageManager()?.getPage(pageId);
+      if (save && nextVal !== initialTitle.trim()) {
+        this.delegate.onRenamePage?.(pageId, nextVal);
+      } else if (latestPage) {
+        labelEl.textContent = this.formatPageLabel(latestPage);
+      }
+    };
+
+    this.delegate.registerDomEvent(input, "click", (ev) => {
+      ev.stopPropagation();
+    });
+    this.delegate.registerDomEvent(input, "keydown", (ev: KeyboardEvent) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        commit(true);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        commit(false);
+      }
+    });
+    this.delegate.registerDomEvent(input, "blur", () => {
+      commit(true);
+    });
   }
 
   clear(): void {

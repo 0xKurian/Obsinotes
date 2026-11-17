@@ -283,6 +283,12 @@ export class ShapeRecognizer {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
+    if (shape.strokePattern === "dashed" || shape.strokePattern === "dotted") {
+      if (typeof ctx.setLineDash === "function") {
+        ctx.setLineDash(StrokeGeometry.getLineDashArray(shape.strokePattern, shape.strokeWidth));
+      }
+    }
+
     if (shape.fillColor) {
       ctx.fillStyle = shape.fillColor;
     }
