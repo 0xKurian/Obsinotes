@@ -5,8 +5,8 @@
 **A high-performance, local-first digital notebook, PDF annotator, and handwritten whiteboard for [Obsidian](https://obsidian.md).**
 
 [![Obsidian Target](https://img.shields.io/badge/Obsidian-v1.5.12+-purple?logo=obsidian&style=flat-square)](https://obsidian.md)
-[![Version](https://img.shields.io/badge/Version-2.0.6-blue?style=flat-square)](https://github.com/0xKurian/Obsinotes/releases)
-[![Tests](https://img.shields.io/badge/Tests-248%20Passed-brightgreen?style=flat-square)](https://github.com/0xKurian/Obsinotes)
+[![Version](https://img.shields.io/badge/Version-2.0.7-blue?style=flat-square)](https://github.com/0xKurian/Obsinotes/releases)
+[![Tests](https://img.shields.io/badge/Tests-253%20Passed-brightgreen?style=flat-square)](https://github.com/0xKurian/Obsinotes)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
 
@@ -304,7 +304,7 @@ npm run lint
 # Run TypeScript type check
 npm run typecheck
 
-# Run automated test suite (248 unit & integration tests)
+# Run automated test suite (253 unit & integration tests)
 npm test
 
 # Build production bundle (main.js)
