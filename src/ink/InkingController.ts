@@ -32,11 +32,8 @@ export interface InkingControllerCallbacks {
     remainingStrokes: StrokeObject[],
     remainingShapes?: ShapeObject[]
   ) => void;
+  getZoomLevel?: () => number;
 }
-
-const ACTIVE_BAKE_THRESHOLD = 48;
-const ACTIVE_TAIL_KEEP = 18;
-const ACTIVE_OVERLAP = 8;
 
 export class InkingController {
   activeTool: ToolType = "pressure";
@@ -53,11 +50,13 @@ export class InkingController {
   private activePageId: string | null = null;
   private activeCanvas: HTMLCanvasElement | null = null;
   private committedCanvas: HTMLCanvasElement | null = null;
-  private activePrefixCanvas: HTMLCanvasElement | null = null;
-  private settledPointCount: number = 0;
   private currentPoints: PointSample[] = [];
   private lastPenTimestamp: number = 0;
   private lastMoveTimestamp: number = 0;
+  private holdAnchorX: number = 0;
+  private holdAnchorY: number = 0;
+  private pendingInitialPenPressure: boolean = false;
+  private lastValidPressure: number = 0.5;
   private strokeStartTimestamp: number = 0;
   private callbacks: InkingControllerCallbacks;
   private rafId: number | null = null;
@@ -79,6 +78,7 @@ export class InkingController {
   } | null = null;
   private eraserRafId: number | null = null;
   private isEraserRafScheduled: boolean = false;
+  private zoomLevel: number = 1.0;
 
   constructor(callbacks: InkingControllerCallbacks) {
     this.callbacks = callbacks;
@@ -106,6 +106,29 @@ export class InkingController {
 
   setEraserRadius(radius: number): void {
     this.eraserRadius = Math.max(4, Math.min(50, radius));
+  }
+
+  setZoomLevel(zoom: number): void {
+    if (Number.isFinite(zoom) && zoom > 0) {
+      this.zoomLevel = Math.min(5.0, Math.max(0.2, zoom));
+    }
+  }
+
+  getZoomLevel(): number {
+    const callbackZoom = this.callbacks.getZoomLevel?.();
+    if (typeof callbackZoom === "number" && Number.isFinite(callbackZoom) && callbackZoom > 0) {
+      return Math.min(5.0, Math.max(0.2, callbackZoom));
+    }
+    return this.zoomLevel;
+  }
+
+  /**
+   * Returns the eraser radius in page coordinates scaled inversely by zoom so
+   * the eraser maintains a consistent screen size and shrinks relative to the
+   * page when zoomed in.
+   */
+  getEffectiveEraserRadius(): number {
+    return this.eraserRadius / this.getZoomLevel();
   }
 
   setShapeRecognition(enabled: boolean): void {
@@ -225,13 +248,23 @@ export class InkingController {
       return;
     }
 
+    if (!Number.isFinite(pageCoords.x) || !Number.isFinite(pageCoords.y)) {
+      this.finalizeStrokeDrawing();
+      return;
+    }
+
     this.isDrawing = true;
     this.strokeStartTimestamp = Date.now();
+    this.holdAnchorX = pageCoords.x;
+    this.holdAnchorY = pageCoords.y;
     this.currentPoints = [];
-    this.settledPointCount = 0;
-    this.resetActivePrefixCanvas(activeCanvas);
 
-    const pressure = e.pressure && e.pressure > 0 ? e.pressure : 0.5;
+    const hasDownPressure = e.pressure !== undefined && e.pressure > 0;
+    const isZeroPenDown = e.pointerType === "pen" && !hasDownPressure;
+    this.pendingInitialPenPressure = isZeroPenDown;
+    const pressure = hasDownPressure ? e.pressure : isZeroPenDown ? 0.15 : 0.5;
+    this.lastValidPressure = pressure;
+
     const startPoint: PointSample = {
       x: pageCoords.x,
       y: pageCoords.y,
@@ -255,35 +288,60 @@ export class InkingController {
       return;
     }
 
-    this.lastMoveTimestamp = Date.now();
-
     if (this.activeTool === "eraser") {
+      this.lastMoveTimestamp = Date.now();
       if (this.eraserSession) {
         this.processEraserPoints(pageCoordsList);
       }
       return;
     }
 
-    const fallbackPressure = e.pressure && e.pressure > 0 ? e.pressure : 0.5;
+    const hasEventPressure = e.pressure !== undefined && e.pressure > 0;
+    const fallbackPressure = hasEventPressure ? e.pressure : this.lastValidPressure;
     const fallbackTime = e.timeStamp || Date.now();
 
     for (let i = 0; i < pageCoordsList.length; i++) {
       const pt = pageCoordsList[i];
-      const ptPressure = pt.pressure !== undefined && pt.pressure > 0 ? pt.pressure : fallbackPressure;
+      if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y)) {
+        continue;
+      }
+      const hasPtPressure = pt.pressure !== undefined && pt.pressure > 0;
+      const ptPressure = hasPtPressure ? pt.pressure! : fallbackPressure;
+      if (hasPtPressure || hasEventPressure) {
+        this.lastValidPressure = ptPressure;
+      }
+      if (
+        this.pendingInitialPenPressure &&
+        (hasPtPressure || hasEventPressure) &&
+        this.currentPoints.length <= 2 &&
+        this.currentPoints[0]
+      ) {
+        this.currentPoints[0].pressure = ptPressure;
+        this.pendingInitialPenPressure = false;
+      }
+
       const ptTiltX = pt.tiltX !== undefined ? pt.tiltX : e.tiltX;
       const ptTiltY = pt.tiltY !== undefined ? pt.tiltY : e.tiltY;
       const ptTime = pt.timestamp !== undefined && pt.timestamp > 0 ? pt.timestamp : fallbackTime + i;
+
+      if (Math.hypot(pt.x - this.holdAnchorX, pt.y - this.holdAnchorY) >= 2.0) {
+        this.holdAnchorX = pt.x;
+        this.holdAnchorY = pt.y;
+        this.lastMoveTimestamp = Date.now();
+      }
 
       const lastPoint = this.currentPoints[this.currentPoints.length - 1];
       if (lastPoint) {
         const dx = pt.x - lastPoint.x;
         const dy = pt.y - lastPoint.y;
         const distSq = dx * dx + dy * dy;
-        const isPressureSignificant = Math.abs(ptPressure - (lastPoint.pressure || 0.5)) > 0.05;
-        if (distSq < 0.25 && !isPressureSignificant) {
+        if (distSq < 0.25) {
           lastPoint.timestamp = ptTime;
           lastPoint.tiltX = ptTiltX;
           lastPoint.tiltY = ptTiltY;
+          if (hasPtPressure && Math.abs(ptPressure - (lastPoint.pressure || 0.5)) > 0.05) {
+            lastPoint.pressure = Math.max(lastPoint.pressure, ptPressure);
+          }
           continue;
         }
       }
@@ -368,7 +426,10 @@ export class InkingController {
       opacity,
       strokePattern: this.currentStrokePattern !== "solid" ? this.currentStrokePattern : undefined,
       points: [...this.currentPoints],
-      bounds: StrokeGeometry.computeBoundingBox(this.currentPoints, Math.max(2, this.currentWidth)),
+      bounds: StrokeGeometry.computeBoundingBox(
+        this.currentPoints,
+        StrokeGeometry.getBoundsPadding(this.activeTool, this.currentWidth)
+      ),
       createdAt: Date.now()
     };
 
@@ -393,12 +454,12 @@ export class InkingController {
         }
         if (this.committedCanvas) {
           const ctx = this.committedCanvas.getContext("2d");
-          if (ctx) {
-            const scale =
-              this.committedCanvas.width /
-              (Number(this.committedCanvas.dataset?.pageWidth) ||
-                this.committedCanvas.clientWidth ||
-                this.committedCanvas.width);
+          const pageW =
+            Number(this.committedCanvas.dataset?.pageWidth) ||
+            this.committedCanvas.clientWidth ||
+            this.committedCanvas.width;
+          if (ctx && pageW > 0) {
+            const scale = this.committedCanvas.width / pageW;
             if (typeof ctx.setTransform === "function") {
               ctx.setTransform(scale, 0, 0, scale, 0, 0);
             }
@@ -423,7 +484,7 @@ export class InkingController {
         this.committedCanvas.clientHeight ||
         this.committedCanvas.height;
       const ctx = this.committedCanvas.getContext("2d");
-      if (ctx) {
+      if (ctx && pageW > 0) {
         const scale = this.committedCanvas.width / pageW;
         if (typeof ctx.setTransform === "function") {
           ctx.setTransform(scale, 0, 0, scale, 0, 0);
@@ -476,12 +537,10 @@ export class InkingController {
       window.cancelAnimationFrame(this.eraserRafId);
       this.eraserRafId = null;
     }
-    if (this.activePrefixCanvas) {
-      this.activePrefixCanvas.width = 1;
-      this.activePrefixCanvas.height = 1;
-      this.activePrefixCanvas = null;
-    }
-    this.settledPointCount = 0;
+    this.pendingInitialPenPressure = false;
+    this.lastValidPressure = 0.5;
+    this.holdAnchorX = 0;
+    this.holdAnchorY = 0;
     this.isRafScheduled = false;
     this.isEraserRafScheduled = false;
     this.isDrawing = false;
@@ -491,18 +550,6 @@ export class InkingController {
     this.committedCanvas = null;
     this.currentPoints = [];
     this.strokeStartTimestamp = 0;
-  }
-
-  private resetActivePrefixCanvas(activeCanvas: HTMLCanvasElement): void {
-    if (typeof createEl !== "function" || activeCanvas.width <= 1 || activeCanvas.height <= 1) {
-      this.activePrefixCanvas = null;
-      return;
-    }
-    if (!this.activePrefixCanvas) {
-      this.activePrefixCanvas = createEl("canvas");
-    }
-    this.activePrefixCanvas.width = activeCanvas.width;
-    this.activePrefixCanvas.height = activeCanvas.height;
   }
 
   private renderActiveStroke(): void {
@@ -517,51 +564,12 @@ export class InkingController {
 
     const pageW =
       Number(this.activeCanvas.dataset?.pageWidth) || this.activeCanvas.clientWidth || this.activeCanvas.width;
-    const scale = this.activeCanvas.width / pageW;
-    const canIncrementalBake =
-      this.activePrefixCanvas !== null &&
-      this.activeTool !== "highlighter" &&
-      this.activeTool !== "pencil" &&
-      this.currentStrokePattern === "solid" &&
-      this.currentOpacity >= 0.98;
-
-    if (canIncrementalBake && this.currentPoints.length - this.settledPointCount > ACTIVE_BAKE_THRESHOLD) {
-      const nextSettledEnd = this.currentPoints.length - ACTIVE_TAIL_KEEP;
-      const sliceStart = Math.max(0, this.settledPointCount - ACTIVE_OVERLAP);
-      const bakePoints = this.currentPoints.slice(sliceStart, nextSettledEnd);
-      const prefixCtx = this.activePrefixCanvas!.getContext("2d");
-      if (prefixCtx && bakePoints.length >= 2) {
-        if (typeof prefixCtx.setTransform === "function") {
-          prefixCtx.setTransform(scale, 0, 0, scale, 0, 0);
-        }
-        prefixCtx.imageSmoothingEnabled = true;
-        prefixCtx.imageSmoothingQuality = "high";
-        const chunkStroke: StrokeObject = {
-          id: "active",
-          elementType: "stroke",
-          tool: this.activeTool,
-          color: this.currentColor,
-          width: this.currentWidth,
-          opacity: this.currentOpacity,
-          points: bakePoints,
-          bounds: StrokeGeometry.computeBoundingBox(bakePoints, this.currentWidth),
-          createdAt: 0
-        };
-        StrokeGeometry.renderStroke(prefixCtx, chunkStroke);
-        this.settledPointCount = nextSettledEnd;
-      }
+    if (pageW <= 0) {
+      return;
     }
+    const scale = this.activeCanvas.width / pageW;
 
     this.clearCanvas(this.activeCanvas);
-
-    if (canIncrementalBake && this.settledPointCount > 0 && this.activePrefixCanvas) {
-      ctx.save();
-      if (typeof ctx.setTransform === "function") {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-      }
-      ctx.drawImage(this.activePrefixCanvas, 0, 0);
-      ctx.restore();
-    }
 
     if (typeof ctx.setTransform === "function") {
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
@@ -569,10 +577,6 @@ export class InkingController {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    const tailStart = canIncrementalBake && this.settledPointCount > 0
-      ? Math.max(0, this.settledPointCount - ACTIVE_OVERLAP)
-      : 0;
-    const activeSlice = tailStart > 0 ? this.currentPoints.slice(tailStart) : this.currentPoints;
     const opacity = this.activeTool === "highlighter" ? 0.35 : this.currentOpacity;
     const tempStroke: StrokeObject = {
       id: "active",
@@ -582,8 +586,11 @@ export class InkingController {
       width: this.currentWidth,
       opacity,
       strokePattern: this.currentStrokePattern !== "solid" ? this.currentStrokePattern : undefined,
-      points: activeSlice,
-      bounds: StrokeGeometry.computeBoundingBox(activeSlice, this.currentWidth),
+      points: this.currentPoints,
+      bounds: StrokeGeometry.computeBoundingBox(
+        this.currentPoints,
+        StrokeGeometry.getBoundsPadding(this.activeTool, this.currentWidth)
+      ),
       createdAt: 0
     };
 
@@ -614,8 +621,9 @@ export class InkingController {
     let strokes = this.eraserSession.currentStrokes;
     let shapes = this.eraserSession.currentShapes;
     const spatialIndex = this.eraserSession.spatialIndex;
+    const effectiveRadius = this.getEffectiveEraserRadius();
 
-    const shapeResult = EraserEngine.eraseShapesTrajectory(shapes, coordsList, this.eraserRadius, spatialIndex);
+    const shapeResult = EraserEngine.eraseShapesTrajectory(shapes, coordsList, effectiveRadius, spatialIndex);
     if (shapeResult.deletedIds.length > 0) {
       const deletedSet = new Set(shapeResult.deletedIds);
       for (const sh of shapes) {
@@ -629,7 +637,7 @@ export class InkingController {
     }
 
     if (this.eraserMode === "stroke") {
-      const strokeResult = EraserEngine.eraseByStrokeTrajectory(strokes, coordsList, this.eraserRadius, spatialIndex);
+      const strokeResult = EraserEngine.eraseByStrokeTrajectory(strokes, coordsList, effectiveRadius, spatialIndex);
       if (strokeResult.deletedIds.length > 0) {
         const deletedSet = new Set(strokeResult.deletedIds);
         for (const s of strokes) {
@@ -643,7 +651,7 @@ export class InkingController {
       }
     } else {
       for (const pt of coordsList) {
-        const precisionResult = EraserEngine.erasePrecision(strokes, pt.x, pt.y, this.eraserRadius, spatialIndex);
+        const precisionResult = EraserEngine.erasePrecision(strokes, pt.x, pt.y, effectiveRadius, spatialIndex);
         if (precisionResult.changed) {
           const prevMap = new Map(strokes.map((s) => [s.id, s]));
           const nextMap = new Map(precisionResult.updatedStrokes.map((s) => [s.id, s]));

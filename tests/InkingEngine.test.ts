@@ -649,4 +649,194 @@ describe("EraserEngine", () => {
     assert.strictEqual(erasedCount, 1);
     assert.strictEqual(remainingAfterErase.length, 0);
   });
+
+  test("generateOutline reaches exact final endpoint on fast strokes and preserves small diacritic corners", () => {
+    const fastLine: PointSample[] = [
+      { x: 0, y: 50, pressure: 0.5, timestamp: 1 },
+      { x: 40, y: 50, pressure: 0.5, timestamp: 10 },
+      { x: 100, y: 50, pressure: 0.5, timestamp: 20 }
+    ];
+    const fastOut = StrokeGeometry.generateOutline(fastLine, "pressure", 2.5);
+    const maxX = Math.max(...fastOut.map((p) => p[0]));
+    assert.ok(maxX >= 100, `Fast stroke outline maxX (${maxX}) must reach final pen point 100`);
+
+    const circumflex: PointSample[] = [
+      { x: 100, y: 104, pressure: 0.5, timestamp: 1 },
+      { x: 103, y: 100, pressure: 0.5, timestamp: 10 },
+      { x: 106, y: 104, pressure: 0.5, timestamp: 20 }
+    ];
+    assert.strictEqual(StrokeGeometry.isDot(circumflex, 4), false);
+    const circumflexOut = StrokeGeometry.generateOutline(circumflex, "pressure", 4);
+    const minY = Math.min(...circumflexOut.map((p) => p[1]));
+    const circumflexMaxX = Math.max(...circumflexOut.map((p) => p[0]));
+    assert.ok(minY < 100, `Circumflex apex must be preserved above y=100, got minY=${minY}`);
+    assert.ok(circumflexMaxX >= 106, `Circumflex right leg must reach x>=106, got ${circumflexMaxX}`);
+  });
+
+  test("InkingController avoids 0.5 pressure blobs on zero-pressure pen down/up and deduplicates stationary pressure jitter", () => {
+    let capturedStroke: StrokeObject | null = null;
+    const controller = new InkingController({
+      onStrokeCommitted: (_pageId, stroke) => {
+        capturedStroke = stroke;
+      },
+      onStrokesErased: () => {}
+    });
+
+    const mockCanvas = {
+      width: 595,
+      height: 842,
+      dataset: { pageWidth: "595", pageHeight: "842" },
+      getContext: () => ({
+        beginPath: () => {},
+        moveTo: () => {},
+        lineTo: () => {},
+        quadraticCurveTo: () => {},
+        closePath: () => {},
+        fill: () => {},
+        clearRect: () => {},
+        save: () => {},
+        restore: () => {},
+        setTransform: () => {}
+      }),
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {}
+    } as unknown as HTMLCanvasElement;
+
+    controller.setTool("pressure");
+    // Pen down with initial 0 pressure
+    controller.handlePointerDown(
+      { pointerId: 1, pointerType: "pen", button: 0, pressure: 0, timeStamp: 100 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 50, y: 50 },
+      [],
+      []
+    );
+
+    // Light stroke moves with 0.08 pressure, then stationary pressure shift, then lift-off 0 pressure
+    controller.handlePointerMove(
+      { pointerId: 1, pointerType: "pen", pressure: 0.08, timeStamp: 116 } as unknown as PointerEvent,
+      [{ x: 60, y: 50, pressure: 0.08 }],
+      [],
+      []
+    );
+    controller.handlePointerMove(
+      { pointerId: 1, pointerType: "pen", pressure: 0.25, timeStamp: 132 } as unknown as PointerEvent,
+      [{ x: 60.1, y: 50.1, pressure: 0.25 }],
+      [],
+      []
+    );
+    controller.handlePointerMove(
+      { pointerId: 1, pointerType: "pen", pressure: 0, timeStamp: 148 } as unknown as PointerEvent,
+      [{ x: 75, y: 50, pressure: 0 }],
+      [],
+      []
+    );
+    controller.handlePointerUp({ pointerId: 1, pointerType: "pen" } as unknown as PointerEvent);
+
+    assert.ok(capturedStroke !== null);
+    const pts = (capturedStroke as StrokeObject).points;
+    assert.strictEqual(pts.length, 3, "Stationary pressure shift must not add duplicate zero-length vertex");
+    assert.strictEqual(pts[0].pressure, 0.08, "Initial zero pen pressure should backfill from first light move");
+    assert.strictEqual(pts[1].pressure, 0.25);
+    assert.strictEqual(pts[2].pressure, 0.25, "Lift-off zero pressure should carry last valid pressure instead of spiking to 0.5");
+  });
+
+  test("EraserEngine hitTestStroke accounts for wide highlighter tool size", () => {
+    const hlStroke: StrokeObject = {
+      id: "hl_wide",
+      tool: "highlighter",
+      color: "#facc15",
+      width: 4,
+      opacity: 0.35,
+      points: [
+        { x: 20, y: 100, pressure: 0.5, timestamp: 1 },
+        { x: 120, y: 100, pressure: 0.5, timestamp: 2 }
+      ],
+      bounds: StrokeGeometry.computeBoundingBox(
+        [
+          { x: 20, y: 100, pressure: 0.5, timestamp: 1 },
+          { x: 120, y: 100, pressure: 0.5, timestamp: 2 }
+        ],
+        StrokeGeometry.getBoundsPadding("highlighter", 4)
+      ),
+      createdAt: 1
+    };
+    // Highlighter width=4 has tool size 18 (half=9); eraser at y=110 with radius=2 (dist=10 <= 9+2=11) should hit
+    assert.strictEqual(EraserEngine.hitTestStroke(hlStroke, 70, 110, 2), true);
+  });
+
+  test("InkingController scales effective eraser radius inversely with zoom level", () => {
+    let erasedStrokes: StrokeObject[] | null = null;
+    let currentZoom = 1;
+    const controller = new InkingController({
+      getZoomLevel: () => currentZoom,
+      onStrokeCommitted: () => {},
+      onStrokesErased: (_pageId, remaining) => {
+        erasedStrokes = remaining;
+      }
+    });
+    controller.setTool("eraser");
+    controller.setEraserMode("stroke");
+    controller.setEraserRadius(12);
+
+    assert.strictEqual(controller.getEffectiveEraserRadius(), 12);
+    currentZoom = 3;
+    assert.strictEqual(controller.getEffectiveEraserRadius(), 4);
+
+    // At 3x zoom, effective radius is 4pt. A stroke at y=100 (width=2.5, half=1.25 -> hit threshold 5.25pt)
+    // should NOT be hit when erasing at y=108 (dist=8 > 5.25), whereas at 1x zoom (threshold 13.25) it would be.
+    const nearStroke: StrokeObject = {
+      id: "near_stroke",
+      tool: "pen",
+      color: "#000000",
+      width: 2.5,
+      opacity: 1,
+      points: [
+        { x: 50, y: 100, pressure: 0.5, timestamp: 1 },
+        { x: 150, y: 100, pressure: 0.5, timestamp: 2 }
+      ],
+      bounds: StrokeGeometry.computeBoundingBox(
+        [
+          { x: 50, y: 100, pressure: 0.5, timestamp: 1 },
+          { x: 150, y: 100, pressure: 0.5, timestamp: 2 }
+        ],
+        2.5
+      ),
+      createdAt: 1
+    };
+
+    const mockCanvas = {
+      width: 595,
+      height: 842,
+      dataset: { pageWidth: "595", pageHeight: "842" },
+      setPointerCapture: () => {},
+      releasePointerCapture: () => {},
+      getContext: () => null
+    } as unknown as HTMLCanvasElement;
+
+    controller.handlePointerDown(
+      { pointerId: 1, pointerType: "pen", button: 0, pressure: 0.5 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 100, y: 108 },
+      [nearStroke]
+    );
+    controller.handlePointerUp({ pointerId: 1, pointerType: "pen", button: 0 } as unknown as PointerEvent);
+    assert.strictEqual(erasedStrokes, null, "Stroke 8pt away should remain untouched at 3x zoom (4pt effective radius)");
+
+    // Now erase directly over the stroke at y=102 (dist=2 <= 4 + 1.25 = 5.25)
+    controller.handlePointerDown(
+      { pointerId: 1, pointerType: "pen", button: 0, pressure: 0.5 } as unknown as PointerEvent,
+      "page_1",
+      mockCanvas,
+      mockCanvas,
+      { x: 100, y: 102 },
+      [nearStroke]
+    );
+    controller.handlePointerUp({ pointerId: 1, pointerType: "pen", button: 0 } as unknown as PointerEvent);
+    assert.ok(erasedStrokes !== null && (erasedStrokes as StrokeObject[]).length === 0, "Stroke within shrunk radius should be erased");
+  });
 });

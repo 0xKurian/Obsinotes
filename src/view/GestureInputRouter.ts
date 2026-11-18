@@ -328,9 +328,10 @@ export class GestureInputRouter {
         this.stylusButtonState.recordPointerEvent(e.pointerType);
         if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
           this.recoveredEraserPointerId = null;
-          if (this.delegate.getInkingController().isCurrentlyDrawing()) {
-            this.delegate.getInkingController().handlePointerUp(e);
-          }
+        }
+        const inking = this.delegate.getInkingController();
+        if (inking.isCurrentlyDrawing()) {
+          inking.handlePointerUp(e);
         }
       }
       this.delegate.setToolbarDrawingActive(false);
@@ -372,6 +373,10 @@ export class GestureInputRouter {
         this.stylusButtonState.recordPointerEvent(e.pointerType);
         if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
           this.recoveredEraserPointerId = null;
+        }
+        const inking = this.delegate.getInkingController();
+        if (inking.isCurrentlyDrawing()) {
+          inking.handlePointerCancel(e);
         }
       }
       this.delegate.setToolbarDrawingActive(false);
@@ -694,6 +699,10 @@ export class GestureInputRouter {
       this.delegate.getDragCoordinator().setDragStartClient(e.clientX, e.clientY);
 
       const rect = activeCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        this.delegate.setToolbarDrawingActive(false);
+        return;
+      }
       const scaleX = page.dimensions.width / rect.width;
       const scaleY = page.dimensions.height / rect.height;
       const pageX = (e.clientX - rect.left) * scaleX;
@@ -829,6 +838,9 @@ export class GestureInputRouter {
       }
 
       const rect = activeCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
       const scaleX = page.dimensions.width / rect.width;
       const scaleY = page.dimensions.height / rect.height;
       const canvasHost = this.delegate.getCanvasHost();
@@ -1072,6 +1084,9 @@ export class GestureInputRouter {
       }
 
       const rect = activeCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
       const scaleX = page.dimensions.width / rect.width;
       const scaleY = page.dimensions.height / rect.height;
       const pageX = (e.clientX - rect.left) * scaleX;
@@ -1561,14 +1576,17 @@ export class GestureInputRouter {
     this.delegate.getScrollerEl()?.removeClass("is-panning");
   }
 
+  private getEraserScreenRadius(): number {
+    return this.delegate.getInkingController().eraserRadius;
+  }
+
   updateEraserCursorSize(): void {
     const eraserCursorEl = this.delegate.getEraserCursorEl();
     if (!eraserCursorEl) {
       return;
     }
-    const zoomLevel = this.delegate.getZoomController().getZoomLevel();
-    const screenRadius = this.delegate.getInkingController().eraserRadius * zoomLevel;
-    const diameter = screenRadius * 2;
+    const screenRadius = this.getEraserScreenRadius();
+    const diameter = Math.round(screenRadius * 2);
     eraserCursorEl.setCssStyles({
       width: `${diameter}px`,
       height: `${diameter}px`
@@ -1695,8 +1713,7 @@ export class GestureInputRouter {
       return;
     }
 
-    const zoomLevel = this.delegate.getZoomController().getZoomLevel();
-    const screenRadius = inking.eraserRadius * zoomLevel;
+    const screenRadius = this.getEraserScreenRadius();
     const diameter = Math.round(screenRadius * 2);
 
     eraserCursorEl.setCssStyles({

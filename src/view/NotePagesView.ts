@@ -344,6 +344,7 @@ export class NotePagesView
     this.pdfBackgroundManager = new PdfBackgroundManager(this.app);
 
     this.inkingController = new InkingController({
+      getZoomLevel: () => this.zoomController.getZoomLevel(),
       onStrokeCommitted: (pageId: string, stroke: StrokeObject) => {
         if (!this.pageManager || !this.document) {
           return;
@@ -598,6 +599,7 @@ export class NotePagesView
         if (this.minimap) {
           this.minimap.onZoomChanged(zoom);
         }
+        this.inkingController.setZoomLevel(zoom);
         this.gestureRouter.updateEraserCursorSize();
         this.rulerController?.syncDom();
       }

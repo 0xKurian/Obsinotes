@@ -69,7 +69,7 @@ export class EraserEngine {
       return false;
     }
 
-    const effectiveRadius = radius + Math.max(1, stroke.width / 2);
+    const effectiveRadius = radius + Math.max(1, StrokeGeometry.getToolSize(stroke.tool, stroke.width) / 2);
     const effectiveRadiusSq = effectiveRadius * effectiveRadius;
     const points = stroke.points;
 
@@ -222,7 +222,7 @@ export class EraserEngine {
       changed = true;
       const segments: PointSample[][] = [];
       let currentSegment: PointSample[] = [];
-      const effectiveRadius = radius + Math.max(1, stroke.width / 2);
+      const effectiveRadius = radius + Math.max(1, StrokeGeometry.getToolSize(stroke.tool, stroke.width) / 2);
 
       for (const p of stroke.points) {
         const dx = p.x - eraserX;
@@ -246,7 +246,10 @@ export class EraserEngine {
       const splitStrokes: StrokeObject[] = [];
       for (const seg of segments) {
         if (seg.length > 0) {
-          const newBounds = StrokeGeometry.computeBoundingBox(seg, Math.max(2, stroke.width));
+          const newBounds = StrokeGeometry.computeBoundingBox(
+            seg,
+            StrokeGeometry.getBoundsPadding(stroke.tool, stroke.width)
+          );
           splitStrokes.push({
             ...stroke,
             id: `stroke_${Math.random().toString(36).substring(2, 9)}`,

@@ -685,7 +685,7 @@ export class SelectionController {
     this.selectedStrokes = this.selectedStrokes.map((s) => ({
       ...s,
       width: newWidth,
-      bounds: StrokeGeometry.computeBoundingBox(s.points, newWidth)
+      bounds: StrokeGeometry.computeBoundingBox(s.points, StrokeGeometry.getBoundsPadding(s.tool, newWidth))
     }));
 
     this.selectedShapes = this.selectedShapes.map((sh) => ({
@@ -732,7 +732,7 @@ export class SelectionController {
       return {
         ...s,
         points: transformedPoints,
-        bounds: StrokeGeometry.computeBoundingBox(transformedPoints, s.width)
+        bounds: StrokeGeometry.computeBoundingBox(transformedPoints, StrokeGeometry.getBoundsPadding(s.tool, s.width))
       };
     });
 

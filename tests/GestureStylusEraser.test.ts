@@ -41,6 +41,8 @@ function createMockElement() {
       beginPath: () => {},
       moveTo: () => {},
       lineTo: () => {},
+      quadraticCurveTo: () => {},
+      closePath: () => {},
       stroke: () => {},
       fill: () => {},
       arc: () => {}
@@ -68,11 +70,20 @@ function makeStroke(id: string, x1: number, x2: number, y: number): StrokeObject
 }
 
 function createTestHarness() {
+  let zoomLevel = 1;
   const rootEl = createMockElement();
   const scrollerEl = createMockElement();
   const pagesContainerEl = createMockElement();
   const pageFrameEl = createMockElement();
   const activeCanvasEl = createMockElement();
+  activeCanvasEl.getBoundingClientRect = () => ({
+    left: 0,
+    top: 0,
+    width: 595 * zoomLevel,
+    height: 842 * zoomLevel,
+    right: 595 * zoomLevel,
+    bottom: 842 * zoomLevel
+  });
   const committedCanvasEl = createMockElement();
   const eraserCursorEl = createMockElement();
   eraserCursorEl.addClass("is-hidden");
@@ -93,6 +104,7 @@ function createTestHarness() {
   const windowListeners: EventMap = new Map();
 
   const inking = new InkingController({
+    getZoomLevel: () => zoomLevel,
     onStrokeCommitted: (_pageId, stroke) => {
       page.strokes.push(stroke);
       committedNewStrokes.push(stroke);
@@ -136,7 +148,7 @@ function createTestHarness() {
     getHistoryManager: () => ({ execute: () => {} }) as unknown as ReturnType<GestureInputDelegate["getHistoryManager"]>,
     getCanvasHost: () => ({ ensurePageCanvasesMounted: () => {} }) as unknown as ReturnType<GestureInputDelegate["getCanvasHost"]>,
     getZoomController: () => ({
-      getZoomLevel: () => 1,
+      getZoomLevel: () => zoomLevel,
       flushCanvasResolutionUpdate: () => {},
       scheduleCanvasResolutionUpdate: () => {}
     }) as unknown as ReturnType<GestureInputDelegate["getZoomController"]>,
@@ -236,7 +248,12 @@ function createTestHarness() {
     eraserCursorEl,
     toolbarToolHistory,
     committedNewStrokes,
-    emitCanvas
+    emitCanvas,
+    setZoom: (nextZoom: number) => {
+      zoomLevel = nextZoom;
+      inking.setZoomLevel(nextZoom);
+      router.updateEraserCursorSize();
+    }
   };
 }
 
@@ -314,5 +331,34 @@ describe("GestureInputRouter S-Pen Side-Button Eraser Integration", () => {
     assert.strictEqual(md.prevented, true);
     assert.strictEqual(ac.prevented, true);
     assert.strictEqual(ac.stopped, true);
+  });
+
+  test("keeps eraser cursor constant size on screen and shrinks page-relative erase radius when zoomed in", () => {
+    const h = createTestHarness();
+    h.inking.setTool("eraser");
+    h.inking.setEraserRadius(12);
+    h.page.strokes = [
+      makeStroke("target_stroke", 100, 180, 100),
+      makeStroke("adjacent_stroke", 100, 180, 109)
+    ];
+
+    h.setZoom(3);
+
+    // Hover at page (140, 100) -> client (420, 300) at 3x zoom
+    h.emitCanvas("pointermove", { pointerType: "pen", button: -1, buttons: 0, pressure: 0, clientX: 420, clientY: 300, timeStamp: 90 });
+    assert.strictEqual(h.eraserCursorEl.hasClass("is-hidden"), false);
+    assert.strictEqual(h.eraserCursorEl.styles.width, "24px", "Eraser cursor stays 24px (2 * 12px) instead of scaling up to 72px at 3x zoom");
+    assert.strictEqual(h.eraserCursorEl.styles.height, "24px");
+
+    // Erase along y=100pt (clientY=300): target_stroke at y=100 is erased, adjacent_stroke at y=109 (9pt away > 4 + 1.25pt) is preserved
+    h.emitCanvas("pointerdown", { pointerType: "pen", button: 0, buttons: 1, pressure: 0.5, clientX: 360, clientY: 300, timeStamp: 100 });
+    h.emitCanvas("pointermove", { pointerType: "pen", button: -1, buttons: 1, pressure: 0.5, clientX: 450, clientY: 300, timeStamp: 116 });
+    h.emitCanvas("pointerup", { pointerType: "pen", button: 0, buttons: 0, pressure: 0, clientX: 450, clientY: 300, timeStamp: 132 });
+
+    assert.deepStrictEqual(
+      h.page.strokes.map((s) => s.id),
+      ["adjacent_stroke"],
+      "Zooming in to 3x shrinks eraser relative to page so adjacent stroke 9pt away is preserved"
+    );
   });
 });

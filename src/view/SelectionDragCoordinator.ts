@@ -464,7 +464,7 @@ export class SelectionDragCoordinator {
         ...s,
         id: `stroke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         points: newPoints,
-        bounds: StrokeGeometry.computeBoundingBox(newPoints, s.width)
+        bounds: StrokeGeometry.computeBoundingBox(newPoints, StrokeGeometry.getBoundsPadding(s.tool, s.width))
       };
     });
 

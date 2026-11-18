@@ -28,8 +28,18 @@ export function outlineToSvgPath(outline: number[][]): string {
     return "";
   }
   let d = `M ${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)}`;
-  for (let i = 1; i < outline.length; i++) {
-    d += ` L ${outline[i][0].toFixed(2)} ${outline[i][1].toFixed(2)}`;
+  if (outline.length >= 3) {
+    for (let i = 1; i < outline.length - 1; i++) {
+      const xc = ((outline[i][0] + outline[i + 1][0]) / 2).toFixed(2);
+      const yc = ((outline[i][1] + outline[i + 1][1]) / 2).toFixed(2);
+      d += ` Q ${outline[i][0].toFixed(2)} ${outline[i][1].toFixed(2)} ${xc} ${yc}`;
+    }
+    const last = outline[outline.length - 1];
+    d += ` L ${last[0].toFixed(2)} ${last[1].toFixed(2)}`;
+  } else {
+    for (let i = 1; i < outline.length; i++) {
+      d += ` L ${outline[i][0].toFixed(2)} ${outline[i][1].toFixed(2)}`;
+    }
   }
   return d + " Z";
 }
@@ -221,10 +231,24 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
     if (stroke.points.length === 0) {
       return "";
     }
-    const dash = StrokeGeometry.getLineDashArray(stroke.strokePattern, stroke.width).join(",");
+    const effectiveWidth =
+      stroke.tool === "highlighter"
+        ? StrokeGeometry.getToolSize("highlighter", stroke.width)
+        : Math.max(1, stroke.width);
+    const dash = StrokeGeometry.getLineDashArray(stroke.strokePattern, effectiveWidth).join(",");
     let d = `M ${stroke.points[0].x.toFixed(2)} ${stroke.points[0].y.toFixed(2)}`;
-    for (let i = 1; i < stroke.points.length; i++) {
-      d += ` L ${stroke.points[i].x.toFixed(2)} ${stroke.points[i].y.toFixed(2)}`;
+    if (stroke.points.length >= 3) {
+      for (let i = 1; i < stroke.points.length - 1; i++) {
+        const xc = ((stroke.points[i].x + stroke.points[i + 1].x) / 2).toFixed(2);
+        const yc = ((stroke.points[i].y + stroke.points[i + 1].y) / 2).toFixed(2);
+        d += ` Q ${stroke.points[i].x.toFixed(2)} ${stroke.points[i].y.toFixed(2)} ${xc} ${yc}`;
+      }
+      const last = stroke.points[stroke.points.length - 1];
+      d += ` L ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
+    } else {
+      for (let i = 1; i < stroke.points.length; i++) {
+        d += ` L ${stroke.points[i].x.toFixed(2)} ${stroke.points[i].y.toFixed(2)}`;
+      }
     }
     const opacity =
       stroke.tool === "highlighter"
@@ -233,7 +257,7 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
           ? StrokeGeometry.computePencilOpacity(stroke)
           : stroke.opacity ?? 1;
     const blendStyle = stroke.tool === "highlighter" ? ` style="mix-blend-mode: multiply;"` : "";
-    return `<path d="${d}" fill="none" stroke="${stroke.color}" stroke-width="${Math.max(1, stroke.width)}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${Number(opacity.toFixed(2))}"${blendStyle}/>`;
+    return `<path d="${d}" fill="none" stroke="${stroke.color}" stroke-width="${effectiveWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${Number(opacity.toFixed(2))}"${blendStyle}/>`;
   }
 
   const cached = StrokeGeometry.getCachedGeometry(stroke);
