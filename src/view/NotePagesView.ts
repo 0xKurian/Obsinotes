@@ -77,6 +77,7 @@ import { NotePagesImportHandler, NotePagesImportDelegate } from "./NotePagesImpo
 import { NotePagesSidebar, NotePagesSidebarDelegate } from "./NotePagesSidebar";
 import { NotePagesToolbar, NotePagesToolbarDelegate } from "./NotePagesToolbar";
 import { NotePagesMinimap, NotePagesMinimapDelegate } from "./NotePagesMinimap";
+import { NotePagesPropertiesPanel } from "./NotePagesPropertiesPanel";
 import { PageSizeModal, PageSizeModalResult } from "../modal/PageSizeModal";
 import { ExportModal } from "../modal/ExportModal";
 import { QuickRenameModal } from "../modal/QuickRenameModal";
@@ -173,6 +174,7 @@ export class NotePagesView
   private dragCoordinator!: SelectionDragCoordinator;
   private gestureRouter!: GestureInputRouter;
   private rulerController!: RulerOverlayController;
+  private propertiesPanel!: NotePagesPropertiesPanel;
 
   currentTextOptions: {
     fontSize: number;
@@ -572,6 +574,18 @@ export class NotePagesView
     this.importHandler = new NotePagesImportHandler(this);
     this.sidebar = new NotePagesSidebar(this);
     this.toolbar = new NotePagesToolbar(this);
+    this.propertiesPanel = new NotePagesPropertiesPanel({
+      app: this.app,
+      getFile: () => this.file,
+      hasUnsavedChanges: () => this.hasUnsavedChanges,
+      saveBeforeFrontmatterEdit: () => this.save(),
+      registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),
+      onScrollToTop: () => {
+        if (this.scrollerEl) {
+          this.scrollerEl.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+    });
 
     this.pageVirtualizer = new PageVirtualizer(
       {
@@ -934,6 +948,13 @@ export class NotePagesView
     this.syncScrollerTopPadding();
     this.buildStatusArea();
     this.registerKeyboardShortcuts();
+    this.registerEvent(
+      this.app.metadataCache.on("changed", (changedFile) => {
+        if (this.file && changedFile.path === this.file.path) {
+          this.propertiesPanel?.refresh(true);
+        }
+      })
+    );
   }
 
   private registerKeyboardShortcuts(): void {
@@ -1206,6 +1227,7 @@ export class NotePagesView
     this.selectionController?.destroy();
     this.sidebar.clear();
     this.minimap?.clear();
+    this.propertiesPanel?.clear();
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
@@ -1321,6 +1343,7 @@ export class NotePagesView
       if (prevBody === nextBody) {
         this.preservedFrontmatter = DocumentSerializer.extractFrontmatter(data);
         this.lastSavedData = data;
+        this.propertiesPanel?.refresh(true);
         return;
       }
     }
@@ -1330,6 +1353,7 @@ export class NotePagesView
     }
 
     this.preservedFrontmatter = DocumentSerializer.extractFrontmatter(data);
+    this.propertiesPanel?.refresh(true);
 
     const trimmed = data.trim();
     if (trimmed.length === 0) {
@@ -1752,6 +1776,10 @@ export class NotePagesView
 
   onOpenPdfPicker(): void {
     this.openPdfPicker();
+  }
+
+  onOpenProperties(): void {
+    this.propertiesPanel?.expandAndFocus();
   }
 
   onExportNotebook(): void {
@@ -2242,6 +2270,7 @@ export class NotePagesView
     this.pagesContainerEl = this.scrollerEl.createDiv({
       cls: "notepages-pages-container"
     });
+    this.propertiesPanel.build(this.scrollerEl, this.pagesContainerEl);
 
     this.pageVirtualizer.initialize(this.scrollerEl);
 

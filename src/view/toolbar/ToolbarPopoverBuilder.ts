@@ -291,6 +291,23 @@ export function buildPagePopover(
   const toolbarCustomizeSection = pagePopoverEl.createDiv({
     cls: "notepages-popover-section"
   });
+  if (delegate.onOpenProperties) {
+    const propsBtn = toolbarCustomizeSection.createEl("button", {
+      cls: "notepages-popover-row-btn"
+    });
+    const propsIconSpan = propsBtn.createSpan({ cls: "notepages-popover-item-icon" });
+    setIcon(propsIconSpan, "tags");
+    propsBtn.createSpan({
+      cls: "notepages-popover-item-text",
+      text: "Properties (tags & metadata)"
+    });
+    propsBtn.setAttribute("title", "View and edit notebook frontmatter properties");
+    delegate.registerDomEvent(propsBtn, "click", (e: MouseEvent) => {
+      e.stopPropagation();
+      host.closePagePopover();
+      delegate.onOpenProperties?.();
+    });
+  }
   const openCustomizeBtn = toolbarCustomizeSection.createEl("button", {
     cls: "notepages-popover-row-btn"
   });

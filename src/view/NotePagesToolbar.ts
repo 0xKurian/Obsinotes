@@ -46,6 +46,7 @@ export interface NotePagesToolbarDelegate {
   onChangeZoom(delta: number): void;
   onResetZoom(): void;
   onOpenPdfPicker(): void;
+  onOpenProperties?(): void;
   onExportNotebook(): void;
   onAddNewPage(): void;
   onDuplicateCurrentPage(): void;

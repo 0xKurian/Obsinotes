@@ -3225,3 +3225,311 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   }
 }
 
+/* Inline Properties Panel */
+.notepages-properties-panel {
+  width: 100%;
+  max-width: 595px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+  color: var(--text-normal);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.notepages-properties-panel.is-hidden {
+  display: none;
+}
+
+.notepages-properties-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  min-height: 36px;
+  background-color: var(--background-secondary);
+}
+
+.notepages-properties-panel.is-expanded .notepages-properties-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.notepages-view-container button.notepages-properties-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 4px;
+  margin: 0;
+  height: auto;
+  color: var(--text-normal);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.notepages-properties-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.notepages-properties-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background-color: var(--background-modifier-hover);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.notepages-properties-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.notepages-property-preview-pill {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: var(--background-modifier-hover);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.notepages-property-preview-pill.is-tag {
+  background-color: var(--tag-background, color-mix(in srgb, var(--interactive-accent) 14%, transparent));
+  color: var(--tag-color, var(--text-accent));
+}
+
+.notepages-view-container button.notepages-properties-quick-add {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  height: 26px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.notepages-view-container button.notepages-properties-quick-add:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border);
+}
+
+.notepages-properties-btn-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.notepages-properties-body {
+  padding: 8px 10px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notepages-properties-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px;
+}
+
+.notepages-properties-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notepages-property-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 160px) 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+
+.notepages-property-row:hover {
+  background-color: var(--background-secondary-alt, var(--background-secondary));
+}
+
+.notepages-property-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.notepages-property-type-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.notepages-property-key-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notepages-property-value {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.notepages-property-input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-normal);
+}
+
+.notepages-property-input:hover,
+.notepages-property-input:focus {
+  border-color: var(--background-modifier-border);
+  background-color: var(--background-primary-alt, var(--background-secondary));
+}
+
+.notepages-property-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.notepages-property-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.notepages-property-chip.is-tag {
+  background-color: var(--tag-background, color-mix(in srgb, var(--interactive-accent) 14%, transparent));
+  color: var(--tag-color, var(--text-accent));
+}
+
+.notepages-view-container button.notepages-property-chip-remove {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 2px;
+  margin: 0;
+  height: auto;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.notepages-view-container button.notepages-property-chip-remove:hover {
+  opacity: 1;
+}
+
+.notepages-property-chip-input {
+  flex: 1;
+  min-width: 80px;
+  height: 24px;
+  font-size: 12px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-normal);
+}
+
+.notepages-property-delete-btn {
+  opacity: 0.5;
+}
+
+.notepages-property-row:hover .notepages-property-delete-btn,
+.notepages-property-delete-btn:focus {
+  opacity: 1;
+}
+
+.notepages-property-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--background-modifier-border);
+}
+
+.notepages-property-add-key {
+  flex: 1 1 130px;
+  min-width: 110px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.notepages-property-add-type {
+  height: 28px;
+  font-size: 12px;
+}
+
+.notepages-property-add-val {
+  flex: 1 1 140px;
+  min-width: 110px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.notepages-property-add-val.is-hidden,
+.notepages-property-checkbox.is-hidden {
+  display: none;
+}
+
+.notepages-property-add-btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .notepages-property-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .notepages-property-value {
+    grid-column: 1 / -1;
+  }
+}
+
