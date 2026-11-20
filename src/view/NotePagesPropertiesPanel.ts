@@ -1,4 +1,4 @@
-import { App, Notice, TFile, setIcon } from "obsidian";
+import { App, Menu, Notice, TFile, setIcon } from "obsidian";
 import { DocumentSerializer } from "../storage/DocumentSerializer";
 
 export const PLUGIN_OWNED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
@@ -9,7 +9,7 @@ export const PLUGIN_OWNED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
   "updated"
 ]);
 
-export type PropertyValueType = "text" | "list" | "number" | "checkbox";
+export type PropertyValueType = "text" | "list" | "number" | "checkbox" | "date" | "datetime";
 
 export interface NotePagesPropertiesDelegate {
   app: App;
@@ -29,17 +29,18 @@ export interface NotePagesPropertiesDelegate {
 export class NotePagesPropertiesPanel {
   private delegate: NotePagesPropertiesDelegate;
   private containerEl: HTMLElement | null = null;
-  private isExpanded: boolean = false;
+  private isExpanded: boolean = true;
   private isMutating: boolean = false;
   private localSnapshot: Record<string, unknown> | null = null;
-  private focusNewKeyOnRender: boolean = false;
+  private draftNewRow: { key: string; type: PropertyValueType } | null = null;
+  private focusTargetKey: string | null = null;
 
   constructor(delegate: NotePagesPropertiesDelegate) {
     this.delegate = delegate;
   }
 
   build(parentEl: HTMLElement, beforeEl?: HTMLElement | null): HTMLElement {
-    this.containerEl = parentEl.createDiv({ cls: "notepages-properties-panel" });
+    this.containerEl = parentEl.createDiv({ cls: "notepages-properties-panel metadata-container" });
     if (beforeEl && beforeEl.parentElement === parentEl) {
       parentEl.insertBefore(this.containerEl, beforeEl);
     }
@@ -61,9 +62,8 @@ export class NotePagesPropertiesPanel {
 
   expandAndFocus(): void {
     this.isExpanded = true;
-    this.focusNewKeyOnRender = true;
+    this.startNewPropertyDraft();
     this.delegate.onScrollToTop?.();
-    this.render();
   }
 
   toggleExpanded(): void {
@@ -80,10 +80,19 @@ export class NotePagesPropertiesPanel {
 
   clear(): void {
     this.localSnapshot = null;
+    this.draftNewRow = null;
+    this.focusTargetKey = null;
     if (this.containerEl) {
       this.containerEl.empty();
       this.containerEl.addClass("is-hidden");
     }
+  }
+
+  private startNewPropertyDraft(): void {
+    this.isExpanded = true;
+    this.draftNewRow = { key: "", type: "text" };
+    this.focusTargetKey = "__draft__";
+    this.render();
   }
 
   private getUserProperties(): Array<[string, unknown]> {
@@ -110,6 +119,80 @@ export class NotePagesPropertiesPanel {
       entries.push([key, value]);
     }
     return entries;
+  }
+
+  private inferPropertyType(key: string, value: unknown): PropertyValueType {
+    if (key === "tags" || key === "aliases" || Array.isArray(value)) {
+      return "list";
+    }
+    if (typeof value === "boolean") {
+      return "checkbox";
+    }
+    if (typeof value === "number") {
+      return "number";
+    }
+    if (typeof value === "string") {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return "date";
+      }
+      if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value)) {
+        return "datetime";
+      }
+    }
+    return "text";
+  }
+
+  private getTypeIconName(key: string, type: PropertyValueType): string {
+    if (key === "tags") return "tags";
+    if (key === "aliases") return "forward";
+    switch (type) {
+      case "list":
+        return "list";
+      case "checkbox":
+        return "check-square";
+      case "number":
+        return "hash";
+      case "date":
+        return "calendar";
+      case "datetime":
+        return "clock";
+      default:
+        return "text";
+    }
+  }
+
+  private convertValueToType(value: unknown, targetType: PropertyValueType): unknown {
+    switch (targetType) {
+      case "list": {
+        if (Array.isArray(value)) return value.map((v) => this.formatPropertyValue(v));
+        const str = this.formatPropertyValue(value).trim();
+        return str ? str.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      }
+      case "checkbox":
+        if (typeof value === "boolean") return value;
+        return this.formatPropertyValue(value).trim().toLowerCase() === "true";
+      case "number": {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        const parsed = parseFloat(this.formatPropertyValue(value));
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      case "date": {
+        const str = this.formatPropertyValue(value).trim();
+        const match = /^(\d{4}-\d{2}-\d{2})/.exec(str);
+        return match ? match[1] : "";
+      }
+      case "datetime": {
+        const str = this.formatPropertyValue(value).trim();
+        const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(str);
+        return match ? `${match[1]}T${match[2]}` : "";
+      }
+      case "text":
+      default:
+        if (Array.isArray(value)) {
+          return value.map((v) => this.formatPropertyValue(v)).join(", ");
+        }
+        return this.formatPropertyValue(value);
+    }
   }
 
   private async mutateFrontmatter(mutator: (fm: Record<string, unknown>) => void): Promise<void> {
@@ -161,135 +244,193 @@ export class NotePagesPropertiesPanel {
     }
     this.containerEl.removeClass("is-hidden");
     this.containerEl.empty();
-    this.containerEl.toggleClass("is-expanded", this.isExpanded);
+    this.containerEl.toggleClass("is-collapsed", !this.isExpanded);
 
     const entries = this.getUserProperties();
 
-    // Header bar
-    const headerEl = this.containerEl.createDiv({ cls: "notepages-properties-header" });
-    const toggleBtn = headerEl.createEl("button", {
-      cls: "notepages-properties-toggle-btn"
+    // Native Obsidian Properties heading
+    const headingEl = this.containerEl.createDiv({ cls: "metadata-properties-heading" });
+    const collapseIndicator = headingEl.createDiv({
+      cls: this.isExpanded ? "collapse-indicator" : "collapse-indicator is-collapsed"
     });
-    toggleBtn.setAttribute("type", "button");
-    toggleBtn.setAttribute("aria-expanded", String(this.isExpanded));
-    const chevronEl = toggleBtn.createSpan({ cls: "notepages-properties-chevron" });
-    setIcon(chevronEl, this.isExpanded ? "chevron-down" : "chevron-right");
-    toggleBtn.createSpan({
-      cls: "notepages-properties-title",
+    setIcon(collapseIndicator, "chevron-down");
+    headingEl.createDiv({
+      cls: "metadata-properties-title",
       text: "Properties"
     });
-    toggleBtn.createSpan({
-      cls: "notepages-properties-count",
-      text: String(entries.length)
-    });
-    this.delegate.registerDomEvent(toggleBtn, "click", () => {
+    headingEl.setAttribute("role", "button");
+    headingEl.setAttribute("tabindex", "0");
+    headingEl.setAttribute("aria-expanded", String(this.isExpanded));
+    this.delegate.registerDomEvent(headingEl, "click", () => {
       this.toggleExpanded();
     });
-
-    // Collapsed preview pills
-    if (!this.isExpanded && entries.length > 0) {
-      const previewEl = headerEl.createDiv({ cls: "notepages-properties-preview" });
-      for (const [key, val] of entries.slice(0, 4)) {
-        if (key === "tags" && Array.isArray(val)) {
-          for (const tag of val.slice(0, 3)) {
-            const text = String(tag).trim();
-            if (text) {
-              previewEl.createSpan({
-                cls: "notepages-property-preview-pill is-tag",
-                text: text.startsWith("#") ? text : `#${text}`
-              });
-            }
-          }
-        } else {
-          const display = Array.isArray(val)
-            ? val.map((item) => this.formatPropertyValue(item)).join(", ")
-            : this.formatPropertyValue(val);
-          previewEl.createSpan({
-            cls: "notepages-property-preview-pill",
-            text: display ? `${key}: ${display}` : key
-          });
-        }
+    this.delegate.registerDomEvent(headingEl, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this.toggleExpanded();
       }
-    }
-
-    const quickAddBtn = headerEl.createEl("button", {
-      cls: "notepages-properties-quick-add"
-    });
-    quickAddBtn.setAttribute("type", "button");
-    const plusIcon = quickAddBtn.createSpan({ cls: "notepages-properties-btn-icon" });
-    setIcon(plusIcon, "plus");
-    quickAddBtn.createSpan({ text: "Add property" });
-    this.delegate.registerDomEvent(quickAddBtn, "click", (e) => {
-      e.stopPropagation();
-      this.isExpanded = true;
-      this.focusNewKeyOnRender = true;
-      this.render();
     });
 
     if (!this.isExpanded) {
       return;
     }
 
-    const bodyEl = this.containerEl.createDiv({ cls: "notepages-properties-body" });
+    const contentEl = this.containerEl.createDiv({ cls: "metadata-content" });
+    const listEl = contentEl.createDiv({ cls: "metadata-properties" });
 
-    if (entries.length === 0) {
-      bodyEl.createDiv({
-        cls: "notepages-properties-empty",
-        text: "No custom properties yet. Add tags, status, or metadata below."
-      });
-    } else {
-      const listEl = bodyEl.createDiv({ cls: "notepages-properties-list" });
-      for (const [key, val] of entries) {
-        this.renderPropertyRow(listEl, key, val);
-      }
+    for (const [key, val] of entries) {
+      this.renderPropertyRow(listEl, key, val);
     }
 
-    this.renderAddPropertyRow(bodyEl);
+    if (this.draftNewRow) {
+      this.renderDraftNewPropertyRow(listEl, this.draftNewRow);
+    }
+
+    const addBtn = contentEl.createEl("button", {
+      cls: "metadata-add-button"
+    });
+    addBtn.setAttribute("type", "button");
+    const plusIcon = addBtn.createSpan({ cls: "metadata-add-button-icon" });
+    setIcon(plusIcon, "plus");
+    addBtn.createSpan({ text: "Add property" });
+    this.delegate.registerDomEvent(addBtn, "click", () => {
+      this.startNewPropertyDraft();
+    });
+  }
+
+  private openPropertyMenu(e: MouseEvent, key: string, value: unknown, currentType: PropertyValueType): void {
+    const menu = new Menu();
+    const typeItems: Array<{ type: PropertyValueType; title: string; icon: string }> = [
+      { type: "text", title: "Text", icon: "text" },
+      { type: "list", title: "List", icon: "list" },
+      { type: "number", title: "Number", icon: "hash" },
+      { type: "checkbox", title: "Checkbox", icon: "check-square" },
+      { type: "date", title: "Date", icon: "calendar" },
+      { type: "datetime", title: "Date & time", icon: "clock" }
+    ];
+
+    menu.addItem((item) => {
+      item.setTitle("Property type").setDisabled(true);
+    });
+
+    for (const entry of typeItems) {
+      menu.addItem((item) => {
+        item
+          .setTitle(entry.title)
+          .setIcon(entry.icon)
+          .setChecked(currentType === entry.type)
+          .onClick(() => {
+            if (currentType === entry.type) return;
+            const converted = this.convertValueToType(value, entry.type);
+            void this.mutateFrontmatter((fm) => {
+              fm[key] = converted;
+            });
+          });
+      });
+    }
+
+    menu.addSeparator();
+    menu.addItem((item) => {
+      item
+        .setTitle("Remove")
+        .setIcon("trash-2")
+        .onClick(() => {
+          void this.mutateFrontmatter((fm) => {
+            delete fm[key];
+          });
+        });
+    });
+
+    menu.showAtMouseEvent(e);
   }
 
   private renderPropertyRow(listEl: HTMLElement, key: string, value: unknown): void {
-    const rowEl = listEl.createDiv({ cls: "notepages-property-row" });
+    const propType = this.inferPropertyType(key, value);
+    const rowEl = listEl.createDiv({ cls: "metadata-property" });
+    rowEl.setAttribute("data-property-key", key);
 
-    const keyCol = rowEl.createDiv({ cls: "notepages-property-key" });
-    const iconSpan = keyCol.createSpan({ cls: "notepages-property-type-icon" });
-    if (key === "tags" || Array.isArray(value)) {
-      setIcon(iconSpan, key === "tags" ? "tags" : "list");
-    } else if (typeof value === "boolean") {
-      setIcon(iconSpan, "check-square");
-    } else if (typeof value === "number") {
-      setIcon(iconSpan, "hash");
-    } else {
-      setIcon(iconSpan, "text");
-    }
-    keyCol.createSpan({ cls: "notepages-property-key-text", text: key });
+    // Left column: icon + editable key
+    const keyCol = rowEl.createDiv({ cls: "metadata-property-key" });
+    const iconBtn = keyCol.createEl("button", {
+      cls: "metadata-property-icon"
+    });
+    iconBtn.setAttribute("type", "button");
+    iconBtn.setAttribute("title", "Property options");
+    iconBtn.setAttribute("aria-label", `Property options for ${key}`);
+    setIcon(iconBtn, this.getTypeIconName(key, propType));
+    this.delegate.registerDomEvent(iconBtn, "click", (e: MouseEvent) => {
+      e.stopPropagation();
+      this.openPropertyMenu(e, key, value, propType);
+    });
 
-    const valCol = rowEl.createDiv({ cls: "notepages-property-value" });
-    if (Array.isArray(value) || key === "tags" || key === "aliases") {
+    const keyInput = keyCol.createEl("input", {
+      type: "text",
+      cls: "metadata-property-key-input",
+      value: key
+    });
+    keyInput.setAttribute("aria-label", `Property name ${key}`);
+
+    const commitKeyRename = () => {
+      const nextKey = keyInput.value.trim();
+      if (!nextKey || nextKey === key) {
+        keyInput.value = key;
+        return;
+      }
+      if (PLUGIN_OWNED_FRONTMATTER_KEYS.has(nextKey) || nextKey === "position") {
+        new Notice(`"${nextKey}" is managed automatically by NotePages.`);
+        keyInput.value = key;
+        return;
+      }
+      void this.mutateFrontmatter((fm) => {
+        const existingVal = fm[key];
+        delete fm[key];
+        fm[nextKey] = existingVal;
+      });
+    };
+    this.delegate.registerDomEvent(keyInput, "change", commitKeyRename);
+    this.delegate.registerDomEvent(keyInput, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitKeyRename();
+        keyInput.blur();
+      } else if (e.key === "Escape") {
+        keyInput.value = key;
+        keyInput.blur();
+      }
+    });
+
+    // Right column: typed value editor
+    const valCol = rowEl.createDiv({ cls: "metadata-property-value" });
+    let focusEl: HTMLElement | null = null;
+
+    if (propType === "list") {
       const items = Array.isArray(value)
         ? value.map((v) => this.formatPropertyValue(v))
         : value !== null && value !== undefined && this.formatPropertyValue(value).trim() !== ""
           ? [this.formatPropertyValue(value)]
           : [];
-      this.renderListValueEditor(valCol, key, items);
-    } else if (typeof value === "boolean") {
+      focusEl = this.renderListValueEditor(valCol, key, items);
+    } else if (propType === "checkbox") {
       const checkbox = valCol.createEl("input", {
         type: "checkbox",
-        cls: "notepages-property-checkbox"
+        cls: "metadata-input-checkbox"
       });
-      checkbox.checked = value;
+      checkbox.checked = Boolean(value);
       checkbox.setAttribute("aria-label", key);
       this.delegate.registerDomEvent(checkbox, "change", () => {
         void this.mutateFrontmatter((fm) => {
           fm[key] = checkbox.checked;
         });
       });
-    } else if (typeof value === "number") {
+      focusEl = checkbox;
+    } else if (propType === "number") {
       const numInput = valCol.createEl("input", {
         type: "number",
-        cls: "notepages-property-input",
-        value: String(value)
+        cls: "metadata-input-number",
+        value: typeof value === "number" ? String(value) : ""
       });
       numInput.step = "any";
+      numInput.placeholder = "Empty";
       numInput.setAttribute("aria-label", key);
       const commitNum = () => {
         const parsed = parseFloat(numInput.value);
@@ -307,11 +448,25 @@ export class NotePagesPropertiesPanel {
           numInput.blur();
         }
       });
+      focusEl = numInput;
+    } else if (propType === "date" || propType === "datetime") {
+      const dateInput = valCol.createEl("input", {
+        type: propType === "date" ? "date" : "datetime-local",
+        cls: "metadata-input-date",
+        value: this.formatPropertyValue(value)
+      });
+      dateInput.setAttribute("aria-label", key);
+      this.delegate.registerDomEvent(dateInput, "change", () => {
+        void this.mutateFrontmatter((fm) => {
+          fm[key] = dateInput.value;
+        });
+      });
+      focusEl = dateInput;
     } else {
       const strVal = this.formatPropertyValue(value);
       const textInput = valCol.createEl("input", {
         type: "text",
-        cls: "notepages-property-input",
+        cls: "metadata-input-text",
         value: strVal
       });
       textInput.placeholder = "Empty";
@@ -331,37 +486,148 @@ export class NotePagesPropertiesPanel {
           textInput.blur();
         }
       });
+      focusEl = textInput;
     }
 
-    const deleteBtn = rowEl.createEl("button", {
-      cls: "notepages-icon-btn notepages-property-delete-btn"
-    });
-    deleteBtn.setAttribute("type", "button");
-    deleteBtn.setAttribute("title", `Remove "${key}"`);
-    deleteBtn.setAttribute("aria-label", `Remove ${key}`);
-    setIcon(deleteBtn, "trash-2");
-    this.delegate.registerDomEvent(deleteBtn, "click", () => {
-      void this.mutateFrontmatter((fm) => {
-        delete fm[key];
-      });
-    });
+    if (this.focusTargetKey === key && focusEl) {
+      this.focusTargetKey = null;
+      window.setTimeout(() => {
+        focusEl?.focus();
+      }, 0);
+    }
   }
 
-  private renderListValueEditor(container: HTMLElement, key: string, items: string[]): void {
-    const chipsWrap = container.createDiv({ cls: "notepages-property-chips" });
+  private renderDraftNewPropertyRow(
+    listEl: HTMLElement,
+    draft: { key: string; type: PropertyValueType }
+  ): void {
+    const rowEl = listEl.createDiv({ cls: "metadata-property is-draft" });
+    const keyCol = rowEl.createDiv({ cls: "metadata-property-key" });
+    const iconBtn = keyCol.createEl("button", {
+      cls: "metadata-property-icon"
+    });
+    iconBtn.setAttribute("type", "button");
+    setIcon(iconBtn, this.getTypeIconName(draft.key, draft.type));
+
+    const keyInput = keyCol.createEl("input", {
+      type: "text",
+      cls: "metadata-property-key-input",
+      value: draft.key
+    });
+    keyInput.placeholder = "Property name";
+    keyInput.setAttribute("aria-label", "New property name");
+
+    const valCol = rowEl.createDiv({ cls: "metadata-property-value" });
+    const valInput = valCol.createEl("input", {
+      type: "text",
+      cls: "metadata-input-text"
+    });
+    valInput.placeholder = "Empty";
+    valInput.setAttribute("aria-label", "New property value");
+
+    let committed = false;
+    const commitDraft = (focusValueAfter: boolean) => {
+      if (committed) return;
+      const newKey = keyInput.value.trim();
+      if (!newKey) {
+        if (!focusValueAfter) {
+          this.draftNewRow = null;
+          this.render();
+        }
+        return;
+      }
+      if (PLUGIN_OWNED_FRONTMATTER_KEYS.has(newKey) || newKey === "position") {
+        new Notice(`"${newKey}" is managed automatically by NotePages.`);
+        keyInput.focus();
+        return;
+      }
+      committed = true;
+      const isListKey = newKey.toLowerCase() === "tags" || newKey.toLowerCase() === "aliases";
+      const rawVal = valInput.value.trim();
+      const initialVal = isListKey
+        ? rawVal
+          ? rawVal.split(",").map((s) => s.trim().replace(/^#/, "")).filter(Boolean)
+          : []
+        : rawVal;
+
+      this.draftNewRow = null;
+      if (focusValueAfter) {
+        this.focusTargetKey = newKey;
+      }
+      void this.mutateFrontmatter((fm) => {
+        if (!Object.prototype.hasOwnProperty.call(fm, newKey)) {
+          fm[newKey] = initialVal;
+        }
+      });
+    };
+
+    this.delegate.registerDomEvent(keyInput, "input", () => {
+      const k = keyInput.value.trim().toLowerCase();
+      setIcon(iconBtn, k === "tags" ? "tags" : k === "aliases" ? "forward" : "text");
+    });
+
+    this.delegate.registerDomEvent(keyInput, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === "Tab") {
+        if (keyInput.value.trim().length > 0) {
+          e.preventDefault();
+          commitDraft(true);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          this.draftNewRow = null;
+          this.render();
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.draftNewRow = null;
+        this.render();
+      }
+    });
+
+    this.delegate.registerDomEvent(keyInput, "blur", () => {
+      window.setTimeout(() => {
+        if (this.draftNewRow && document.activeElement !== valInput) {
+          commitDraft(false);
+        }
+      }, 80);
+    });
+
+    this.delegate.registerDomEvent(valInput, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitDraft(false);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.draftNewRow = null;
+        this.render();
+      }
+    });
+
+    if (this.focusTargetKey === "__draft__") {
+      this.focusTargetKey = null;
+      window.setTimeout(() => {
+        keyInput.focus();
+      }, 0);
+    }
+  }
+
+  private renderListValueEditor(container: HTMLElement, key: string, items: string[]): HTMLElement {
+    const pillsContainer = container.createDiv({ cls: "multi-select-container" });
     const isTagKey = key === "tags";
 
     items.forEach((item, index) => {
-      const chip = chipsWrap.createSpan({
-        cls: isTagKey ? "notepages-property-chip is-tag" : "notepages-property-chip"
+      const pill = pillsContainer.createDiv({
+        cls: isTagKey ? "multi-select-pill notepages-tag-pill" : "multi-select-pill"
       });
-      chip.createSpan({ text: isTagKey && !item.startsWith("#") ? `#${item}` : item });
-      const removeBtn = chip.createEl("button", {
-        cls: "notepages-property-chip-remove",
-        text: "×"
+      pill.createDiv({
+        cls: "multi-select-pill-content",
+        text: isTagKey && !item.startsWith("#") ? `#${item}` : item
+      });
+      const removeBtn = pill.createEl("button", {
+        cls: "multi-select-pill-remove-button"
       });
       removeBtn.setAttribute("type", "button");
       removeBtn.setAttribute("aria-label", `Remove ${item}`);
+      setIcon(removeBtn, "x");
       this.delegate.registerDomEvent(removeBtn, "click", () => {
         const nextItems = items.filter((_, i) => i !== index);
         void this.mutateFrontmatter((fm) => {
@@ -370,11 +636,11 @@ export class NotePagesPropertiesPanel {
       });
     });
 
-    const addInput = chipsWrap.createEl("input", {
+    const addInput = pillsContainer.createEl("input", {
       type: "text",
-      cls: "notepages-property-chip-input"
+      cls: "multi-select-input"
     });
-    addInput.placeholder = isTagKey ? "+ tag..." : "+ item...";
+    addInput.placeholder = items.length === 0 ? "Empty" : "";
     addInput.setAttribute("aria-label", `Add item to ${key}`);
 
     const commitItem = () => {
@@ -382,15 +648,12 @@ export class NotePagesPropertiesPanel {
       if (isTagKey && next.startsWith("#")) {
         next = next.slice(1).trim();
       }
-      if (!next) {
-        addInput.value = "";
-        return;
-      }
-      if (items.includes(next)) {
+      if (!next || items.includes(next)) {
         addInput.value = "";
         return;
       }
       addInput.value = "";
+      this.focusTargetKey = key;
       void this.mutateFrontmatter((fm) => {
         fm[key] = [...items, next];
       });
@@ -403,6 +666,7 @@ export class NotePagesPropertiesPanel {
       } else if (e.key === "Backspace" && addInput.value === "" && items.length > 0) {
         e.preventDefault();
         const nextItems = items.slice(0, -1);
+        this.focusTargetKey = key;
         void this.mutateFrontmatter((fm) => {
           fm[key] = nextItems;
         });
@@ -413,128 +677,8 @@ export class NotePagesPropertiesPanel {
         commitItem();
       }
     });
-  }
 
-  private renderAddPropertyRow(bodyEl: HTMLElement): void {
-    const addRow = bodyEl.createDiv({ cls: "notepages-property-add-row" });
-
-    const keyInput = addRow.createEl("input", {
-      type: "text",
-      cls: "notepages-property-add-key"
-    });
-    keyInput.placeholder = "Property name (e.g. Tags, status)";
-
-    const typeSelect = addRow.createEl("select", {
-      cls: "notepages-property-add-type"
-    });
-    const types: Array<{ value: PropertyValueType; label: string }> = [
-      { value: "text", label: "Text" },
-      { value: "list", label: "List / Tags" },
-      { value: "number", label: "Number" },
-      { value: "checkbox", label: "Checkbox" }
-    ];
-    for (const t of types) {
-      const opt = typeSelect.createEl("option", { text: t.label });
-      opt.value = t.value;
-    }
-
-    const valInput = addRow.createEl("input", {
-      type: "text",
-      cls: "notepages-property-add-val"
-    });
-    valInput.placeholder = "Value...";
-
-    const checkInput = addRow.createEl("input", {
-      type: "checkbox",
-      cls: "notepages-property-checkbox is-hidden"
-    });
-
-    const syncInputType = () => {
-      const kind = typeSelect.value as PropertyValueType;
-      if (kind === "checkbox") {
-        valInput.addClass("is-hidden");
-        checkInput.removeClass("is-hidden");
-      } else {
-        valInput.removeClass("is-hidden");
-        checkInput.addClass("is-hidden");
-        valInput.type = kind === "number" ? "number" : "text";
-        valInput.placeholder =
-          kind === "list"
-            ? "Comma-separated (e.g. class, math)"
-            : kind === "number"
-              ? "0"
-              : "Value...";
-      }
-    };
-
-    this.delegate.registerDomEvent(keyInput, "input", () => {
-      const k = keyInput.value.trim().toLowerCase();
-      if ((k === "tags" || k === "aliases") && typeSelect.value === "text") {
-        typeSelect.value = "list";
-        syncInputType();
-      }
-    });
-    this.delegate.registerDomEvent(typeSelect, "change", syncInputType);
-
-    const addBtn = addRow.createEl("button", {
-      cls: "mod-cta notepages-property-add-btn",
-      text: "Add"
-    });
-    addBtn.setAttribute("type", "button");
-
-    const submitAdd = () => {
-      const key = keyInput.value.trim();
-      if (!key) {
-        keyInput.focus();
-        return;
-      }
-      if (PLUGIN_OWNED_FRONTMATTER_KEYS.has(key) || key === "position") {
-        new Notice(`"${key}" is managed automatically by NotePages.`);
-        return;
-      }
-      const kind = typeSelect.value as PropertyValueType;
-      let parsedValue: unknown = valInput.value;
-      if (kind === "checkbox") {
-        parsedValue = checkInput.checked;
-      } else if (kind === "number") {
-        const num = parseFloat(valInput.value);
-        parsedValue = Number.isFinite(num) ? num : 0;
-      } else if (kind === "list") {
-        parsedValue = valInput.value
-          .split(",")
-          .map((s) => s.trim().replace(/^#/, ""))
-          .filter((s) => s.length > 0);
-      }
-
-      void this.mutateFrontmatter((fm) => {
-        fm[key] = parsedValue;
-      });
-    };
-
-    this.delegate.registerDomEvent(addBtn, "click", submitAdd);
-    this.delegate.registerDomEvent(keyInput, "keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (typeSelect.value === "checkbox") {
-          submitAdd();
-        } else {
-          valInput.focus();
-        }
-      }
-    });
-    this.delegate.registerDomEvent(valInput, "keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        submitAdd();
-      }
-    });
-
-    if (this.focusNewKeyOnRender) {
-      this.focusNewKeyOnRender = false;
-      window.setTimeout(() => {
-        keyInput.focus();
-      }, 0);
-    }
+    return addInput;
   }
 
   private formatPropertyValue(val: unknown): string {

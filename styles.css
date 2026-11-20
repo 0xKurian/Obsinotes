@@ -3225,311 +3225,276 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   }
 }
 
-/* Inline Properties Panel */
-.notepages-properties-panel {
+/* Inline Properties Panel — Obsidian native Properties styling */
+.notepages-properties-panel.metadata-container {
   width: 100%;
   max-width: 595px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding: 2px 0;
   flex-shrink: 0;
-  border-radius: 10px;
-  border: 1px solid var(--background-modifier-border);
-  background-color: var(--background-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  font-size: 13px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  font-size: var(--font-ui-small, 13px);
   color: var(--text-normal);
   box-sizing: border-box;
-  overflow: hidden;
 }
 
 .notepages-properties-panel.is-hidden {
   display: none;
 }
 
-.notepages-properties-header {
+.notepages-properties-panel .metadata-properties-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  min-height: 36px;
-  background-color: var(--background-secondary);
-}
-
-.notepages-properties-panel.is-expanded .notepages-properties-header {
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.notepages-view-container button.notepages-properties-toggle-btn {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 2px 4px;
-  margin: 0;
-  height: auto;
-  color: var(--text-normal);
-  font-weight: 600;
-  font-size: 13px;
+  padding: 4px 2px;
+  margin-bottom: 4px;
   cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
 }
 
-.notepages-properties-chevron {
+.notepages-properties-panel .metadata-properties-heading:hover {
+  color: var(--text-normal);
+}
+
+.notepages-properties-panel .collapse-indicator {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   color: var(--text-muted);
+  transition: transform 0.12s ease;
 }
 
-.notepages-properties-count {
-  font-size: 11px;
+.notepages-properties-panel .collapse-indicator.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.notepages-properties-panel .metadata-properties-title {
+  font-size: var(--font-ui-medium, 14px);
   font-weight: 600;
-  color: var(--text-muted);
-  background-color: var(--background-modifier-hover);
-  border-radius: 999px;
-  padding: 1px 7px;
+  color: var(--text-normal);
 }
 
-.notepages-properties-preview {
+.notepages-properties-panel .metadata-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notepages-properties-panel .metadata-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notepages-properties-panel .metadata-property {
+  display: flex;
+  align-items: flex-start;
+  min-height: 30px;
+  border-radius: 5px;
+  transition: background-color 0.1s ease;
+}
+
+.notepages-properties-panel .metadata-property:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.notepages-properties-panel .metadata-property-key {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+  width: 168px;
+  min-width: 120px;
+  flex-shrink: 0;
+  padding: 3px 6px;
+  min-height: 30px;
 }
 
-.notepages-property-preview-pill {
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background-color: var(--background-modifier-hover);
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
-}
-
-.notepages-property-preview-pill.is-tag {
-  background-color: var(--tag-background, color-mix(in srgb, var(--interactive-accent) 14%, transparent));
-  color: var(--tag-color, var(--text-accent));
-}
-
-.notepages-view-container button.notepages-properties-quick-add {
-  margin-left: auto;
+.notepages-view-container .notepages-properties-panel button.metadata-property-icon {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  height: 26px;
-  font-size: 12px;
-  border-radius: 6px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
   background: transparent;
-  border: 1px solid transparent;
   box-shadow: none;
   color: var(--text-muted);
   cursor: pointer;
   flex-shrink: 0;
 }
 
-.notepages-view-container button.notepages-properties-quick-add:hover {
+.notepages-view-container .notepages-properties-panel button.metadata-property-icon:hover {
   color: var(--text-normal);
-  background-color: var(--background-modifier-hover);
-  border-color: var(--background-modifier-border);
+  background-color: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
 
-.notepages-properties-btn-icon {
-  display: inline-flex;
-  align-items: center;
-}
-
-.notepages-properties-body {
-  padding: 8px 10px 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.notepages-properties-empty {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 4px 2px;
-}
-
-.notepages-properties-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.notepages-property-row {
-  display: grid;
-  grid-template-columns: minmax(110px, 160px) 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 4px;
-  border-radius: 6px;
-}
-
-.notepages-property-row:hover {
-  background-color: var(--background-secondary-alt, var(--background-secondary));
-}
-
-.notepages-property-key {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.notepages-properties-panel input.metadata-property-key-input {
+  width: 100%;
   min-width: 0;
+  height: 24px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
   color: var(--text-muted);
+  font-size: var(--font-ui-small, 13px);
   font-weight: 500;
 }
 
-.notepages-property-type-icon {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  opacity: 0.8;
+.notepages-properties-panel input.metadata-property-key-input:focus {
+  color: var(--text-normal);
+  background-color: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border-focus, var(--interactive-accent));
 }
 
-.notepages-property-key-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.notepages-property-value {
+.notepages-properties-panel .metadata-property-value {
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
+  min-height: 30px;
+  padding: 2px 6px;
 }
 
-.notepages-property-input {
+.notepages-properties-panel input.metadata-input-text,
+.notepages-properties-panel input.metadata-input-number,
+.notepages-properties-panel input.metadata-input-date {
   width: 100%;
   min-width: 0;
-  height: 28px;
-  font-size: 13px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
+  height: 26px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
   background: transparent;
+  box-shadow: none;
   color: var(--text-normal);
+  font-size: var(--font-ui-small, 13px);
 }
 
-.notepages-property-input:hover,
-.notepages-property-input:focus {
-  border-color: var(--background-modifier-border);
-  background-color: var(--background-primary-alt, var(--background-secondary));
+.notepages-properties-panel input.metadata-input-text:focus,
+.notepages-properties-panel input.metadata-input-number:focus,
+.notepages-properties-panel input.metadata-input-date:focus {
+  background-color: var(--background-primary);
+  box-shadow: 0 0 0 1px var(--background-modifier-border-focus, var(--interactive-accent));
 }
 
-.notepages-property-chips {
+.notepages-properties-panel input.metadata-input-checkbox {
+  margin: 0 4px;
+  cursor: pointer;
+}
+
+.notepages-properties-panel .multi-select-container {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   width: 100%;
+  padding: 2px 0;
 }
 
-.notepages-property-chip {
+.notepages-properties-panel .multi-select-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  background-color: var(--background-modifier-hover);
-  color: var(--text-normal);
+  padding: 2px 6px 2px 9px;
+  border-radius: var(--pill-radius, 999px);
+  background-color: var(--pill-background, var(--background-modifier-hover));
+  color: var(--pill-color, var(--text-normal));
+  font-size: var(--font-ui-smaller, 12px);
+  line-height: 1.4;
 }
 
-.notepages-property-chip.is-tag {
+.notepages-properties-panel .multi-select-pill.notepages-tag-pill {
   background-color: var(--tag-background, color-mix(in srgb, var(--interactive-accent) 14%, transparent));
   color: var(--tag-color, var(--text-accent));
 }
 
-.notepages-view-container button.notepages-property-chip-remove {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0 2px;
+.notepages-view-container .notepages-properties-panel button.multi-select-pill-remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  padding: 0;
   margin: 0;
-  height: auto;
-  min-width: 0;
-  font-size: 13px;
-  line-height: 1;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
   color: inherit;
-  opacity: 0.7;
+  opacity: 0.65;
   cursor: pointer;
 }
 
-.notepages-view-container button.notepages-property-chip-remove:hover {
-  opacity: 1;
+.notepages-view-container .notepages-properties-panel button.multi-select-pill-remove-button svg {
+  width: 11px;
+  height: 11px;
 }
 
-.notepages-property-chip-input {
-  flex: 1;
-  min-width: 80px;
+.notepages-view-container .notepages-properties-panel button.multi-select-pill-remove-button:hover {
+  opacity: 1;
+  background-color: var(--background-modifier-hover);
+}
+
+.notepages-properties-panel input.multi-select-input {
+  flex: 1 1 70px;
+  min-width: 60px;
   height: 24px;
-  font-size: 12px;
-  padding: 0 6px;
+  padding: 0 4px;
   border: none;
   background: transparent;
+  box-shadow: none;
   color: var(--text-normal);
+  font-size: var(--font-ui-small, 13px);
 }
 
-.notepages-property-delete-btn {
-  opacity: 0.5;
-}
-
-.notepages-property-row:hover .notepages-property-delete-btn,
-.notepages-property-delete-btn:focus {
-  opacity: 1;
-}
-
-.notepages-property-add-row {
-  display: flex;
-  flex-wrap: wrap;
+.notepages-view-container .notepages-properties-panel button.metadata-add-button {
+  align-self: flex-start;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--background-modifier-border);
-}
-
-.notepages-property-add-key {
-  flex: 1 1 130px;
-  min-width: 110px;
+  margin-top: 2px;
+  padding: 4px 8px;
   height: 28px;
-  font-size: 12px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small, 13px);
+  font-weight: 500;
+  cursor: pointer;
 }
 
-.notepages-property-add-type {
-  height: 28px;
-  font-size: 12px;
+.notepages-view-container .notepages-properties-panel button.metadata-add-button:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
 }
 
-.notepages-property-add-val {
-  flex: 1 1 140px;
-  min-width: 110px;
-  height: 28px;
-  font-size: 12px;
-}
-
-.notepages-property-add-val.is-hidden,
-.notepages-property-checkbox.is-hidden {
-  display: none;
-}
-
-.notepages-property-add-btn {
-  height: 28px;
-  padding: 0 12px;
-  font-size: 12px;
+.notepages-properties-panel .metadata-add-button-icon {
+  display: inline-flex;
+  align-items: center;
 }
 
 @media (max-width: 640px) {
-  .notepages-property-row {
-    grid-template-columns: 1fr auto;
+  .notepages-properties-panel .metadata-property {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .notepages-property-value {
-    grid-column: 1 / -1;
+  .notepages-properties-panel .metadata-property-key {
+    width: 100%;
   }
 }
 
