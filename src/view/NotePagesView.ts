@@ -858,9 +858,16 @@ export class NotePagesView
     }
   }
 
+  private stripNotebookBasename(file: TFile): string {
+    if (file.name.toLowerCase().endsWith(".gnote.md")) {
+      return file.basename.replace(/\.gnote$/i, "");
+    }
+    return file.basename;
+  }
+
   getNotebookTitle(): string {
     if (this.file instanceof TFile) {
-      return this.file.basename;
+      return this.stripNotebookBasename(this.file);
     }
     if (this.document?.metadata?.title) {
       return this.document.metadata.title;
@@ -870,7 +877,7 @@ export class NotePagesView
 
   getDisplayText(): string {
     if (this.file instanceof TFile) {
-      return this.file.basename;
+      return this.stripNotebookBasename(this.file);
     }
     if (this.document?.metadata?.title) {
       return this.document.metadata.title;
@@ -3105,8 +3112,10 @@ export class NotePagesView
 
     const currentFile = this.file;
     const parentPath = currentFile.parent ? (currentFile.parent.path === "/" ? "" : currentFile.parent.path) : "";
-    const extension = currentFile.extension;
-    const newFileName = `${trimmed}.${extension}`;
+    const suffix = currentFile.name.toLowerCase().endsWith(".gnote.md")
+      ? "gnote.md"
+      : currentFile.extension;
+    const newFileName = `${trimmed}.${suffix}`;
     const newFilePath = normalizePath(parentPath ? `${parentPath}/${newFileName}` : newFileName);
 
     try {

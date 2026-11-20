@@ -3312,6 +3312,54 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   background-color: var(--background-modifier-hover);
 }
 
+.notepages-properties-panel .metadata-property:focus-within {
+  background-color: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border-focus, var(--interactive-accent));
+}
+
+.notepages-property-suggest.suggestion-container {
+  position: fixed;
+  top: var(--np-suggest-top, 120px);
+  left: var(--np-suggest-left, 120px);
+  width: var(--np-suggest-width, 220px);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 9999;
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-s, 0 4px 16px rgba(0, 0, 0, 0.25));
+  padding: 4px;
+}
+
+.notepages-property-suggest .suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: var(--font-ui-small, 13px);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.notepages-property-suggest .suggestion-item.is-selected,
+.notepages-property-suggest .suggestion-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.notepages-property-suggest .suggestion-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.notepages-property-suggest .suggestion-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 .notepages-properties-panel .metadata-property-key {
   display: flex;
   align-items: center;

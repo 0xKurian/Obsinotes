@@ -26,6 +26,11 @@ export interface NotePagesPropertiesDelegate {
   onScrollToTop?(): void;
 }
 
+interface SuggestOption {
+  value: string;
+  icon?: string;
+}
+
 export class NotePagesPropertiesPanel {
   private delegate: NotePagesPropertiesDelegate;
   private containerEl: HTMLElement | null = null;
@@ -35,6 +40,7 @@ export class NotePagesPropertiesPanel {
   private localSnapshot: Record<string, unknown> | null = null;
   private draftNewRow: { key: string; type: PropertyValueType } | null = null;
   private focusTargetKey: string | null = null;
+  private activeSuggestEl: HTMLElement | null = null;
 
   constructor(delegate: NotePagesPropertiesDelegate, options?: { modalMode?: boolean }) {
     this.delegate = delegate;
@@ -52,7 +58,6 @@ export class NotePagesPropertiesPanel {
     }
 
     if (!this.modalMode) {
-      // Prevent canvas panning/gestures/hotkeys from hijacking clicks or typing inside the panel
       const stopEvent = (e: Event) => {
         e.stopPropagation();
       };
@@ -87,12 +92,20 @@ export class NotePagesPropertiesPanel {
   }
 
   clear(): void {
+    this.closeSuggest();
     this.localSnapshot = null;
     this.draftNewRow = null;
     this.focusTargetKey = null;
     if (this.containerEl) {
       this.containerEl.empty();
       this.containerEl.addClass("is-hidden");
+    }
+  }
+
+  private closeSuggest(): void {
+    if (this.activeSuggestEl) {
+      this.activeSuggestEl.remove();
+      this.activeSuggestEl = null;
     }
   }
 
@@ -129,8 +142,191 @@ export class NotePagesPropertiesPanel {
     return entries;
   }
 
+  private getVaultPropertySuggestions(excludeKeys: Set<string>): SuggestOption[] {
+    const keyTypeMap = new Map<string, PropertyValueType>();
+    keyTypeMap.set("aliases", "list");
+    keyTypeMap.set("tags", "list");
+    keyTypeMap.set("cssclasses", "list");
+
+    const mdFiles = this.delegate.app.vault.getMarkdownFiles?.() ?? [];
+    for (const f of mdFiles) {
+      const fm = this.delegate.app.metadataCache.getFileCache(f)?.frontmatter;
+      if (!fm) continue;
+      for (const [k, v] of Object.entries(fm)) {
+        if (k === "position" || PLUGIN_OWNED_FRONTMATTER_KEYS.has(k)) continue;
+        if (!keyTypeMap.has(k)) {
+          keyTypeMap.set(k, this.inferPropertyType(k, v));
+        }
+      }
+    }
+
+    const results: SuggestOption[] = [];
+    for (const [k, t] of keyTypeMap.entries()) {
+      if (excludeKeys.has(k)) continue;
+      results.push({
+        value: k,
+        icon: this.getTypeIconName(k, t)
+      });
+    }
+    return results.sort((a, b) => a.value.localeCompare(b.value));
+  }
+
+  private getVaultValueSuggestions(key: string, excludeValues: Set<string>): SuggestOption[] {
+    const values = new Set<string>();
+    const lowerKey = key.toLowerCase();
+
+    if (lowerKey === "tags") {
+      const cacheWithTags = this.delegate.app.metadataCache as unknown as {
+        getTags?: () => Record<string, number>;
+      };
+      if (typeof cacheWithTags.getTags === "function") {
+        const tagMap = cacheWithTags.getTags() ?? {};
+        for (const rawTag of Object.keys(tagMap)) {
+          const clean = rawTag.replace(/^#/, "").trim();
+          if (clean && !excludeValues.has(clean)) {
+            values.add(clean);
+          }
+        }
+      }
+    }
+
+    const mdFiles = this.delegate.app.vault.getMarkdownFiles?.() ?? [];
+    for (const f of mdFiles) {
+      const fm = this.delegate.app.metadataCache.getFileCache(f)?.frontmatter;
+      if (!fm || !Object.prototype.hasOwnProperty.call(fm, key)) continue;
+      const val: unknown = fm[key];
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          const s = this.formatPropertyValue(item).trim().replace(/^#/, "");
+          if (s && !excludeValues.has(s)) values.add(s);
+        }
+      } else {
+        const s = this.formatPropertyValue(val).trim();
+        if (s && !excludeValues.has(s)) values.add(s);
+      }
+    }
+
+    return Array.from(values)
+      .sort((a, b) => a.localeCompare(b))
+      .map((v) => ({ value: v }));
+  }
+
+  private attachAutocomplete(
+    inputEl: HTMLInputElement,
+    getOptions: () => SuggestOption[],
+    onPick: (value: string) => void
+  ): void {
+    let selectedIndex = -1;
+    let filtered: SuggestOption[] = [];
+
+    const renderSuggestList = () => {
+      this.closeSuggest();
+      const query = inputEl.value.trim().toLowerCase();
+      filtered = getOptions()
+        .filter((opt) => !query || opt.value.toLowerCase().includes(query))
+        .slice(0, 30);
+
+      if (filtered.length === 0) {
+        return;
+      }
+
+      if (selectedIndex >= filtered.length) {
+        selectedIndex = 0;
+      }
+
+      const suggestEl = document.body.createDiv({
+        cls: "suggestion-container notepages-property-suggest"
+      });
+      this.activeSuggestEl = suggestEl;
+
+      const rect = inputEl.getBoundingClientRect();
+      const top = Math.min(window.innerHeight - 220, rect.bottom + 4);
+      const left = Math.min(window.innerWidth - 230, Math.max(8, rect.left));
+      suggestEl.setCssProps({
+        "--np-suggest-top": `${top}px`,
+        "--np-suggest-left": `${left}px`,
+        "--np-suggest-width": `${Math.max(200, Math.min(300, rect.width + 40))}px`
+      });
+
+      const listEl = suggestEl.createDiv({ cls: "suggestion" });
+      filtered.forEach((opt, idx) => {
+        const itemEl = listEl.createDiv({
+          cls: idx === selectedIndex ? "suggestion-item is-selected" : "suggestion-item"
+        });
+        if (opt.icon) {
+          const iconSpan = itemEl.createSpan({ cls: "suggestion-icon" });
+          setIcon(iconSpan, opt.icon);
+        }
+        itemEl.createSpan({ cls: "suggestion-title", text: opt.value });
+
+        itemEl.addEventListener("mouseenter", () => {
+          selectedIndex = idx;
+          listEl.querySelectorAll(".suggestion-item").forEach((el, i) => {
+            el.toggleClass("is-selected", i === selectedIndex);
+          });
+        });
+
+        itemEl.addEventListener("mousedown", (e: MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeSuggest();
+          onPick(opt.value);
+        });
+      });
+    };
+
+    this.delegate.registerDomEvent(inputEl, "focus", () => {
+      selectedIndex = -1;
+      renderSuggestList();
+    });
+    this.delegate.registerDomEvent(inputEl, "input", () => {
+      selectedIndex = 0;
+      renderSuggestList();
+    });
+    this.delegate.registerDomEvent(inputEl, "keydown", (e: KeyboardEvent) => {
+      if (!this.activeSuggestEl || filtered.length === 0) {
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
+        selectedIndex = (selectedIndex + 1) % filtered.length;
+        this.activeSuggestEl.querySelectorAll(".suggestion-item").forEach((el, i) => {
+          el.toggleClass("is-selected", i === selectedIndex);
+          if (i === selectedIndex) {
+            el.scrollIntoView({ block: "nearest" });
+          }
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
+        selectedIndex = selectedIndex <= 0 ? filtered.length - 1 : selectedIndex - 1;
+        this.activeSuggestEl.querySelectorAll(".suggestion-item").forEach((el, i) => {
+          el.toggleClass("is-selected", i === selectedIndex);
+          if (i === selectedIndex) {
+            el.scrollIntoView({ block: "nearest" });
+          }
+        });
+      } else if (e.key === "Enter" && selectedIndex >= 0 && selectedIndex < filtered.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        const picked = filtered[selectedIndex].value;
+        this.closeSuggest();
+        onPick(picked);
+      } else if (e.key === "Escape") {
+        e.stopPropagation();
+        this.closeSuggest();
+      }
+    });
+    this.delegate.registerDomEvent(inputEl, "blur", () => {
+      window.setTimeout(() => {
+        this.closeSuggest();
+      }, 120);
+    });
+  }
+
   private inferPropertyType(key: string, value: unknown): PropertyValueType {
-    if (key === "tags" || key === "aliases" || Array.isArray(value)) {
+    if (key === "tags" || key === "aliases" || key === "cssclasses" || Array.isArray(value)) {
       return "list";
     }
     if (typeof value === "boolean") {
@@ -153,6 +349,7 @@ export class NotePagesPropertiesPanel {
   private getTypeIconName(key: string, type: PropertyValueType): string {
     if (key === "tags") return "tags";
     if (key === "aliases") return "forward";
+    if (key === "cssclasses") return "code";
     switch (type) {
       case "list":
         return "list";
@@ -241,6 +438,7 @@ export class NotePagesPropertiesPanel {
   }
 
   private render(): void {
+    this.closeSuggest();
     if (!this.containerEl) {
       return;
     }
@@ -256,7 +454,6 @@ export class NotePagesPropertiesPanel {
 
     const entries = this.getUserProperties();
 
-    // Native Obsidian Properties heading
     const headingEl = this.containerEl.createDiv({ cls: "metadata-properties-heading" });
     if (!this.modalMode) {
       const collapseIndicator = headingEl.createDiv({
@@ -320,24 +517,84 @@ export class NotePagesPropertiesPanel {
     ];
 
     menu.addItem((item) => {
-      item.setTitle("Property type").setDisabled(true);
+      item.setTitle("Property type").setIcon("info");
+      const subMenu = (item as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
+      if (subMenu) {
+        for (const entry of typeItems) {
+          subMenu.addItem((subItem) => {
+            subItem
+              .setTitle(entry.title)
+              .setIcon(entry.icon)
+              .setChecked(currentType === entry.type)
+              .onClick(() => {
+                if (currentType === entry.type) return;
+                const converted = this.convertValueToType(value, entry.type);
+                void this.mutateFrontmatter((fm) => {
+                  fm[key] = converted;
+                });
+              });
+          });
+        }
+      }
     });
 
-    for (const entry of typeItems) {
-      menu.addItem((item) => {
-        item
-          .setTitle(entry.title)
-          .setIcon(entry.icon)
-          .setChecked(currentType === entry.type)
-          .onClick(() => {
-            if (currentType === entry.type) return;
-            const converted = this.convertValueToType(value, entry.type);
-            void this.mutateFrontmatter((fm) => {
-              fm[key] = converted;
-            });
+    menu.addSeparator();
+
+    const serializedPair = `${key}: ${
+      Array.isArray(value)
+        ? `[${value.map((v) => this.formatPropertyValue(v)).join(", ")}]`
+        : this.formatPropertyValue(value)
+    }`;
+
+    menu.addItem((item) => {
+      item
+        .setTitle("Cut")
+        .setIcon("scissors")
+        .onClick(() => {
+          void navigator.clipboard?.writeText(serializedPair).catch(() => {});
+          void this.mutateFrontmatter((fm) => {
+            delete fm[key];
           });
-      });
-    }
+        });
+    });
+
+    menu.addItem((item) => {
+      item
+        .setTitle("Copy")
+        .setIcon("copy")
+        .onClick(() => {
+          void navigator.clipboard?.writeText(serializedPair).catch(() => {});
+          new Notice(`Copied "${key}"`);
+        });
+    });
+
+    menu.addItem((item) => {
+      item
+        .setTitle("Paste")
+        .setIcon("clipboard-paste")
+        .onClick(() => {
+          void (async () => {
+            try {
+              const raw = (await navigator.clipboard?.readText()) ?? "";
+              const parsed = DocumentSerializer.parseFrontmatterProperties(raw);
+              const entries = Object.entries(parsed).filter(
+                ([k]) => k !== "position" && !PLUGIN_OWNED_FRONTMATTER_KEYS.has(k)
+              );
+              if (entries.length === 0) {
+                new Notice("Clipboard does not contain a valid property.");
+                return;
+              }
+              await this.mutateFrontmatter((fm) => {
+                for (const [k, v] of entries) {
+                  fm[k] = v;
+                }
+              });
+            } catch {
+              new Notice("Unable to read clipboard.");
+            }
+          })();
+        });
+    });
 
     menu.addSeparator();
     menu.addItem((item) => {
@@ -349,6 +606,8 @@ export class NotePagesPropertiesPanel {
             delete fm[key];
           });
         });
+      const maybeWarning = item as unknown as { setWarning?: (w: boolean) => void };
+      maybeWarning.setWarning?.(true);
     });
 
     menu.showAtMouseEvent(e);
@@ -358,8 +617,12 @@ export class NotePagesPropertiesPanel {
     const propType = this.inferPropertyType(key, value);
     const rowEl = listEl.createDiv({ cls: "metadata-property" });
     rowEl.setAttribute("data-property-key", key);
+    this.delegate.registerDomEvent(rowEl, "contextmenu", (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.openPropertyMenu(e, key, value, propType);
+    });
 
-    // Left column: icon + editable key
     const keyCol = rowEl.createDiv({ cls: "metadata-property-key" });
     const iconBtn = keyCol.createEl("button", {
       cls: "metadata-property-icon"
@@ -409,7 +672,6 @@ export class NotePagesPropertiesPanel {
       }
     });
 
-    // Right column: typed value editor
     const valCol = rowEl.createDiv({ cls: "metadata-property-value" });
     let focusEl: HTMLElement | null = null;
 
@@ -488,6 +750,14 @@ export class NotePagesPropertiesPanel {
           });
         }
       };
+      this.attachAutocomplete(
+        textInput,
+        () => this.getVaultValueSuggestions(key, new Set([strVal])),
+        (picked) => {
+          textInput.value = picked;
+          commitText();
+        }
+      );
       this.delegate.registerDomEvent(textInput, "change", commitText);
       this.delegate.registerDomEvent(textInput, "keydown", (e: KeyboardEvent) => {
         if (e.key === "Enter") {
@@ -536,9 +806,9 @@ export class NotePagesPropertiesPanel {
     valInput.setAttribute("aria-label", "New property value");
 
     let committed = false;
-    const commitDraft = (focusValueAfter: boolean) => {
+    const commitDraft = (focusValueAfter: boolean, overrideKey?: string) => {
       if (committed) return;
-      const newKey = keyInput.value.trim();
+      const newKey = (overrideKey ?? keyInput.value).trim();
       if (!newKey) {
         if (!focusValueAfter) {
           this.draftNewRow = null;
@@ -552,7 +822,13 @@ export class NotePagesPropertiesPanel {
         return;
       }
       committed = true;
-      const isListKey = newKey.toLowerCase() === "tags" || newKey.toLowerCase() === "aliases";
+      const suggestions = this.getVaultPropertySuggestions(new Set());
+      const matched = suggestions.find((s) => s.value === newKey);
+      const isListKey =
+        newKey.toLowerCase() === "tags" ||
+        newKey.toLowerCase() === "aliases" ||
+        newKey.toLowerCase() === "cssclasses" ||
+        matched?.icon === "list";
       const rawVal = valInput.value.trim();
       const initialVal = isListKey
         ? rawVal
@@ -570,6 +846,16 @@ export class NotePagesPropertiesPanel {
         }
       });
     };
+
+    const existingKeys = new Set(this.getUserProperties().map(([k]) => k));
+    this.attachAutocomplete(
+      keyInput,
+      () => this.getVaultPropertySuggestions(existingKeys),
+      (pickedKey) => {
+        keyInput.value = pickedKey;
+        commitDraft(true, pickedKey);
+      }
+    );
 
     this.delegate.registerDomEvent(keyInput, "input", () => {
       const k = keyInput.value.trim().toLowerCase();
@@ -595,10 +881,10 @@ export class NotePagesPropertiesPanel {
 
     this.delegate.registerDomEvent(keyInput, "blur", () => {
       window.setTimeout(() => {
-        if (this.draftNewRow && document.activeElement !== valInput) {
+        if (this.draftNewRow && !this.activeSuggestEl && document.activeElement !== valInput) {
           commitDraft(false);
         }
-      }, 80);
+      }, 140);
     });
 
     this.delegate.registerDomEvent(valInput, "keydown", (e: KeyboardEvent) => {
@@ -653,8 +939,8 @@ export class NotePagesPropertiesPanel {
     addInput.placeholder = items.length === 0 ? "Empty" : "";
     addInput.setAttribute("aria-label", `Add item to ${key}`);
 
-    const commitItem = () => {
-      let next = addInput.value.trim();
+    const commitItem = (rawOverride?: string) => {
+      let next = (rawOverride ?? addInput.value).trim();
       if (isTagKey && next.startsWith("#")) {
         next = next.slice(1).trim();
       }
@@ -668,6 +954,15 @@ export class NotePagesPropertiesPanel {
         fm[key] = [...items, next];
       });
     };
+
+    const existingSet = new Set(items.map((i) => i.replace(/^#/, "")));
+    this.attachAutocomplete(
+      addInput,
+      () => this.getVaultValueSuggestions(key, existingSet),
+      (pickedVal) => {
+        commitItem(pickedVal);
+      }
+    );
 
     this.delegate.registerDomEvent(addInput, "keydown", (e: KeyboardEvent) => {
       if (e.key === "Enter" || e.key === ",") {
@@ -683,9 +978,11 @@ export class NotePagesPropertiesPanel {
       }
     });
     this.delegate.registerDomEvent(addInput, "blur", () => {
-      if (addInput.value.trim().length > 0) {
-        commitItem();
-      }
+      window.setTimeout(() => {
+        if (!this.activeSuggestEl && addInput.value.trim().length > 0) {
+          commitItem();
+        }
+      }, 140);
     });
 
     return addInput;

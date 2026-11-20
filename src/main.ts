@@ -24,7 +24,7 @@ import { NotePagesSettingTab } from "./settings/NotePagesSettingTab";
 import { DocumentSerializer } from "./storage/DocumentSerializer";
 import {
   NOTE_PAGES_VIEW_TYPE,
-  NOTE_PAGES_EXTENSION,
+  NOTE_PAGES_FILE_EXTENSION,
   NOTE_PAGES_FRONTMATTER_KEY,
   CURRENT_SCHEMA_VERSION,
   getEffectivePageDimensions,
@@ -563,17 +563,19 @@ export default class NotePagesPlugin extends Plugin {
       ? folderPath
       : (activeFile ? activeFile.parent?.path ?? "" : "");
 
-    let fileName = `Untitled.${NOTE_PAGES_EXTENSION}`;
+    let fileName = `Untitled.${NOTE_PAGES_FILE_EXTENSION}`;
     let filePath = normalizePath(parentFolder ? `${parentFolder}/${fileName}` : fileName);
 
     let counter = 1;
     while (this.app.vault.getAbstractFileByPath(filePath) instanceof TFile) {
-      fileName = `Untitled ${counter}.${NOTE_PAGES_EXTENSION}`;
+      fileName = `Untitled ${counter}.${NOTE_PAGES_FILE_EXTENSION}`;
       filePath = normalizePath(parentFolder ? `${parentFolder}/${fileName}` : fileName);
       counter++;
     }
 
-    const initialContent = this.generateInitialDocumentContent(fileName.replace(`.${NOTE_PAGES_EXTENSION}`, ""));
+    const initialContent = this.generateInitialDocumentContent(
+      fileName.replace(`.${NOTE_PAGES_FILE_EXTENSION}`, "")
+    );
 
     try {
       const createdFile = await this.app.vault.create(filePath, initialContent);

@@ -2,6 +2,7 @@ import type { Modifier } from "obsidian";
 
 export const NOTE_PAGES_VIEW_TYPE = "notepages-view";
 export const NOTE_PAGES_EXTENSION = "gnote";
+export const NOTE_PAGES_FILE_EXTENSION = "gnote.md";
 export const NOTE_PAGES_FRONTMATTER_KEY = "notepages-plugin";
 export const CURRENT_SCHEMA_VERSION = 1;
 

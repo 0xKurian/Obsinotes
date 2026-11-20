@@ -10,7 +10,7 @@ import { ImageController } from "../image/ImageController";
 import { AddImageCommand } from "../history/HistoryManager";
 import { DocumentSerializer } from "../storage/DocumentSerializer";
 import {
-  NOTE_PAGES_EXTENSION,
+  NOTE_PAGES_FILE_EXTENSION,
   NOTE_PAGES_VIEW_TYPE,
   CURRENT_SCHEMA_VERSION,
   PageData,
@@ -528,11 +528,11 @@ export class NotePagesImportHandler {
 
     const content = DocumentSerializer.serializeDocument(newDoc);
     const parentFolder = destinationFolder !== undefined ? destinationFolder : "";
-    let targetName = `${documentTitle}.${NOTE_PAGES_EXTENSION}`;
+    let targetName = `${documentTitle}.${NOTE_PAGES_FILE_EXTENSION}`;
     let targetPath = normalizePath(parentFolder ? `${parentFolder}/${targetName}` : targetName);
     let counter = 1;
     while (this.delegate.app.vault.getAbstractFileByPath(targetPath) instanceof TFile) {
-      targetName = `${documentTitle} (${counter}).${NOTE_PAGES_EXTENSION}`;
+      targetName = `${documentTitle} (${counter}).${NOTE_PAGES_FILE_EXTENSION}`;
       targetPath = normalizePath(parentFolder ? `${parentFolder}/${targetName}` : targetName);
       counter++;
     }

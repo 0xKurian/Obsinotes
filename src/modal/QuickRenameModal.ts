@@ -12,7 +12,10 @@ export function validateNotebookTitle(
   currentTitle?: string
 ): RenameValidationResult {
   let trimmed = rawTitle.trim();
-  if (trimmed.toLowerCase().endsWith(".gnote")) {
+  const lower = trimmed.toLowerCase();
+  if (lower.endsWith(".gnote.md")) {
+    trimmed = trimmed.substring(0, trimmed.length - 9).trim();
+  } else if (lower.endsWith(".gnote")) {
     trimmed = trimmed.substring(0, trimmed.length - 6).trim();
   }
 
