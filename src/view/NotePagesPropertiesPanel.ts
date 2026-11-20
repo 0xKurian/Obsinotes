@@ -30,31 +30,39 @@ export class NotePagesPropertiesPanel {
   private delegate: NotePagesPropertiesDelegate;
   private containerEl: HTMLElement | null = null;
   private isExpanded: boolean = true;
+  private modalMode: boolean = false;
   private isMutating: boolean = false;
   private localSnapshot: Record<string, unknown> | null = null;
   private draftNewRow: { key: string; type: PropertyValueType } | null = null;
   private focusTargetKey: string | null = null;
 
-  constructor(delegate: NotePagesPropertiesDelegate) {
+  constructor(delegate: NotePagesPropertiesDelegate, options?: { modalMode?: boolean }) {
     this.delegate = delegate;
+    this.modalMode = options?.modalMode ?? false;
   }
 
   build(parentEl: HTMLElement, beforeEl?: HTMLElement | null): HTMLElement {
-    this.containerEl = parentEl.createDiv({ cls: "notepages-properties-panel metadata-container" });
+    this.containerEl = parentEl.createDiv({
+      cls: this.modalMode
+        ? "notepages-properties-panel metadata-container is-modal"
+        : "notepages-properties-panel metadata-container"
+    });
     if (beforeEl && beforeEl.parentElement === parentEl) {
       parentEl.insertBefore(this.containerEl, beforeEl);
     }
 
-    // Prevent canvas panning/gestures/hotkeys from hijacking clicks or typing inside the panel
-    const stopEvent = (e: Event) => {
-      e.stopPropagation();
-    };
-    this.delegate.registerDomEvent(this.containerEl, "pointerdown", stopEvent);
-    this.delegate.registerDomEvent(this.containerEl, "mousedown", stopEvent);
-    this.delegate.registerDomEvent(this.containerEl, "dblclick", stopEvent);
-    this.delegate.registerDomEvent(this.containerEl, "keydown", (e: KeyboardEvent) => {
-      e.stopPropagation();
-    });
+    if (!this.modalMode) {
+      // Prevent canvas panning/gestures/hotkeys from hijacking clicks or typing inside the panel
+      const stopEvent = (e: Event) => {
+        e.stopPropagation();
+      };
+      this.delegate.registerDomEvent(this.containerEl, "pointerdown", stopEvent);
+      this.delegate.registerDomEvent(this.containerEl, "mousedown", stopEvent);
+      this.delegate.registerDomEvent(this.containerEl, "dblclick", stopEvent);
+      this.delegate.registerDomEvent(this.containerEl, "keydown", (e: KeyboardEvent) => {
+        e.stopPropagation();
+      });
+    }
 
     this.render();
     return this.containerEl;
@@ -250,25 +258,27 @@ export class NotePagesPropertiesPanel {
 
     // Native Obsidian Properties heading
     const headingEl = this.containerEl.createDiv({ cls: "metadata-properties-heading" });
-    const collapseIndicator = headingEl.createDiv({
-      cls: this.isExpanded ? "collapse-indicator" : "collapse-indicator is-collapsed"
-    });
-    setIcon(collapseIndicator, "chevron-down");
+    if (!this.modalMode) {
+      const collapseIndicator = headingEl.createDiv({
+        cls: this.isExpanded ? "collapse-indicator" : "collapse-indicator is-collapsed"
+      });
+      setIcon(collapseIndicator, "chevron-down");
+      headingEl.setAttribute("role", "button");
+      headingEl.setAttribute("tabindex", "0");
+      headingEl.setAttribute("aria-expanded", String(this.isExpanded));
+      this.delegate.registerDomEvent(headingEl, "click", () => {
+        this.toggleExpanded();
+      });
+      this.delegate.registerDomEvent(headingEl, "keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this.toggleExpanded();
+        }
+      });
+    }
     headingEl.createDiv({
       cls: "metadata-properties-title",
       text: "Properties"
-    });
-    headingEl.setAttribute("role", "button");
-    headingEl.setAttribute("tabindex", "0");
-    headingEl.setAttribute("aria-expanded", String(this.isExpanded));
-    this.delegate.registerDomEvent(headingEl, "click", () => {
-      this.toggleExpanded();
-    });
-    this.delegate.registerDomEvent(headingEl, "keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        this.toggleExpanded();
-      }
     });
 
     if (!this.isExpanded) {

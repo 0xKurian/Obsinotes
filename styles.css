@@ -3240,6 +3240,15 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   box-sizing: border-box;
 }
 
+.notepages-properties-panel.is-modal {
+  max-width: none;
+  margin-bottom: 0;
+}
+
+.notepages-properties-modal .modal-content {
+  padding-top: 8px;
+}
+
 .notepages-properties-panel.is-hidden {
   display: none;
 }

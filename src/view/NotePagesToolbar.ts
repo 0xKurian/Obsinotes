@@ -362,6 +362,18 @@ export class NotePagesToolbar {
       cls: "notepages-dock-section notepages-dock-right"
     });
 
+    if (this.delegate.onOpenProperties) {
+      const propertiesBtn = rightGroup.createEl("button", {
+        cls: "notepages-tool-button"
+      });
+      setIcon(propertiesBtn, "tags");
+      propertiesBtn.setAttribute("title", "Notebook properties");
+      propertiesBtn.setAttribute("aria-label", "Notebook properties");
+      this.delegate.registerDomEvent(propertiesBtn, "click", () => {
+        this.delegate.onOpenProperties?.();
+      });
+    }
+
     this.pageMenuBtn = rightGroup.createEl("button", {
       cls: "notepages-tool-button notepages-dock-page-btn"
     });
