@@ -526,7 +526,9 @@ export class NotePagesImportHandler {
       pages
     };
 
-    const content = DocumentSerializer.serializeDocument(newDoc);
+    const content = DocumentSerializer.serializeDocument(newDoc, {
+      existingFrontmatter: "tags:\n  - notepages"
+    });
     const parentFolder = destinationFolder !== undefined ? destinationFolder : "";
     let targetName = `${documentTitle}.${NOTE_PAGES_FILE_EXTENSION}`;
     let targetPath = normalizePath(parentFolder ? `${parentFolder}/${targetName}` : targetName);

@@ -625,7 +625,7 @@ export class NotePagesPropertiesPanel {
 
     const keyCol = rowEl.createDiv({ cls: "metadata-property-key" });
     const iconBtn = keyCol.createEl("button", {
-      cls: "metadata-property-icon"
+      cls: "metadata-property-icon clickable-icon"
     });
     iconBtn.setAttribute("type", "button");
     iconBtn.setAttribute("title", "Property options");
@@ -784,7 +784,7 @@ export class NotePagesPropertiesPanel {
     const rowEl = listEl.createDiv({ cls: "metadata-property is-draft" });
     const keyCol = rowEl.createDiv({ cls: "metadata-property-key" });
     const iconBtn = keyCol.createEl("button", {
-      cls: "metadata-property-icon"
+      cls: "metadata-property-icon clickable-icon"
     });
     iconBtn.setAttribute("type", "button");
     setIcon(iconBtn, this.getTypeIconName(draft.key, draft.type));
@@ -919,7 +919,7 @@ export class NotePagesPropertiesPanel {
         text: isTagKey && !item.startsWith("#") ? `#${item}` : item
       });
       const removeBtn = pill.createEl("button", {
-        cls: "multi-select-pill-remove-button"
+        cls: "multi-select-pill-remove-button clickable-icon"
       });
       removeBtn.setAttribute("type", "button");
       removeBtn.setAttribute("aria-label", `Remove ${item}`);

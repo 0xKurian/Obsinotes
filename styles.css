@@ -3371,13 +3371,14 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   min-height: 30px;
 }
 
-.notepages-view-container .notepages-properties-panel button.metadata-property-icon {
+.notepages-properties-panel button.metadata-property-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 22px;
   height: 22px;
   min-width: 22px;
+  min-height: 0;
   padding: 0;
   margin: 0;
   border: none;
@@ -3389,7 +3390,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   flex-shrink: 0;
 }
 
-.notepages-view-container .notepages-properties-panel button.metadata-property-icon:hover {
+.notepages-properties-panel button.metadata-property-icon:hover {
   color: var(--text-normal);
   background-color: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
@@ -3476,13 +3477,14 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   color: var(--tag-color, var(--text-accent));
 }
 
-.notepages-view-container .notepages-properties-panel button.multi-select-pill-remove-button {
+.notepages-properties-panel button.multi-select-pill-remove-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 14px;
   height: 14px;
   min-width: 14px;
+  min-height: 0;
   padding: 0;
   margin: 0;
   border: none;
@@ -3494,12 +3496,12 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   cursor: pointer;
 }
 
-.notepages-view-container .notepages-properties-panel button.multi-select-pill-remove-button svg {
+.notepages-properties-panel button.multi-select-pill-remove-button svg {
   width: 11px;
   height: 11px;
 }
 
-.notepages-view-container .notepages-properties-panel button.multi-select-pill-remove-button:hover {
+.notepages-properties-panel button.multi-select-pill-remove-button:hover {
   opacity: 1;
   background-color: var(--background-modifier-hover);
 }
@@ -3516,7 +3518,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   font-size: var(--font-ui-small, 13px);
 }
 
-.notepages-view-container .notepages-properties-panel button.metadata-add-button {
+.notepages-properties-panel button.metadata-add-button {
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
@@ -3524,6 +3526,8 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   margin-top: 2px;
   padding: 4px 8px;
   height: 28px;
+  min-height: 0;
+  width: auto;
   border: none;
   border-radius: 5px;
   background: transparent;
@@ -3534,7 +3538,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   cursor: pointer;
 }
 
-.notepages-view-container .notepages-properties-panel button.metadata-add-button:hover {
+.notepages-properties-panel button.metadata-add-button:hover {
   color: var(--text-normal);
   background-color: var(--background-modifier-hover);
 }

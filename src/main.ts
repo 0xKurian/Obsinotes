@@ -627,7 +627,9 @@ export default class NotePagesPlugin extends Plugin {
       ]
     };
 
-    return DocumentSerializer.serializeDocument(initialDoc);
+    return DocumentSerializer.serializeDocument(initialDoc, {
+      existingFrontmatter: "tags:\n  - notepages"
+    });
   }
 
   private createStandaloneImportHandler(): { handler: NotePagesImportHandler; destroy: () => void } {
