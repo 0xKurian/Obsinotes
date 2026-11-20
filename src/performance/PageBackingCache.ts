@@ -7,28 +7,62 @@ interface BackingEntry {
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
+  byteSize: number;
 }
+
+const MAX_BACKING_ENTRIES = 4;
+const MAX_BACKING_BYTES = 64 * 1024 * 1024;
 
 export class PageBackingCache {
   private entries: Map<string, BackingEntry> = new Map();
+  private totalBytes: number = 0;
+
+  private touchEntry(pageId: string, entry: BackingEntry): void {
+    this.entries.delete(pageId);
+    this.entries.set(pageId, entry);
+  }
+
+  private evictIfNeeded(protectedPageId?: string): void {
+    for (const [id, entry] of this.entries) {
+      if (this.entries.size <= MAX_BACKING_ENTRIES && this.totalBytes <= MAX_BACKING_BYTES) {
+        break;
+      }
+      if (id === protectedPageId && this.entries.size > 1) {
+        continue;
+      }
+      entry.canvas.width = 0;
+      entry.canvas.height = 0;
+      this.totalBytes = Math.max(0, this.totalBytes - entry.byteSize);
+      this.entries.delete(id);
+    }
+  }
 
   private getOrCreateEntry(pageId: string, width: number, height: number): BackingEntry | null {
     if (typeof createEl !== "function" || width <= 1 || height <= 1) {
       return null;
     }
+    const byteSize = width * height * 4;
     let entry = this.entries.get(pageId);
     if (!entry) {
       const canvas = createEl("canvas");
       canvas.width = width;
       canvas.height = height;
-      entry = { canvas, width, height };
+      entry = { canvas, width, height, byteSize };
       this.entries.set(pageId, entry);
+      this.totalBytes += byteSize;
     } else if (entry.width !== width || entry.height !== height) {
+      this.totalBytes = Math.max(0, this.totalBytes - entry.byteSize);
       entry.canvas.width = width;
       entry.canvas.height = height;
       entry.width = width;
       entry.height = height;
+      entry.byteSize = byteSize;
+      this.totalBytes += byteSize;
+      this.touchEntry(pageId, entry);
+    } else {
+      this.touchEntry(pageId, entry);
     }
+    this.evictIfNeeded(pageId);
     return entry;
   }
 
@@ -68,6 +102,7 @@ export class PageBackingCache {
       this.renderFull(targetCanvas, pageId, dimensions, strokes, shapes);
       return;
     }
+    this.touchEntry(pageId, entry);
 
     const pad = 16;
     const minX = Math.max(0, Math.floor(dirtyBox.minX - pad));
@@ -172,17 +207,19 @@ export class PageBackingCache {
   release(pageId: string): void {
     const entry = this.entries.get(pageId);
     if (entry) {
-      entry.canvas.width = 1;
-      entry.canvas.height = 1;
+      entry.canvas.width = 0;
+      entry.canvas.height = 0;
+      this.totalBytes = Math.max(0, this.totalBytes - entry.byteSize);
       this.entries.delete(pageId);
     }
   }
 
   clear(): void {
     for (const entry of this.entries.values()) {
-      entry.canvas.width = 1;
-      entry.canvas.height = 1;
+      entry.canvas.width = 0;
+      entry.canvas.height = 0;
     }
+    this.totalBytes = 0;
     this.entries.clear();
   }
 

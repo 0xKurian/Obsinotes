@@ -9,6 +9,9 @@ import type { NotePagesToolbarDelegate } from "../NotePagesToolbar";
 
 export interface PagePopoverRefs {
   paperTemplateButtons: Map<PaperTemplateType, HTMLElement>;
+  pageSizeButtons: Map<PageSizePreset, HTMLElement>;
+  paperColorSwatches: Map<string, HTMLElement>;
+  customPaperInput: HTMLInputElement;
   notebookOrientationBtn: HTMLButtonElement;
   addPageBtn: HTMLButtonElement;
   duplicatePageBtn: HTMLButtonElement;
@@ -197,6 +200,7 @@ export function buildPagePopover(
 
   const sizePresets: PageSizePreset[] = ["A4", "A3", "A5", "B5", "Letter", "16:9", "Square"];
   const currentSize = delegate.getNotebookPageSize ? delegate.getNotebookPageSize() : "A4";
+  const pageSizeButtons = new Map<PageSizePreset, HTMLElement>();
 
   for (const preset of sizePresets) {
     const btn = sizeGrid.createEl("button", {
@@ -204,6 +208,7 @@ export function buildPagePopover(
     });
     btn.createSpan({ cls: "notepages-popover-item-text", text: preset });
     btn.setAttribute("title", `Set size to ${preset}`);
+    pageSizeButtons.set(preset, btn);
     delegate.registerDomEvent(btn, "click", () => {
       if (delegate.onSelectPagePreset) {
         delegate.onSelectPagePreset(preset);
@@ -251,6 +256,7 @@ export function buildPagePopover(
   paperColorRow.createSpan({ cls: "notepages-popover-sublabel", text: "Paper:" });
 
   const activePaperColor = delegate.getNotebookPaperColor ? delegate.getNotebookPaperColor() : "#ffffff";
+  const paperColorSwatches = new Map<string, HTMLElement>();
   for (const p of paperColors) {
     const swatch = paperColorRow.createEl("button", {
       cls:
@@ -260,6 +266,7 @@ export function buildPagePopover(
       title: p.name
     });
     swatch.setCssStyles({ backgroundColor: p.color });
+    paperColorSwatches.set(p.color.toLowerCase(), swatch);
     delegate.registerDomEvent(swatch, "click", () => {
       if (delegate.onSelectPaperColor) {
         delegate.onSelectPaperColor(p.color);
@@ -291,9 +298,9 @@ export function buildPagePopover(
   setIcon(customDockIconSpan, "sliders-horizontal");
   openCustomizeBtn.createSpan({
     cls: "notepages-popover-item-text",
-    text: "Customize toolbar size & position..."
+    text: "Toolbar position & display..."
   });
-  openCustomizeBtn.setAttribute("title", "Adjust toolbar scale, width, wrapping, and position");
+  openCustomizeBtn.setAttribute("title", "Configure toolbar dock position and visibility");
   delegate.registerDomEvent(openCustomizeBtn, "click", (e: MouseEvent) => {
     e.stopPropagation();
     host.closePagePopover();
@@ -302,6 +309,9 @@ export function buildPagePopover(
 
   return {
     paperTemplateButtons,
+    pageSizeButtons,
+    paperColorSwatches,
+    customPaperInput,
     notebookOrientationBtn,
     addPageBtn,
     duplicatePageBtn,

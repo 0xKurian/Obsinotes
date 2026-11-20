@@ -3,7 +3,12 @@ import { DocumentSerializer } from "./DocumentSerializer";
 import { EmergencyBackupInfo, NotebookDocument } from "../types";
 
 export function normalizeVaultPath(path: string): string {
-  return path.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  return path
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "")
+    .replace(/\/$/, "");
 }
 
 export interface IVaultLike {
@@ -18,6 +23,7 @@ export interface IVaultLike {
 
 interface PendingSave {
   doc: NotebookDocument;
+  existingFrontmatter?: string | null;
   resolve: () => void;
   reject: (err: unknown) => void;
 }
@@ -44,14 +50,18 @@ export class StorageManager {
     return this.corruptedFiles.has(filePath);
   }
 
-  async saveDocument(file: TFile, doc: NotebookDocument): Promise<void> {
+  async saveDocument(
+    file: TFile,
+    doc: NotebookDocument,
+    existingFrontmatter?: string | null
+  ): Promise<void> {
     if (this.isCorrupted(file.path)) {
       throw new Error("Saving blocked: file is corrupted and protected from overwrite.");
     }
 
     const validation = DocumentSerializer.fastValidateDocumentForSave(doc);
     if (!validation.valid) {
-      const serialized = DocumentSerializer.serializeDocument(doc);
+      const serialized = DocumentSerializer.serializeDocument(doc, { existingFrontmatter });
       await this.createEmergencyBackup(file, serialized);
       throw new Error(`Document validation failed before write: ${validation.errors.join("; ")}`);
     }
@@ -61,7 +71,7 @@ export class StorageManager {
       if (existingPending) {
         existingPending.resolve();
       }
-      this.pendingSaves.set(file.path, { doc, resolve, reject });
+      this.pendingSaves.set(file.path, { doc, existingFrontmatter, resolve, reject });
       this.processQueue(file);
     });
   }
@@ -78,7 +88,9 @@ export class StorageManager {
 
     this.pendingSaves.delete(file.path);
 
-    const content = DocumentSerializer.serializeDocument(pending.doc);
+    const content = DocumentSerializer.serializeDocument(pending.doc, {
+      existingFrontmatter: pending.existingFrontmatter
+    });
     const savePromise = this.vault
       .modify(file, content)
       .then(() => {

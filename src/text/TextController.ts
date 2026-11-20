@@ -14,7 +14,7 @@ export interface TextFormattingOptions {
 
 export interface TextControllerCallbacks {
   onTextCommitted: (page: PageData, text: TextObject, isNew: boolean) => void;
-  onTextDeleted: (page: PageData, textId: string) => void;
+  onTextDeleted: (page: PageData, textId: string, deletedText?: TextObject) => void;
   onWikilinkClick: (linkTarget: string, event: MouseEvent) => void;
   onWikilinkHover?: (linkTarget: string, targetEl: HTMLElement, event: MouseEvent) => void;
   onActiveFormattingChanged?: (formatting: {
@@ -28,6 +28,7 @@ export interface TextControllerCallbacks {
   onEditingStarted?: () => void;
   onEditingEnded?: () => void;
   getActiveTool?: () => string;
+  canInteractWithDomObjects?: () => boolean;
 }
 
 export class TextController {
@@ -38,6 +39,7 @@ export class TextController {
   private hiddenTextElement: HTMLElement | null = null;
   private isNewText: boolean = false;
   private textareaResizeObserver: ResizeObserver | null = null;
+  private focusTimeoutId: number | null = null;
   private callbacks: TextControllerCallbacks;
   private mathRenderer?: (math: string, display: boolean) => HTMLElement;
   private mathFlusher?: () => Promise<void>;
@@ -141,8 +143,9 @@ export class TextController {
 
     if (newContent.length === 0 && !textObj.isSticky) {
       if (!isNew) {
+        const deletedSnapshot: TextObject = { ...textObj };
         page.texts = page.texts.filter(t => t.id !== textObj.id);
-        this.callbacks.onTextDeleted(page, textObj.id);
+        this.callbacks.onTextDeleted(page, textObj.id, deletedSnapshot);
       }
       return;
     }
@@ -167,6 +170,10 @@ export class TextController {
   }
 
   private closeActiveEditor(): void {
+    if (this.focusTimeoutId !== null && typeof window !== "undefined") {
+      window.clearTimeout(this.focusTimeoutId);
+      this.focusTimeoutId = null;
+    }
     if (this.textareaResizeObserver) {
       this.textareaResizeObserver.disconnect();
       this.textareaResizeObserver = null;
@@ -294,6 +301,9 @@ export class TextController {
     });
 
     textarea.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.isComposing || e.key === "Process") {
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         if (this.isNewText && !this.activeTextarea?.value.trim()) {
@@ -387,11 +397,19 @@ export class TextController {
     textarea.selectionStart = textarea.value.length;
     textarea.selectionEnd = textarea.value.length;
 
-    window.setTimeout(() => {
-      textarea.focus();
-      textarea.selectionStart = textarea.value.length;
-      textarea.selectionEnd = textarea.value.length;
-    }, 10);
+    if (typeof window !== "undefined") {
+      if (this.focusTimeoutId !== null) {
+        window.clearTimeout(this.focusTimeoutId);
+      }
+      this.focusTimeoutId = window.setTimeout(() => {
+        this.focusTimeoutId = null;
+        if (this.activeTextarea === textarea) {
+          textarea.focus();
+          textarea.selectionStart = textarea.value.length;
+          textarea.selectionEnd = textarea.value.length;
+        }
+      }, 10);
+    }
   }
 
   renderPageTexts(page: PageData, pageEl: HTMLElement): void {
@@ -407,20 +425,29 @@ export class TextController {
     }
 
     const activeTool = this.callbacks.getActiveTool ? this.callbacks.getActiveTool() : "";
+    const canInteract = this.callbacks.canInteractWithDomObjects
+      ? this.callbacks.canInteractWithDomObjects()
+      : activeTool === "select" || activeTool === "text" || activeTool === "sticky";
     const isDrawingTool =
-      activeTool === "pen" ||
-      activeTool === "pressure" ||
-      activeTool === "fountain" ||
-      activeTool === "highlighter" ||
-      activeTool === "eraser" ||
-      activeTool === "shape" ||
-      activeTool === "connector" ||
-      activeTool === "lasso";
+      !canInteract &&
+      (activeTool === "pen" ||
+        activeTool === "pressure" ||
+        activeTool === "fountain" ||
+        activeTool === "pencil" ||
+        activeTool === "highlighter" ||
+        activeTool === "eraser" ||
+        activeTool === "shape" ||
+        activeTool === "connector" ||
+        activeTool === "lasso");
 
     const margin = 10;
     page.texts.forEach(t => {
       const box = layer.createDiv({ cls: "notepages-text-box" });
       box.dataset.textId = t.id;
+      if (this.activeText && t.id === this.activeText.id) {
+        box.addClass("is-hidden");
+        this.hiddenTextElement = box;
+      }
       if (t.isSticky) {
         box.addClass("notepages-sticky-note");
       }

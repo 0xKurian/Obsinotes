@@ -16,9 +16,12 @@ export class PngExporter {
     page: PageData,
     options: PngExportOptions = {}
   ): Promise<HTMLCanvasElement> {
-    const scale = Math.max(0.5, Math.min(6, options.scale ?? 2));
+    const requestedScale = Math.max(0.5, Math.min(6, options.scale ?? 2));
     const width = page.dimensions.width;
     const height = page.dimensions.height;
+    const MAX_CANVAS_AREA = 16_000_000;
+    const maxScaleForArea = width > 0 && height > 0 ? Math.sqrt(MAX_CANVAS_AREA / (width * height)) : requestedScale;
+    const scale = Math.max(0.5, Math.min(requestedScale, maxScaleForArea));
 
     const canvas = createEl("canvas");
     canvas.width = Math.round(width * scale);
@@ -34,7 +37,7 @@ export class PngExporter {
     } else if (options.includeTemplate !== false && page.template) {
       TemplateRenderer.renderTemplate(canvas, page.dimensions, page.template);
     } else {
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = page.template?.backgroundColor || "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
@@ -78,15 +81,20 @@ export class PngExporter {
     options: PngExportOptions = {}
   ): Promise<Blob> {
     const canvas = await this.renderPageToCanvas(page, options);
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error("Failed to generate PNG blob from canvas"));
-        }
-      }, "image/png");
-    });
+    try {
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error("Failed to generate PNG blob from canvas"));
+          }
+        }, "image/png");
+      });
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   }
 
   static async exportPageToUint8Array(
@@ -107,7 +115,9 @@ export class PngExporter {
     return new Promise((resolve) => {
       const src = resourceResolver ? resourceResolver(svgPath) : svgPath;
       const imgEl = new Image();
-      imgEl.crossOrigin = "anonymous";
+      if (/^https?:\/\//i.test(src)) {
+        imgEl.crossOrigin = "anonymous";
+      }
       imgEl.onload = () => {
         ctx.drawImage(imgEl, 0, 0, dimensions.width, dimensions.height);
         resolve();
@@ -127,7 +137,9 @@ export class PngExporter {
     return new Promise((resolve) => {
       const src = resourceResolver ? resourceResolver(image.vaultPath) : image.vaultPath;
       const imgEl = new Image();
-      imgEl.crossOrigin = "anonymous";
+      if (/^https?:\/\//i.test(src)) {
+        imgEl.crossOrigin = "anonymous";
+      }
       imgEl.onload = () => {
         ctx.save();
         if (typeof image.opacity === "number") {
@@ -157,6 +169,13 @@ export class PngExporter {
     text: TextObject
   ): void {
     ctx.save();
+    if (text.rotation) {
+      const cx = text.x + text.width / 2;
+      const cy = text.y + text.height / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate((text.rotation * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+    }
 
     if (text.isSticky) {
       ctx.fillStyle = text.backgroundColor || "#fef08a";
@@ -174,7 +193,8 @@ export class PngExporter {
       ctx.quadraticCurveTo(text.x + text.width, text.y + text.height, text.x + text.width - r, text.y + text.height);
       ctx.lineTo(text.x + r, text.y + text.height);
       ctx.quadraticCurveTo(text.x, text.y + text.height, text.x, text.y + text.height - r);
-      ctx.lineTo(text.x + r, text.y + r);
+      ctx.lineTo(text.x, text.y + r);
+      ctx.quadraticCurveTo(text.x, text.y, text.x + r, text.y);
       ctx.quadraticCurveTo(text.x, text.y, text.x + r, text.y);
       ctx.closePath();
       ctx.fill();
@@ -204,8 +224,30 @@ export class PngExporter {
       ctx.textAlign = "left";
     }
 
-    const lines = text.content.split("\n");
-    lines.forEach((line, idx) => {
+    const maxTextWidth = Math.max(16, text.width - paddingX * 2);
+    const wrappedLines: string[] = [];
+    for (const rawLine of text.content.split("\n")) {
+      if (!rawLine) {
+        wrappedLines.push("");
+        continue;
+      }
+      const words = rawLine.split(/\s+/);
+      let current = "";
+      for (const word of words) {
+        const candidate = current ? `${current} ${word}` : word;
+        if (ctx.measureText(candidate).width <= maxTextWidth || !current) {
+          current = candidate;
+        } else {
+          wrappedLines.push(current);
+          current = word;
+        }
+      }
+      if (current) {
+        wrappedLines.push(current);
+      }
+    }
+
+    wrappedLines.forEach((line, idx) => {
       const lineY = text.y + paddingTop + fontSize + idx * lineHeight;
       ctx.fillText(line, textX, lineY);
       if (text.underline) {

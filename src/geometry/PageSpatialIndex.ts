@@ -7,6 +7,8 @@ import {
   TextObject
 } from "../types";
 
+const OVERFLOW_CELL_KEY = 0x7fffffff;
+
 export class PageSpatialIndex {
   private readonly cellSize: number;
   private strokeBuckets: Map<number, Set<string>> = new Map();
@@ -18,6 +20,9 @@ export class PageSpatialIndex {
   private shapeMap: Map<string, ShapeObject> = new Map();
   private textMap: Map<string, TextObject> = new Map();
   private imageMap: Map<string, ImageObject> = new Map();
+  private strokeOrderMap: Map<string, number> = new Map();
+  private shapeOrderMap: Map<string, number> = new Map();
+  private nextOrder: number = 0;
 
   private strokeCells: Map<string, number[]> = new Map();
   private shapeCells: Map<string, number[]> = new Map();
@@ -47,6 +52,9 @@ export class PageSpatialIndex {
     this.shapeCells.clear();
     this.textCells.clear();
     this.imageCells.clear();
+    this.strokeOrderMap.clear();
+    this.shapeOrderMap.clear();
+    this.nextOrder = 0;
     this.version++;
   }
 
@@ -67,10 +75,12 @@ export class PageSpatialIndex {
   }
 
   insertStroke(stroke: StrokeObject): void {
+    const existingOrder = this.strokeOrderMap.get(stroke.id);
     if (this.strokeMap.has(stroke.id)) {
       this.removeStroke(stroke.id);
     }
     this.strokeMap.set(stroke.id, stroke);
+    this.strokeOrderMap.set(stroke.id, existingOrder ?? this.nextOrder++);
     const cells = this.computeCellKeys(stroke.bounds);
     this.strokeCells.set(stroke.id, cells);
     this.addToBuckets(this.strokeBuckets, cells, stroke.id);
@@ -84,14 +94,17 @@ export class PageSpatialIndex {
       this.strokeCells.delete(strokeId);
     }
     this.strokeMap.delete(strokeId);
+    this.strokeOrderMap.delete(strokeId);
     this.version++;
   }
 
   insertShape(shape: ShapeObject): void {
+    const existingOrder = this.shapeOrderMap.get(shape.id);
     if (this.shapeMap.has(shape.id)) {
       this.removeShape(shape.id);
     }
     this.shapeMap.set(shape.id, shape);
+    this.shapeOrderMap.set(shape.id, existingOrder ?? this.nextOrder++);
     const cells = this.computeCellKeys(shape.bounds);
     this.shapeCells.set(shape.id, cells);
     this.addToBuckets(this.shapeBuckets, cells, shape.id);
@@ -105,6 +118,7 @@ export class PageSpatialIndex {
       this.shapeCells.delete(shapeId);
     }
     this.shapeMap.delete(shapeId);
+    this.shapeOrderMap.delete(shapeId);
     this.version++;
   }
 
@@ -154,6 +168,9 @@ export class PageSpatialIndex {
 
   queryStrokes(rect: StrokeBoundingBox): StrokeObject[] {
     const cells = this.computeCellKeys(rect);
+    if (!cells.includes(OVERFLOW_CELL_KEY) && this.strokeBuckets.has(OVERFLOW_CELL_KEY)) {
+      cells.push(OVERFLOW_CELL_KEY);
+    }
     const seen = new Set<string>();
     const results: StrokeObject[] = [];
     for (const key of cells) {
@@ -168,11 +185,15 @@ export class PageSpatialIndex {
         }
       }
     }
+    results.sort((a, b) => (this.strokeOrderMap.get(a.id) ?? 0) - (this.strokeOrderMap.get(b.id) ?? 0));
     return results;
   }
 
   queryShapes(rect: StrokeBoundingBox): ShapeObject[] {
     const cells = this.computeCellKeys(rect);
+    if (!cells.includes(OVERFLOW_CELL_KEY) && this.shapeBuckets.has(OVERFLOW_CELL_KEY)) {
+      cells.push(OVERFLOW_CELL_KEY);
+    }
     const seen = new Set<string>();
     const results: ShapeObject[] = [];
     for (const key of cells) {
@@ -187,11 +208,15 @@ export class PageSpatialIndex {
         }
       }
     }
+    results.sort((a, b) => (this.shapeOrderMap.get(a.id) ?? 0) - (this.shapeOrderMap.get(b.id) ?? 0));
     return results;
   }
 
   queryTexts(rect: StrokeBoundingBox): TextObject[] {
     const cells = this.computeCellKeys(rect);
+    if (!cells.includes(OVERFLOW_CELL_KEY) && this.textBuckets.has(OVERFLOW_CELL_KEY)) {
+      cells.push(OVERFLOW_CELL_KEY);
+    }
     const seen = new Set<string>();
     const results: TextObject[] = [];
     for (const key of cells) {
@@ -249,7 +274,7 @@ export class PageSpatialIndex {
     const spanX = maxCx - minCx + 1;
     const spanY = maxCy - minCy + 1;
     if (spanX * spanY > 4096) {
-      return [0];
+      return [OVERFLOW_CELL_KEY];
     }
 
     const keys: number[] = [];

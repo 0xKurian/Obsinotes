@@ -1,4 +1,4 @@
-import { App, TFile, loadPdfJs } from "obsidian";
+import { App, Notice, TFile, loadPdfJs } from "obsidian";
 import { normalizeVaultPath } from "../storage/StorageManager";
 import { CURRENT_SCHEMA_VERSION, NotebookDocument, PageData, PageDimensions, PageOrientation } from "../types";
 
@@ -47,10 +47,11 @@ declare global {
 export function extractPdfInfo(buffer: ArrayBuffer): PdfInfo {
   const bytes = new Uint8Array(buffer);
   const maxScanLength = Math.min(bytes.length, 1000000);
-  let text = "";
-  for (let i = 0; i < maxScanLength; i++) {
-    text += String.fromCharCode(bytes[i]);
-  }
+  const slice = bytes.subarray(0, maxScanLength);
+  const text =
+    typeof TextDecoder !== "undefined"
+      ? new TextDecoder("latin1").decode(slice)
+      : Array.from(slice, (b) => String.fromCharCode(b)).join("");
 
   let pageCount = 1;
   const countMatches = text.match(/\/Count\s+(\d+)/g);
@@ -122,6 +123,7 @@ export function sortSvgFilesByPageNumber<T extends { name: string }>(files: T[])
 export class PdfBackgroundManager {
   private app: App;
   private docCache: Map<string, PdfJsDocument> = new Map();
+  private loadingDocs: Map<string, Promise<PdfJsDocument | null>> = new Map();
   private pdfJsLib: PdfJsLib | null = null;
   private renderQueue: Array<() => Promise<void>> = [];
   private isProcessingQueue = false;
@@ -189,28 +191,48 @@ export class PdfBackgroundManager {
     if (this.docCache.has(pdfPath)) {
       return this.docCache.get(pdfPath) || null;
     }
-    const file = this.app.vault.getAbstractFileByPath(pdfPath);
-    if (!(file instanceof TFile)) {
-      return null;
+    const existingPromise = this.loadingDocs.get(pdfPath);
+    if (existingPromise) {
+      return existingPromise;
     }
-    const pdfjs = await this.getPdfJsLib();
-    if (!pdfjs) {
-      return null;
-    }
-    try {
-      const buffer = await this.app.vault.readBinary(file);
-      const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
-      const doc = await loadingTask.promise;
-      this.docCache.set(pdfPath, doc);
-      return doc;
-    } catch (err) {
-      void err;
-      return null;
-    }
+    const loadPromise = (async (): Promise<PdfJsDocument | null> => {
+      const file = this.app.vault.getAbstractFileByPath(pdfPath);
+      if (!(file instanceof TFile)) {
+        return null;
+      }
+      const pdfjs = await this.getPdfJsLib();
+      if (!pdfjs) {
+        return null;
+      }
+      try {
+        const buffer = await this.app.vault.readBinary(file);
+        const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+        const doc = await loadingTask.promise;
+        this.docCache.set(pdfPath, doc);
+        return doc;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[NotePages] Failed to load PDF "${pdfPath}":`, err);
+        if (/password|encrypt/i.test(msg)) {
+          new Notice(`Cannot open encrypted or password-protected PDF: ${file.basename}`);
+        }
+        return null;
+      } finally {
+        this.loadingDocs.delete(pdfPath);
+      }
+    })();
+    this.loadingDocs.set(pdfPath, loadPromise);
+    return loadPromise;
   }
 
-  async convertPageToSvg(pdfDoc: PdfJsDocument, pageNumber: number, width: number, height: number): Promise<string> {
-    const pdfPage = await pdfDoc.getPage(pageNumber);
+  async convertPageToSvg(
+    pdfDoc: PdfJsDocument,
+    pageNumber: number,
+    width: number,
+    height: number,
+    existingPdfPage?: PdfJsPage
+  ): Promise<string> {
+    const pdfPage = existingPdfPage ?? (await pdfDoc.getPage(pageNumber));
     const viewport = pdfPage.getViewport({ scale: 1 });
     let svgString = "";
 
@@ -232,18 +254,26 @@ export class PdfBackgroundManager {
       const canvas = createEl("canvas");
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        const renderViewport = pdfPage.getViewport({ scale });
-        await pdfPage.render({ canvasContext: ctx, viewport: renderViewport }).promise;
-        const dataUrl = canvas.toDataURL("image/webp", 0.9);
-        svgString = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#ffffff"/><image width="${width}" height="${height}" href="${dataUrl}"/></svg>`;
+      try {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          const renderViewport = pdfPage.getViewport({ scale });
+          await pdfPage.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+          let dataUrl = canvas.toDataURL("image/webp", 0.9);
+          if (!dataUrl.startsWith("data:image/webp")) {
+            dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+          }
+          svgString = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="#ffffff"/><image width="${width}" height="${height}" href="${dataUrl}"/></svg>`;
+        }
+      } finally {
+        canvas.width = 0;
+        canvas.height = 0;
       }
     }
 
-    if (typeof pdfPage.cleanup === "function") {
+    if (!existingPdfPage && typeof pdfPage.cleanup === "function") {
       pdfPage.cleanup();
     }
 
@@ -306,9 +336,10 @@ export class PdfBackgroundManager {
         let pageHeight = defaultHeight;
         let pageOrientation: PageOrientation = defaultOrientation;
 
+        let loadedPage: PdfJsPage | undefined = undefined;
         try {
-          const pdfPage = await pdfDoc.getPage(i + 1);
-          const viewport = pdfPage.getViewport({ scale: 1 });
+          loadedPage = await pdfDoc.getPage(i + 1);
+          const viewport = loadedPage.getViewport({ scale: 1 });
           pageWidth = viewport.width;
           pageHeight = viewport.height;
           pageOrientation = pageWidth > pageHeight ? "landscape" : "portrait";
@@ -317,21 +348,32 @@ export class PdfBackgroundManager {
             defaultHeight = pageHeight;
             defaultOrientation = pageOrientation;
           }
-          if (typeof pdfPage.cleanup === "function") {
-            pdfPage.cleanup();
-          }
         } catch (err) {
           void err;
         }
 
         let svgPath: string | undefined = undefined;
         try {
-          const svgContent = await this.convertPageToSvg(pdfDoc, i + 1, pageWidth, pageHeight);
+          const svgContent = await this.convertPageToSvg(
+            pdfDoc,
+            i + 1,
+            pageWidth,
+            pageHeight,
+            loadedPage
+          );
           if (svgContent) {
             svgPath = await this.savePageSvg(pdfFile, i, svgContent, destinationFolder);
           }
         } catch (err) {
           void err;
+        } finally {
+          if (loadedPage && typeof loadedPage.cleanup === "function") {
+            loadedPage.cleanup();
+          }
+        }
+
+        if (i % 2 === 1) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         }
 
         pages.push({

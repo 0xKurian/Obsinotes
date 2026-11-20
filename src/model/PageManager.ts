@@ -114,13 +114,7 @@ export class PageManager {
       orientation
     );
 
-    const template: PaperTemplateConfig = options?.template ?? {
-      type: "ruled",
-      backgroundColor: "#ffffff",
-      lineColor: "#e2e8f0",
-      spacing: 24,
-      opacity: 0.8
-    };
+    const template: PaperTemplateConfig = options?.template ?? { ...this.getNotebookTemplate() };
 
     const newPage: PageData = {
       id: this.generateStableId("page"),
@@ -172,12 +166,14 @@ export class PageManager {
 
     const duplicatedTexts: TextObject[] = source.texts.map((text) => ({
       ...text,
-      id: this.generateStableId("text")
+      id: this.generateStableId("text"),
+      bounds: text.bounds ? { ...text.bounds } : undefined
     }));
 
     const duplicatedImages: ImageObject[] = source.images.map((img) => ({
       ...img,
-      id: this.generateStableId("img")
+      id: this.generateStableId("img"),
+      bounds: img.bounds ? { ...img.bounds } : undefined
     }));
 
     const duplicatedPage: PageData = {

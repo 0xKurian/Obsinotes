@@ -34,6 +34,7 @@ export class NotePagesMinimap {
   private isPinned: boolean = false;
   private isCollapsed: boolean = false;
   private isDraggingViewfinder: boolean = false;
+  private viewfinderDidDrag: boolean = false;
   private dragStartX: number = 0;
   private dragStartY: number = 0;
 
@@ -106,7 +107,8 @@ export class NotePagesMinimap {
 
   private bindEvents(): void {
     this.delegate.registerDomEvent(this.previewBoxEl, "click", (e: MouseEvent) => {
-      if (this.isDraggingViewfinder) {
+      if (this.isDraggingViewfinder || this.viewfinderDidDrag) {
+        this.viewfinderDidDrag = false;
         return;
       }
       const rect = this.previewBoxEl.getBoundingClientRect();
@@ -126,6 +128,7 @@ export class NotePagesMinimap {
       e.stopPropagation();
       e.preventDefault();
       this.isDraggingViewfinder = true;
+      this.viewfinderDidDrag = false;
       this.dragStartX = e.clientX;
       this.dragStartY = e.clientY;
       this.viewfinderEl.addClass("is-dragging");
@@ -141,6 +144,9 @@ export class NotePagesMinimap {
 
       const dx = e.clientX - this.dragStartX;
       const dy = e.clientY - this.dragStartY;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        this.viewfinderDidDrag = true;
+      }
       this.dragStartX = e.clientX;
       this.dragStartY = e.clientY;
 
@@ -197,6 +203,7 @@ export class NotePagesMinimap {
   togglePin(): void {
     this.isPinned = !this.isPinned;
     this.pinBtn.toggleClass("is-active", this.isPinned);
+    this.pinBtn.setAttribute("title", this.isPinned ? "Unpin minimap" : "Pin minimap");
     if (this.isPinned) {
       this.show();
     } else if (this.delegate.getZoomLevel() <= 1.0) {
@@ -208,6 +215,7 @@ export class NotePagesMinimap {
     this.isCollapsed = !this.isCollapsed;
     this.containerEl.toggleClass("is-collapsed", this.isCollapsed);
     setIcon(this.collapseBtn, this.isCollapsed ? "chevron-up" : "chevron-down");
+    this.collapseBtn.setAttribute("title", this.isCollapsed ? "Expand minimap" : "Collapse minimap");
     if (!this.isCollapsed) {
       this.update(true);
     }

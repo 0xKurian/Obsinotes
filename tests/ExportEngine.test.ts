@@ -13,7 +13,8 @@ import {
   renderShapeToSvg,
   renderStrokeToSvg,
   renderTextToSvg,
-  exportPageToSvg
+  exportPageToSvg,
+  exportPageToSvgAsync
 } from "../src/export/SvgExporter";
 import { PdfExporter } from "../src/export/PdfExporter";
 import { ExportEngine, toArrayBuffer } from "../src/export/ExportEngine";
@@ -335,6 +336,71 @@ describe("SvgExporter - Template and Element Rendering", () => {
     assert.ok(svg.includes("shape-layer"));
     assert.ok(svg.includes("text-layer"));
   });
+
+  it("escapes XML special characters in color and fontWeight attributes to prevent XSS", () => {
+    const xssPayload = '"/><script>alert(1)</script><g a="';
+    const page: PageData = {
+      id: "xss-page",
+      pageNumber: 1,
+      dimensions: { width: 400, height: 400, unit: "pt" },
+      orientation: "portrait",
+      template: {
+        type: "ruled",
+        backgroundColor: xssPayload,
+        lineColor: xssPayload,
+        spacing: 24,
+        opacity: 0.8
+      },
+      strokes: [
+        {
+          id: "st-xss",
+          tool: "pen",
+          color: xssPayload,
+          width: 2,
+          opacity: 1,
+          createdAt: 1,
+          bounds: { minX: 0, minY: 0, maxX: 50, maxY: 50 },
+          points: [
+            { x: 10, y: 10, pressure: 0.5, timestamp: 1 },
+            { x: 40, y: 40, pressure: 0.5, timestamp: 2 }
+          ]
+        }
+      ],
+      shapes: [
+        {
+          id: "sh-xss",
+          type: "rectangle",
+          color: xssPayload,
+          fillColor: xssPayload,
+          strokeWidth: 2,
+          bounds: { minX: 10, minY: 10, maxX: 80, maxY: 80 },
+          geometryData: { x: 10, y: 10, width: 70, height: 70 }
+        }
+      ],
+      texts: [
+        {
+          id: "tx-xss",
+          x: 20,
+          y: 20,
+          width: 80,
+          height: 30,
+          content: "Safe",
+          fontSize: 16,
+          fontFamily: "sans-serif",
+          fontWeight: xssPayload,
+          color: xssPayload,
+          backgroundColor: xssPayload,
+          isSticky: true,
+          textAlign: "left"
+        }
+      ],
+      images: []
+    };
+
+    const svg = exportPageToSvg(page);
+    assert.ok(!svg.includes("<script>"));
+    assert.ok(svg.includes("&lt;script&gt;"));
+  });
 });
 
 describe("PdfExporter", () => {
@@ -507,5 +573,57 @@ describe("ExportEngine Utilities", () => {
       "pdf"
     );
     assert.strictEqual(available, "notes/MyNote (2).pdf");
+  });
+
+  it("exportPageToSvgAsync inlines vault images and SVG backgrounds as data URIs", async () => {
+    const page: PageData = {
+      id: "svg-async",
+      pageNumber: 1,
+      dimensions: { width: 300, height: 300, unit: "pt" },
+      orientation: "portrait",
+      template: {
+        type: "blank",
+        backgroundColor: "#ffffff",
+        lineColor: "#e2e8f0",
+        spacing: 24,
+        opacity: 0.8
+      },
+      pdfSource: { pdfPath: "doc.pdf", pageIndex: 0, svgPath: "doc_svg/page_1.svg" },
+      strokes: [
+        {
+          id: "dot-dashed",
+          tool: "pen",
+          color: "#000000",
+          width: 4,
+          strokePattern: "dashed",
+          opacity: 1,
+          createdAt: 1,
+          bounds: { minX: 10, minY: 10, maxX: 10, maxY: 10 },
+          points: [{ x: 10, y: 10, pressure: 0.5, timestamp: 1 }]
+        }
+      ],
+      shapes: [],
+      texts: [],
+      images: [
+        {
+          id: "img-1",
+          vaultPath: "assets/pic.png",
+          x: 20,
+          y: 20,
+          width: 50,
+          height: 50
+        }
+      ]
+    };
+
+    const svg = await exportPageToSvgAsync(page, {
+      dataUriResolver: async (p) => `data:text/plain;base64,${Buffer.from(p).toString("base64")}`
+    });
+    assert.ok(svg.includes("data:text/plain;base64,"));
+    assert.ok(svg.includes("<circle cx=\"10.00\" cy=\"10.00\""));
+  });
+
+  it("parsePageRange returns empty array for out-of-range custom input", () => {
+    assert.deepStrictEqual(parsePageRange("custom", "99", 3, 1), []);
   });
 });

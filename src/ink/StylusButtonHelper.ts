@@ -57,7 +57,7 @@ export class StylusButtonState {
   private wasButtonPressed: boolean = false;
   private isPenTipDown: boolean = false;
   private lastPenEventTimestamp: number = 0;
-  private mouseEmulatedPointerIds: Set<number> = new Set();
+  private mouseEmulatedPointers: Map<number, number> = new Map();
 
   recordPointerEvent(pointerType: string, timestamp: number = Date.now()): void {
     if (pointerType === "pen") {
@@ -102,14 +102,25 @@ export class StylusButtonState {
     return this.isRecentPenActivity(PEN_MOUSE_EMULATION_WINDOW_MS, timestamp) || this.temporaryEraserTool !== null;
   }
 
-  markMouseEmulatedPointer(pointerId: number | undefined): void {
+  markMouseEmulatedPointer(pointerId: number | undefined, timestamp: number = Date.now()): void {
     if (pointerId !== undefined && Number.isFinite(pointerId)) {
-      this.mouseEmulatedPointerIds.add(pointerId);
+      this.mouseEmulatedPointers.set(pointerId, timestamp);
     }
   }
 
-  isMouseEmulatedPointerActive(pointerId: number | undefined): boolean {
-    return pointerId !== undefined && this.mouseEmulatedPointerIds.has(pointerId);
+  isMouseEmulatedPointerActive(pointerId: number | undefined, timestamp: number = Date.now()): boolean {
+    if (pointerId === undefined) {
+      return false;
+    }
+    const markedAt = this.mouseEmulatedPointers.get(pointerId);
+    if (markedAt === undefined) {
+      return false;
+    }
+    if (timestamp - markedAt > PEN_MOUSE_EMULATION_WINDOW_MS * 4) {
+      this.mouseEmulatedPointers.delete(pointerId);
+      return false;
+    }
+    return true;
   }
 
   handleHoverMove(
@@ -282,7 +293,7 @@ export class StylusButtonState {
     isCancel: boolean = false
   ): ToolType | null {
     const isMouseEmulated = Boolean(
-      e && e.pointerId !== undefined && this.mouseEmulatedPointerIds.delete(e.pointerId)
+      e && e.pointerId !== undefined && this.mouseEmulatedPointers.delete(e.pointerId)
     );
     const isPenEvent = Boolean(e && (e.pointerType === "pen" || isMouseEmulated));
     const buttonStillPressed =
@@ -323,6 +334,6 @@ export class StylusButtonState {
     this.wasButtonPressed = false;
     this.isPenTipDown = false;
     this.lastPenEventTimestamp = 0;
-    this.mouseEmulatedPointerIds.clear();
+    this.mouseEmulatedPointers.clear();
   }
 }

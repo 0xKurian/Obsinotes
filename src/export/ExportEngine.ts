@@ -1,9 +1,17 @@
-import { App, Notice, TFile } from "obsidian";
+import { App, Notice, TFile, normalizePath } from "obsidian";
 import { NotebookDocument } from "../types";
 import { ExportOptions, parsePageRange } from "./ExportTypes";
 import { PdfExporter } from "./PdfExporter";
 import { PngExporter } from "./PngExporter";
-import { exportPageToSvg } from "./SvgExporter";
+import { exportPageToSvgAsync } from "./SvgExporter";
+
+export function sanitizeExportFilename(name: string): string {
+  const cleaned = name
+    .replace(/\.\.+/g, "_")
+    .replace(/[\\/:*?"<>|\r\n]+/g, "_")
+    .replace(/^[.\s]+|[.\s]+$/g, "");
+  return cleaned || "notebook";
+}
 
 export interface ExportResult {
   success: boolean;
@@ -66,7 +74,8 @@ export class ExportEngine {
       };
     }
 
-    const baseName = sourceFile?.basename || doc.metadata.title || "notebook";
+    const rawBaseName = sourceFile?.basename || doc.metadata.title || "notebook";
+    const baseName = sanitizeExportFilename(rawBaseName);
     const parentFolder = sourceFile?.parent?.path ?? "";
     const folderPrefix = parentFolder && parentFolder !== "/" ? `${parentFolder}/` : "";
 
@@ -150,10 +159,34 @@ export class ExportEngine {
             continue;
           }
 
-          const svgContent = exportPageToSvg(page, {
+          const dataUriResolver = async (vaultPath: string): Promise<string | null> => {
+            const file = app.vault.getAbstractFileByPath(vaultPath);
+            if (!isTFile(file)) return null;
+            const ext = file.extension.toLowerCase();
+            const mimeMap: Record<string, string> = {
+              svg: "image/svg+xml",
+              png: "image/png",
+              jpg: "image/jpeg",
+              jpeg: "image/jpeg",
+              webp: "image/webp",
+              gif: "image/gif"
+            };
+            const mime = mimeMap[ext] ?? "application/octet-stream";
+            const buffer = await app.vault.readBinary(file);
+            const bytes = new Uint8Array(buffer);
+            let binary = "";
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+            }
+            return `data:${mime};base64,${btoa(binary)}`;
+          };
+
+          const svgContent = await exportPageToSvgAsync(page, {
             includeTemplate: options.includeBackgroundTemplate,
             includePdfBackground: options.includePdfBackground,
-            resourceResolver
+            resourceResolver,
+            dataUriResolver
           });
 
           const pageSuffix =
@@ -198,10 +231,10 @@ export class ExportEngine {
   }
 
   static getAvailablePath(app: App, basePath: string, extension: string): string {
-    let targetPath = `${basePath}.${extension}`;
+    let targetPath = normalizePath(`${basePath}.${extension}`);
     let counter = 1;
     while (app.vault.getAbstractFileByPath(targetPath) !== null) {
-      targetPath = `${basePath} (${counter}).${extension}`;
+      targetPath = normalizePath(`${basePath} (${counter}).${extension}`);
       counter++;
     }
     return targetPath;

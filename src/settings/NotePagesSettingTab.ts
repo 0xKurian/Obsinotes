@@ -1,7 +1,12 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type NotePagesPlugin from "../main";
-import { DEFAULT_SETTINGS, createDefaultPenPresets } from "./NotePagesSettings";
+import {
+  DEFAULT_SETTINGS,
+  FALLBACK_FEEDBACK_URL,
+  createDefaultPenPresets,
+  openSafeExternalUrl
+} from "./NotePagesSettings";
 import {
   HOTKEY_ACTION_METADATA,
   HotkeyActionMetadata,
@@ -86,6 +91,8 @@ export class NotePagesSettingTab extends PluginSettingTab {
   plugin: NotePagesPlugin;
   private hotkeyFilterQuery: string = "";
   private hotkeyRowSyncCallbacks: Set<() => void> = new Set();
+  private activeRecordingCleanup: (() => void) | null = null;
+  private legacyHotkeysListEl: HTMLElement | null = null;
 
   constructor(app: App, plugin: NotePagesPlugin) {
     super(app, plugin);
@@ -285,8 +292,10 @@ export class NotePagesSettingTab extends PluginSettingTab {
           name: "Submit feedback",
           desc: "Share your feedback, ratings, or feature requests to help improve the plugin.",
           action: () => {
-            const url = this.plugin.settings.feedbackUrl || "https://github.com/0xKurian/Obsinotes/issues/new/choose";
-            window.open(url, "_blank");
+            const url = this.plugin.settings.feedbackUrl || FALLBACK_FEEDBACK_URL;
+            if (!openSafeExternalUrl(url, FALLBACK_FEEDBACK_URL)) {
+              new Notice("Invalid feedback URL in settings; opened default issue page.");
+            }
           }
         },
         {
@@ -298,14 +307,14 @@ export class NotePagesSettingTab extends PluginSettingTab {
           name: "Report an issue",
           desc: "Encountered a bug or unexpected behavior? Submit an issue on GitHub.",
           action: () => {
-            window.open("https://github.com/0xKurian/Obsinotes/issues/new", "_blank");
+            window.open("https://github.com/0xKurian/Obsinotes/issues/new", "_blank", "noopener,noreferrer");
           }
         },
         {
           name: "GitHub discussions",
           desc: "Join discussions, ask questions, or see what others are creating.",
           action: () => {
-            window.open("https://github.com/0xKurian/Obsinotes/discussions", "_blank");
+            window.open("https://github.com/0xKurian/Obsinotes/discussions", "_blank", "noopener,noreferrer");
           }
         },
         {
@@ -555,23 +564,36 @@ export class NotePagesSettingTab extends PluginSettingTab {
         window.removeEventListener("keydown", activeKeyListener, true);
         activeKeyListener = null;
       }
+      if (this.activeRecordingCleanup === cancelThisRecording) {
+        this.activeRecordingCleanup = null;
+      }
       pillEl.removeClass("is-recording");
       setBtn.setText("Set");
+    };
+
+    const cancelThisRecording = () => {
+      stopRecording();
+      syncRowState();
     };
 
     const refreshRows = () => {
       this.syncAllHotkeyRows();
       if (!useDefinitionUpdate) {
-        this.renderLegacyDisplay();
+        if (this.legacyHotkeysListEl) {
+          this.renderLegacyHotkeyRows(this.legacyHotkeysListEl);
+        } else {
+          this.renderLegacyDisplay();
+        }
       }
     };
 
     setBtn.addEventListener("click", () => {
       if (activeKeyListener) {
-        stopRecording();
-        syncRowState();
+        cancelThisRecording();
         return;
       }
+      this.activeRecordingCleanup?.();
+      this.activeRecordingCleanup = cancelThisRecording;
       pillEl.addClass("is-recording");
       pillEl.setText("Press key...");
       setBtn.setText("Cancel");
@@ -635,8 +657,15 @@ export class NotePagesSettingTab extends PluginSettingTab {
     this.renderLegacyDisplay();
   }
 
+  hide(): void {
+    this.activeRecordingCleanup?.();
+    this.activeRecordingCleanup = null;
+  }
+
   private renderLegacyDisplay(): void {
     const { containerEl } = this;
+    this.activeRecordingCleanup?.();
+    this.activeRecordingCleanup = null;
     containerEl.empty();
     this.hotkeyRowSyncCallbacks.clear();
 
@@ -965,7 +994,9 @@ export class NotePagesSettingTab extends PluginSettingTab {
           .setValue(this.hotkeyFilterQuery)
           .onChange((value) => {
             this.hotkeyFilterQuery = value;
-            this.renderLegacyDisplay();
+            if (this.legacyHotkeysListEl) {
+              this.renderLegacyHotkeyRows(this.legacyHotkeysListEl);
+            }
           });
       })
       .addButton((button) => {
@@ -976,31 +1007,8 @@ export class NotePagesSettingTab extends PluginSettingTab {
           });
       });
 
-    const query = this.hotkeyFilterQuery.trim().toLowerCase();
-    const categories: HotkeyCategory[] = ["tools", "editing", "canvas"];
-    for (const category of categories) {
-      const matching = HOTKEY_ACTION_METADATA.filter((meta) => {
-        if (meta.category !== category) {
-          return false;
-        }
-        if (!query) {
-          return true;
-        }
-        const current = formatHotkeyBinding(resolveHotkeyBinding(meta.id, this.plugin.settings.customHotkeys)).toLowerCase();
-        const def = formatHotkeyBinding(meta.defaultBinding).toLowerCase();
-        return meta.label.toLowerCase().includes(query) || current.includes(query) || def.includes(query);
-      });
-      if (matching.length === 0) {
-        continue;
-      }
-      new Setting(containerEl).setName(HOTKEY_CATEGORY_TITLES[category]).setHeading();
-      for (const meta of matching) {
-        const row = new Setting(containerEl)
-          .setName(meta.label)
-          .setDesc(`Default: ${formatHotkeyBinding(meta.defaultBinding)}`);
-        this.renderHotkeySettingRow(row, meta, false);
-      }
-    }
+    this.legacyHotkeysListEl = containerEl.createDiv({ cls: "notepages-settings-hotkey-list" });
+    this.renderLegacyHotkeyRows(this.legacyHotkeysListEl);
 
     new Setting(containerEl).setName("Community and feedback").setHeading();
 
@@ -1012,8 +1020,10 @@ export class NotePagesSettingTab extends PluginSettingTab {
           .setButtonText("Open feedback form")
           .setCta()
           .onClick(() => {
-            const url = this.plugin.settings.feedbackUrl || "https://github.com/0xKurian/Obsinotes/issues/new/choose";
-            window.open(url, "_blank");
+            const url = this.plugin.settings.feedbackUrl || FALLBACK_FEEDBACK_URL;
+            if (!openSafeExternalUrl(url, FALLBACK_FEEDBACK_URL)) {
+              new Notice("Invalid feedback URL in settings; opened default issue page.");
+            }
           });
       });
 
@@ -1036,7 +1046,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
         button
           .setButtonText("Report bug")
           .onClick(() => {
-            window.open("https://github.com/0xKurian/Obsinotes/issues/new", "_blank");
+            window.open("https://github.com/0xKurian/Obsinotes/issues/new", "_blank", "noopener,noreferrer");
           });
       });
 
@@ -1047,7 +1057,7 @@ export class NotePagesSettingTab extends PluginSettingTab {
         button
           .setButtonText("Visit discussions")
           .onClick(() => {
-            window.open("https://github.com/0xKurian/Obsinotes/discussions", "_blank");
+            window.open("https://github.com/0xKurian/Obsinotes/discussions", "_blank", "noopener,noreferrer");
           });
       });
 
@@ -1062,5 +1072,38 @@ export class NotePagesSettingTab extends PluginSettingTab {
             void this.resetAllSettings(false);
           });
       });
+  }
+
+  private renderLegacyHotkeyRows(listContainer: HTMLElement): void {
+    this.activeRecordingCleanup?.();
+    this.activeRecordingCleanup = null;
+    this.hotkeyRowSyncCallbacks.clear();
+    listContainer.empty();
+
+    const query = this.hotkeyFilterQuery.trim().toLowerCase();
+    const categories: HotkeyCategory[] = ["tools", "editing", "canvas"];
+    for (const category of categories) {
+      const matching = HOTKEY_ACTION_METADATA.filter((meta) => {
+        if (meta.category !== category) {
+          return false;
+        }
+        if (!query) {
+          return true;
+        }
+        const current = formatHotkeyBinding(resolveHotkeyBinding(meta.id, this.plugin.settings.customHotkeys)).toLowerCase();
+        const def = formatHotkeyBinding(meta.defaultBinding).toLowerCase();
+        return meta.label.toLowerCase().includes(query) || current.includes(query) || def.includes(query);
+      });
+      if (matching.length === 0) {
+        continue;
+      }
+      new Setting(listContainer).setName(HOTKEY_CATEGORY_TITLES[category]).setHeading();
+      for (const meta of matching) {
+        const row = new Setting(listContainer)
+          .setName(meta.label)
+          .setDesc(`Default: ${formatHotkeyBinding(meta.defaultBinding)}`);
+        this.renderHotkeySettingRow(row, meta, false);
+      }
+    }
   }
 }

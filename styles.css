@@ -26,7 +26,7 @@
   flex-direction: column;
   align-items: center;
   gap: calc(8px * var(--np-toolbar-scale));
-  z-index: 50;
+  z-index: 40;
   pointer-events: none;
   padding: 0 16px;
   box-sizing: border-box;
@@ -38,10 +38,11 @@
   pointer-events: none;
 }
 
-.notepages-toolbar-float-wrapper:hover,
-.notepages-toolbar-float-wrapper.is-drawing:hover {
-  opacity: 1;
-  pointer-events: auto;
+@media (hover: hover) and (pointer: fine) {
+  .notepages-toolbar-float-wrapper.is-drawing:has(.notepages-floating-dock:hover),
+  .notepages-toolbar-float-wrapper.is-drawing:has(.notepages-subtoolbar-float:hover) {
+    opacity: 1;
+  }
 }
 
 .notepages-floating-dock {
@@ -53,8 +54,6 @@
   padding: calc(4px * var(--np-toolbar-scale)) calc(10px * var(--np-toolbar-scale));
   background-color: var(--background-primary);
   background: var(--background-primary);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--background-modifier-border);
   border-radius: 9999px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -158,14 +157,12 @@
   top: calc(100% + 6px);
   right: 28px;
   width: 296px;
-  min-width: 280px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 140px);
+  min-width: 260px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
   overflow-y: auto;
   background-color: var(--background-primary);
   background: var(--background-primary);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l, 12px);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.22), 0 4px 14px rgba(0, 0, 0, 0.08);
@@ -393,7 +390,7 @@
   min-width: calc(20px * var(--np-toolbar-scale));
   min-height: 0;
   border-radius: 50%;
-  border: 1.5px solid rgba(0, 0, 0, 0.18);
+  border: 1.5px solid var(--background-modifier-border);
   cursor: pointer;
   box-sizing: border-box;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -635,7 +632,7 @@
   pointer-events: none;
   border-radius: 50%;
   border: 1.5px solid var(--text-accent);
-  background-color: rgba(var(--text-accent-rgb, 100, 150, 255), 0.12);
+  background-color: color-mix(in srgb, var(--text-accent) 14%, transparent);
   z-index: 1000;
   box-sizing: border-box;
   will-change: transform;
@@ -911,7 +908,8 @@
   gap: 4px;
 }
 
-.notepages-view-container button.notepages-icon-btn {
+.notepages-view-container button.notepages-icon-btn,
+.notepages-grid-overview-content button.notepages-icon-btn {
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
@@ -935,7 +933,8 @@
   line-height: 1;
 }
 
-.notepages-view-container button.notepages-icon-btn svg {
+.notepages-view-container button.notepages-icon-btn svg,
+.notepages-grid-overview-content button.notepages-icon-btn svg {
   display: block;
   width: 15px;
   height: 15px;
@@ -945,12 +944,14 @@
   pointer-events: none;
 }
 
-.notepages-view-container button.notepages-icon-btn:hover {
+.notepages-view-container button.notepages-icon-btn:hover,
+.notepages-grid-overview-content button.notepages-icon-btn:hover {
   color: var(--text-normal);
   background-color: var(--interactive-hover);
 }
 
-.notepages-view-container button.notepages-icon-btn:disabled {
+.notepages-view-container button.notepages-icon-btn:disabled,
+.notepages-grid-overview-content button.notepages-icon-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
@@ -1205,7 +1206,8 @@ body .notepages-view-container .notepages-scroller.is-panning {
 }
 
 .notepages-text-box.is-drawing,
-.notepages-view-container:not(.is-tool-select):not(.is-tool-text):not(.is-tool-sticky) .notepages-text-box {
+.notepages-view-container:not(.is-tool-select):not(.is-tool-text):not(.is-tool-sticky) .notepages-text-box,
+.notepages-view-container.is-tool-drawing .notepages-image-frame {
   pointer-events: none;
 }
 
@@ -2049,12 +2051,11 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   position: absolute;
   bottom: 16px;
   right: 16px;
-  z-index: 85;
+  z-index: 30;
   background: var(--background-secondary);
   border-radius: 8px;
   box-shadow: var(--shadow-l);
   border: 1px solid var(--background-modifier-border);
-  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2171,9 +2172,10 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   top: 0;
   left: 0;
   border: 2px solid var(--interactive-accent);
-  background: rgba(var(--interactive-accent-rgb, 120, 120, 255), 0.22);
+  background: color-mix(in srgb, var(--interactive-accent) 22%, transparent);
   border-radius: 2px;
   cursor: grab;
+  touch-action: none;
   box-sizing: border-box;
   pointer-events: auto;
   z-index: 2;
@@ -2415,7 +2417,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   gap: 4px;
 }
 
-.notepages-page-popover .notepages-popover-size-grid button.notepages-popover-item {
+.notepages-view-container .notepages-page-popover .notepages-popover-size-grid button.notepages-popover-item {
   height: 32px;
   min-height: 32px;
   max-height: 32px;
@@ -2623,7 +2625,7 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   color: #1e293b;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.16);
   backdrop-filter: blur(6px);
-  z-index: 60;
+  z-index: 20;
   user-select: none;
   touch-action: none;
   cursor: grab;
@@ -3155,25 +3157,71 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   cursor: pointer;
 }
 
+.notepages-select-current-bar {
+  cursor: pointer;
+}
+
+.notepages-modal-actions {
+  flex-wrap: wrap;
+}
+
+.notepages-page-size-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notepages-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.notepages-page-size-error {
+  font-size: 12px;
+  color: var(--text-error);
+  margin-top: 4px;
+}
+
+.notepages-sidebar-empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .notepages-sidebar:not(.is-collapsed) {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 45;
+    box-shadow: 6px 0 24px rgba(0, 0, 0, 0.25);
+  }
+}
+
 @media (pointer: coarse) {
   .notepages-view-container .notepages-toolbar-float-wrapper button.notepages-tool-button,
+  .notepages-view-container .notepages-toolbar-float-wrapper button.notepages-zoom-stepper-btn,
   .notepages-ruler-btn {
-    min-height: 32px;
-    min-width: 32px;
+    min-height: 40px;
+    min-width: 40px;
   }
 
   .notepages-view-container .notepages-toolbar-float-wrapper button.notepages-preset-chip,
   .notepages-view-container .notepages-toolbar-float-wrapper button.notepages-pattern-btn,
   .notepages-view-container button.notepages-filter-pill {
-    min-height: 28px;
-    min-width: 28px;
+    min-height: 36px;
+    min-width: 36px;
   }
 
   .notepages-view-container button.notepages-bookmark-badge {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    opacity: 0.9;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    opacity: 0.92;
   }
 }
 

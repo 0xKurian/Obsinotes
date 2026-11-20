@@ -143,6 +143,9 @@ export class RulerOverlayController {
   };
   private isDraggingMove: boolean = false;
   private isDraggingRotate: boolean = false;
+  private rotateCenterClientX: number = 0;
+  private rotateCenterClientY: number = 0;
+  private windowAbortController: AbortController | null = null;
   private dragStartClientX: number = 0;
   private dragStartClientY: number = 0;
   private dragStartCenterX: number = 0;
@@ -193,6 +196,12 @@ export class RulerOverlayController {
 
   destroy(): void {
     this.activeStrokeLocks.clear();
+    this.isDraggingMove = false;
+    this.isDraggingRotate = false;
+    if (this.windowAbortController) {
+      this.windowAbortController.abort();
+      this.windowAbortController = null;
+    }
     if (this.rulerEl) {
       this.rulerEl.remove();
       this.rulerEl = null;
@@ -342,11 +351,17 @@ export class RulerOverlayController {
     this.host.registerDomEvent(rotateHandle, "pointerdown", (e: PointerEvent) => {
       e.stopPropagation();
       e.preventDefault();
+      if (e.shiftKey) {
+        this.state.angleDeg = 0;
+        this.syncDom();
+        return;
+      }
       this.isDraggingRotate = true;
       const rect = rulerEl.getBoundingClientRect();
-      const cx = (rect.left + rect.right) / 2;
-      const cy = (rect.top + rect.bottom) / 2;
-      this.rotateStartPointerAngle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+      this.rotateCenterClientX = (rect.left + rect.right) / 2;
+      this.rotateCenterClientY = (rect.top + rect.bottom) / 2;
+      this.rotateStartPointerAngle =
+        (Math.atan2(e.clientY - this.rotateCenterClientY, e.clientX - this.rotateCenterClientX) * 180) / Math.PI;
       this.rotateStartRulerAngle = this.state.angleDeg;
       this.tryCapture(rotateHandle, e.pointerId);
     });
@@ -372,36 +387,42 @@ export class RulerOverlayController {
         e.preventDefault();
         e.stopPropagation();
         const delta = e.deltaY > 0 ? 1 : -1;
-        this.state.angleDeg = snapRulerAngle(this.state.angleDeg + delta * 1.5);
+        this.state.angleDeg = normalizeAngleDeg(this.state.angleDeg + delta * 1.5);
         this.syncDom();
       },
       { passive: false }
     );
 
     if (typeof window !== "undefined") {
-      this.host.registerDomEvent(window, "pointermove", (e: PointerEvent) => {
+      if (this.windowAbortController) {
+        this.windowAbortController.abort();
+      }
+      this.windowAbortController = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const winOpts = this.windowAbortController ? { signal: this.windowAbortController.signal } : undefined;
+
+      window.addEventListener("pointermove", (e: PointerEvent) => {
         if (this.isDraggingMove) {
           const zoom = Math.max(0.1, this.host.getZoomLevel());
           this.state.centerX = this.dragStartCenterX + (e.clientX - this.dragStartClientX) / zoom;
           this.state.centerY = this.dragStartCenterY + (e.clientY - this.dragStartClientY) / zoom;
           this.syncDom();
         } else if (this.isDraggingRotate && this.rulerEl) {
-          const rect = this.rulerEl.getBoundingClientRect();
-          const cx = (rect.left + rect.right) / 2;
-          const cy = (rect.top + rect.bottom) / 2;
-          const curAngle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+          const curAngle =
+            (Math.atan2(e.clientY - this.rotateCenterClientY, e.clientX - this.rotateCenterClientX) * 180) /
+            Math.PI;
           const delta = curAngle - this.rotateStartPointerAngle;
           this.state.angleDeg = snapRulerAngle(this.rotateStartRulerAngle + delta);
           this.syncDom();
         }
-      });
+      }, winOpts);
 
       const stopDrag = () => {
         this.isDraggingMove = false;
         this.isDraggingRotate = false;
       };
-      this.host.registerDomEvent(window, "pointerup", stopDrag);
-      this.host.registerDomEvent(window, "pointercancel", stopDrag);
+      window.addEventListener("pointerup", stopDrag, winOpts);
+      window.addEventListener("pointercancel", stopDrag, winOpts);
+      window.addEventListener("blur", stopDrag, winOpts);
     }
   }
 

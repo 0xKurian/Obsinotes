@@ -12,6 +12,7 @@ export interface SvgExportOptions {
   includeTemplate?: boolean;
   includePdfBackground?: boolean;
   resourceResolver?: (vaultPath: string) => string;
+  dataUriResolver?: (vaultPath: string) => Promise<string | null>;
 }
 
 export function escapeXml(str: string): string {
@@ -49,16 +50,18 @@ export function renderTemplateToSvg(
   height: number,
   template: PaperTemplateConfig
 ): string {
-  let svg = `<rect width="${width}" height="${height}" fill="${template.backgroundColor}"/>`;
+  const safeBg = escapeXml(template.backgroundColor);
+  let svg = `<rect width="${width}" height="${height}" fill="${safeBg}"/>`;
 
   if (template.type === "blank") {
     return svg;
   }
 
-  const effectiveLineColor =
+  const effectiveLineColor = escapeXml(
     template.lineColor === "#e2e8f0" || template.lineColor === "#e5e7eb"
       ? "#94a3b8"
-      : template.lineColor;
+      : template.lineColor
+  );
   const opacity = Math.max(0.4, Math.min(1, template.opacity ?? 0.8));
   const spacing = Math.max(12, template.spacing);
 
@@ -99,9 +102,9 @@ export function renderTemplateToSvg(
 }
 
 export function renderShapeToSvg(shape: ShapeObject): string {
-  const stroke = shape.color;
+  const stroke = escapeXml(shape.color);
   const strokeWidth = shape.strokeWidth;
-  const fill = shape.fillColor || "none";
+  const fill = escapeXml(shape.fillColor || "none");
   const geo = shape.geometryData;
   const dashAttr =
     shape.strokePattern === "dashed" || shape.strokePattern === "dotted"
@@ -235,6 +238,18 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
       stroke.tool === "highlighter"
         ? StrokeGeometry.getToolSize("highlighter", stroke.width)
         : Math.max(1, stroke.width);
+    const opacity =
+      stroke.tool === "highlighter"
+        ? 0.35
+        : stroke.tool === "pencil"
+          ? StrokeGeometry.computePencilOpacity(stroke)
+          : stroke.opacity ?? 1;
+    const blendStyle = stroke.tool === "highlighter" ? ` style="mix-blend-mode: multiply;"` : "";
+    const safeColor = escapeXml(stroke.color);
+    if (stroke.points.length === 1) {
+      const p = stroke.points[0];
+      return `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${(effectiveWidth / 2).toFixed(2)}" fill="${safeColor}" fill-opacity="${Number(opacity.toFixed(2))}"${blendStyle}/>`;
+    }
     const dash = StrokeGeometry.getLineDashArray(stroke.strokePattern, effectiveWidth).join(",");
     let d = `M ${stroke.points[0].x.toFixed(2)} ${stroke.points[0].y.toFixed(2)}`;
     if (stroke.points.length >= 3) {
@@ -250,14 +265,7 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
         d += ` L ${stroke.points[i].x.toFixed(2)} ${stroke.points[i].y.toFixed(2)}`;
       }
     }
-    const opacity =
-      stroke.tool === "highlighter"
-        ? 0.35
-        : stroke.tool === "pencil"
-          ? StrokeGeometry.computePencilOpacity(stroke)
-          : stroke.opacity ?? 1;
-    const blendStyle = stroke.tool === "highlighter" ? ` style="mix-blend-mode: multiply;"` : "";
-    return `<path d="${d}" fill="none" stroke="${stroke.color}" stroke-width="${effectiveWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${Number(opacity.toFixed(2))}"${blendStyle}/>`;
+    return `<path d="${d}" fill="none" stroke="${safeColor}" stroke-width="${effectiveWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${Number(opacity.toFixed(2))}"${blendStyle}/>`;
   }
 
   const cached = StrokeGeometry.getCachedGeometry(stroke);
@@ -267,7 +275,7 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
   }
 
   const d = outlineToSvgPath(outline);
-  const color = stroke.color;
+  const color = escapeXml(stroke.color);
 
   if (stroke.tool === "highlighter") {
     return `<path d="${d}" fill="${color}" fill-opacity="0.35" style="mix-blend-mode: multiply;"/>`;
@@ -280,7 +288,7 @@ export function renderStrokeToSvg(stroke: StrokeObject): string {
 export function renderTextToSvg(text: TextObject): string {
   let svg = "";
   if (text.isSticky) {
-    const bg = text.backgroundColor || "#fef08a";
+    const bg = escapeXml(text.backgroundColor || "#fef08a");
     svg += `<rect x="${text.x}" y="${text.y}" width="${text.width}" height="${text.height}" rx="4" ry="4" fill="${bg}" filter="drop-shadow(0px 2px 4px rgba(0,0,0,0.15))"/>`;
   }
 
@@ -303,7 +311,7 @@ export function renderTextToSvg(text: TextObject): string {
   const fontStyle = text.italic ? 'font-style="italic"' : "";
   const textDeco = text.underline ? 'text-decoration="underline"' : "";
 
-  svg += `<text x="${startX}" y="${text.y + paddingTop + fontSize}" font-family="${escapeXml(text.fontFamily)}" font-size="${fontSize}" font-weight="${text.fontWeight || "normal"}" fill="${text.color}" text-anchor="${textAnchor}" ${fontStyle} ${textDeco}>`;
+  svg += `<text x="${startX}" y="${text.y + paddingTop + fontSize}" font-family="${escapeXml(text.fontFamily)}" font-size="${fontSize}" font-weight="${escapeXml(text.fontWeight || "normal")}" fill="${escapeXml(text.color)}" text-anchor="${textAnchor}" ${fontStyle} ${textDeco}>`;
 
   lines.forEach((line, idx) => {
     const dy = idx === 0 ? "0" : `${lineHeight}`;
@@ -380,4 +388,42 @@ export function exportPageToSvg(
 
   svg += `</svg>`;
   return svg;
+}
+
+export async function exportPageToSvgAsync(
+  page: PageData,
+  options: SvgExportOptions = {}
+): Promise<string> {
+  if (!options.dataUriResolver) {
+    return exportPageToSvg(page, options);
+  }
+  const resolvedMap = new Map<string, string>();
+  const pathsToResolve: string[] = [];
+  if (options.includePdfBackground !== false && page.pdfSource?.svgPath) {
+    pathsToResolve.push(page.pdfSource.svgPath);
+  }
+  if (page.images) {
+    for (const img of page.images) {
+      if (img.vaultPath) {
+        pathsToResolve.push(img.vaultPath);
+      }
+    }
+  }
+  for (const vaultPath of pathsToResolve) {
+    if (resolvedMap.has(vaultPath)) continue;
+    try {
+      const dataUri = await options.dataUriResolver(vaultPath);
+      if (dataUri) {
+        resolvedMap.set(vaultPath, dataUri);
+      }
+    } catch {
+      // Fall back to resourceResolver
+    }
+  }
+  return exportPageToSvg(page, {
+    ...options,
+    resourceResolver: (vaultPath: string) =>
+      resolvedMap.get(vaultPath) ??
+      (options.resourceResolver ? options.resourceResolver(vaultPath) : vaultPath)
+  });
 }

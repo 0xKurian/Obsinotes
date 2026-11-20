@@ -8,6 +8,7 @@ import {
   TextObject
 } from "../types";
 import { SelectionController } from "../selection/SelectionController";
+import { SelectionEngine } from "../selection/SelectionEngine";
 import { StrokeGeometry } from "../ink/StrokeGeometry";
 import { ShapeRecognizer } from "../shape/ShapeRecognizer";
 import { AddElementsCommand, HistoryManager } from "../history/HistoryManager";
@@ -42,6 +43,8 @@ export class SelectionDragCoordinator {
   private dragOverlayPadding: number = 16;
   private dragBoxWidth: number = 0;
   private dragBoxHeight: number = 0;
+  private hiddenDragElements: HTMLElement[] = [];
+  private pasteCount: number = 0;
   private clipboard: {
     strokes: StrokeObject[];
     shapes: ShapeObject[];
@@ -177,13 +180,25 @@ export class SelectionDragCoordinator {
       srcCtx?.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
     }
 
+    this.hiddenDragElements = [];
+    const safeEsc = (val: string) =>
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(val)
+        : val.replace(/["\\]/g, "\\$&");
+
     for (const text of selectionController.getSelectedTexts()) {
-      const el = pagesContainerEl.querySelector<HTMLElement>(`[data-text-id="${text.id}"]`);
-      el?.addClass("is-hidden");
+      const el = pagesContainerEl.querySelector<HTMLElement>(`[data-text-id="${safeEsc(text.id)}"]`);
+      if (el) {
+        el.addClass("is-hidden");
+        this.hiddenDragElements.push(el);
+      }
     }
     for (const img of selectionController.getSelectedImages()) {
-      const el = pagesContainerEl.querySelector<HTMLElement>(`[data-image-id="${img.id}"]`);
-      el?.addClass("is-hidden");
+      const el = pagesContainerEl.querySelector<HTMLElement>(`[data-image-id="${safeEsc(img.id)}"]`);
+      if (el) {
+        el.addClass("is-hidden");
+        this.hiddenDragElements.push(el);
+      }
     }
 
     this.isDragging = true;
@@ -208,17 +223,17 @@ export class SelectionDragCoordinator {
     });
   }
 
+  private restoreHiddenDragElements(): void {
+    for (const el of this.hiddenDragElements) {
+      el.removeClass("is-hidden");
+    }
+    this.hiddenDragElements = [];
+  }
+
   finishSelectionDrag(clientX: number, clientY: number): void {
     if (!this.isDragging || !this.dragOverlayEl) {
       return;
     }
-    this.isDragging = false;
-    this.dragOverlayEl.removeClass("is-active");
-
-    const pagesContainerEl = this.delegate.getPagesContainerEl();
-    pagesContainerEl?.querySelectorAll(".is-hidden").forEach((el) => {
-      el.removeClass("is-hidden");
-    });
 
     const movedDist = Math.hypot(clientX - this.dragStartClientX, clientY - this.dragStartClientY);
     if (movedDist < 3) {
@@ -243,6 +258,10 @@ export class SelectionDragCoordinator {
       this.cancelSelectionDrag();
       return;
     }
+
+    this.isDragging = false;
+    this.dragOverlayEl.removeClass("is-active");
+    this.restoreHiddenDragElements();
 
     const { page: targetPage, pageLeft, pageTop } = targetInfo;
     const targetPageMinX = finalContainerBoxMinX - pageLeft;
@@ -276,11 +295,7 @@ export class SelectionDragCoordinator {
     }
     this.isDragging = false;
     this.dragOverlayEl?.removeClass("is-active");
-
-    const pagesContainerEl = this.delegate.getPagesContainerEl();
-    pagesContainerEl?.querySelectorAll(".is-hidden").forEach((el) => {
-      el.removeClass("is-hidden");
-    });
+    this.restoreHiddenDragElements();
 
     const selectionController = this.delegate.getSelectionController();
     selectionController.cancelMove();
@@ -454,11 +469,23 @@ export class SelectionDragCoordinator {
     clonedTexts: TextObject[];
     clonedImages: ImageObject[];
   } {
+    const groupBox = SelectionEngine.computeCombinedBoundingBox(strokes, shapes, texts, images);
+    let dx = offset;
+    let dy = offset;
+    if (groupBox) {
+      const boxW = groupBox.maxX - groupBox.minX;
+      const boxH = groupBox.maxY - groupBox.minY;
+      const targetMinX = Math.max(0, Math.min(page.dimensions.width - boxW, groupBox.minX + offset));
+      const targetMinY = Math.max(0, Math.min(page.dimensions.height - boxH, groupBox.minY + offset));
+      dx = targetMinX - groupBox.minX;
+      dy = targetMinY - groupBox.minY;
+    }
+
     const clonedStrokes: StrokeObject[] = strokes.map((s) => {
       const newPoints = s.points.map((p) => ({
         ...p,
-        x: p.x + offset,
-        y: p.y + offset
+        x: p.x + dx,
+        y: p.y + dy
       }));
       return {
         ...s,
@@ -477,41 +504,41 @@ export class SelectionDragCoordinator {
         sh.type === "star" ||
         sh.type === "callout"
       ) {
-        newGeom.x = (newGeom.x || 0) + offset;
-        newGeom.y = (newGeom.y || 0) + offset;
+        newGeom.x = (newGeom.x || 0) + dx;
+        newGeom.y = (newGeom.y || 0) + dy;
       } else if (sh.type === "circle" || sh.type === "ellipse") {
-        newGeom.cx = (newGeom.cx || 0) + offset;
-        newGeom.cy = (newGeom.cy || 0) + offset;
+        newGeom.cx = (newGeom.cx || 0) + dx;
+        newGeom.cy = (newGeom.cy || 0) + dy;
       } else if (sh.type === "line" || sh.type === "arrow") {
-        newGeom.x1 = (newGeom.x1 || 0) + offset;
-        newGeom.y1 = (newGeom.y1 || 0) + offset;
-        newGeom.x2 = (newGeom.x2 || 0) + offset;
-        newGeom.y2 = (newGeom.y2 || 0) + offset;
+        newGeom.x1 = (newGeom.x1 || 0) + dx;
+        newGeom.y1 = (newGeom.y1 || 0) + dy;
+        newGeom.x2 = (newGeom.x2 || 0) + dx;
+        newGeom.y2 = (newGeom.y2 || 0) + dy;
       } else if (sh.type === "triangle") {
-        newGeom.x1 = (newGeom.x1 || 0) + offset;
-        newGeom.y1 = (newGeom.y1 || 0) + offset;
-        newGeom.x2 = (newGeom.x2 || 0) + offset;
-        newGeom.y2 = (newGeom.y2 || 0) + offset;
-        newGeom.x3 = (newGeom.x3 || 0) + offset;
-        newGeom.y3 = (newGeom.y3 || 0) + offset;
+        newGeom.x1 = (newGeom.x1 || 0) + dx;
+        newGeom.y1 = (newGeom.y1 || 0) + dy;
+        newGeom.x2 = (newGeom.x2 || 0) + dx;
+        newGeom.y2 = (newGeom.y2 || 0) + dy;
+        newGeom.x3 = (newGeom.x3 || 0) + dx;
+        newGeom.y3 = (newGeom.y3 || 0) + dy;
       }
 
       return {
         ...sh,
         id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         bounds: {
-          minX: sh.bounds.minX + offset,
-          minY: sh.bounds.minY + offset,
-          maxX: sh.bounds.maxX + offset,
-          maxY: sh.bounds.maxY + offset
+          minX: sh.bounds.minX + dx,
+          minY: sh.bounds.minY + dy,
+          maxX: sh.bounds.maxX + dx,
+          maxY: sh.bounds.maxY + dy
         },
         geometryData: newGeom
       };
     });
 
     const clonedTexts: TextObject[] = texts.map((t) => {
-      const newX = Math.max(0, Math.min(page.dimensions.width - t.width, t.x + offset));
-      const newY = Math.max(0, Math.min(page.dimensions.height - t.height, t.y + offset));
+      const newX = Math.max(0, Math.min(page.dimensions.width - t.width, t.x + dx));
+      const newY = Math.max(0, Math.min(page.dimensions.height - t.height, t.y + dy));
       return {
         ...t,
         id: `text_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -527,8 +554,8 @@ export class SelectionDragCoordinator {
     });
 
     const clonedImages: ImageObject[] = images.map((img) => {
-      const newX = Math.max(0, Math.min(page.dimensions.width - img.width, img.x + offset));
-      const newY = Math.max(0, Math.min(page.dimensions.height - img.height, img.y + offset));
+      const newX = Math.max(0, Math.min(page.dimensions.width - img.width, img.x + dx));
+      const newY = Math.max(0, Math.min(page.dimensions.height - img.height, img.y + dy));
       return {
         ...img,
         id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -554,7 +581,11 @@ export class SelectionDragCoordinator {
     clonedImages: ImageObject[],
     noticeMessage: string
   ): void {
-    const activeCanvas = this.delegate.getActiveCanvas(page.id);
+    let activeCanvas = this.delegate.getActiveCanvas(page.id);
+    if (!activeCanvas || activeCanvas.width <= 1) {
+      this.delegate.mountPageCanvases(page.pageNumber);
+      activeCanvas = this.delegate.getActiveCanvas(page.id);
+    }
     this.delegate.getSelectionController().setSelection(
       page.id,
       clonedStrokes,
@@ -648,6 +679,7 @@ export class SelectionDragCoordinator {
         bounds: img.bounds ? { ...img.bounds } : undefined
       }))
     };
+    this.pasteCount = 0;
     new Notice("Selection copied");
   }
 
@@ -658,13 +690,15 @@ export class SelectionDragCoordinator {
     const page = this.delegate.getPageByNumber(this.delegate.getCurrentPageNumber());
     if (!page) return;
 
+    this.pasteCount++;
+    const offset = 25 * Math.min(6, this.pasteCount);
     const { clonedStrokes, clonedShapes, clonedTexts, clonedImages } = this.cloneOffsetElements(
       page,
       this.clipboard.strokes,
       this.clipboard.shapes,
       this.clipboard.texts,
       this.clipboard.images,
-      25
+      offset
     );
 
     this.commitClonedElements(page, clonedStrokes, clonedShapes, clonedTexts, clonedImages, "Pasted elements");

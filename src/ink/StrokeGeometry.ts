@@ -221,13 +221,20 @@ export class StrokeGeometry {
     }
     let sumX = 0;
     let sumY = 0;
-    let maxPressure = 0.5;
+    let maxPressure = 0;
+    let hasPressureSample = false;
     for (const p of points) {
       sumX += p.x;
       sumY += p.y;
-      if (p.pressure && p.pressure > maxPressure) {
-        maxPressure = p.pressure;
+      if (Number.isFinite(p.pressure) && p.pressure > 0) {
+        hasPressureSample = true;
+        if (p.pressure > maxPressure) {
+          maxPressure = p.pressure;
+        }
       }
+    }
+    if (!hasPressureSample) {
+      maxPressure = 0.5;
     }
     const cx = sumX / points.length;
     const cy = sumY / points.length;
@@ -319,7 +326,6 @@ export class StrokeGeometry {
       return this.generateDotOutline(cleanPoints, tool, width);
     }
 
-    const shouldSimulate = tool !== "highlighter" && !this.hasVaryingPressure(cleanPoints);
     const rawInput = cleanPoints.map((p) => {
       const baseP = Math.max(0.05, Math.min(1.0, p.pressure));
       if (tool === "pencil") {
@@ -329,9 +335,25 @@ export class StrokeGeometry {
       }
       return [p.x, p.y, baseP];
     });
+    let hasVaryingInput = false;
+    if (rawInput.length >= 2) {
+      const firstP = rawInput[0][2];
+      for (let i = 1; i < rawInput.length; i++) {
+        if (Math.abs(rawInput[i][2] - firstP) > 0.01) {
+          hasVaryingInput = true;
+          break;
+        }
+      }
+    }
+    const shouldSimulate = tool !== "highlighter" && !hasVaryingInput;
     const options = this.getStrokeOptions(tool, width, shouldSimulate);
-    // Keep strokePoints resolution independent of tool width so short strokes and accents keep corners.
-    const strokePoints = getStrokePoints(rawInput, { ...options, size: 0.5, last: true });
+    // Keep strokePoints resolution independent of tool width for short strokes/accents,
+    // while avoiding excessive oversampling on very long strokes.
+    const sampleSize =
+      cleanPoints.length > 200
+        ? Math.max(1.0, Math.min(options.size ?? width, width * 0.35))
+        : 0.5;
+    const strokePoints = getStrokePoints(rawInput, { ...options, size: sampleSize, last: true });
     const outline = getStrokeOutlinePoints(strokePoints, { ...options, last: true });
     if (outline.length < 3) {
       return this.generateDotOutline(cleanPoints, tool, width);
@@ -432,15 +454,60 @@ export class StrokeGeometry {
     }
   }
 
+  private static pencilPatternCache = new Map<string, CanvasPattern | null>();
+
+  private static getPencilGrainPattern(
+    ctx: CanvasRenderingContext2D,
+    color: string
+  ): CanvasPattern | null {
+    if (typeof createEl !== "function" || typeof ctx.createPattern !== "function") {
+      return null;
+    }
+    if (this.pencilPatternCache.has(color)) {
+      return this.pencilPatternCache.get(color) ?? null;
+    }
+    if (this.pencilPatternCache.size >= 32) {
+      this.pencilPatternCache.clear();
+    }
+    const tile = createEl("canvas");
+    tile.width = 24;
+    tile.height = 24;
+    const tCtx = tile.getContext("2d");
+    if (!tCtx) {
+      this.pencilPatternCache.set(color, null);
+      return null;
+    }
+    tCtx.fillStyle = color;
+    for (let y = 0; y < 24; y += 2) {
+      for (let x = 0; x < 24; x += 2) {
+        const seed = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+        const frac = seed - Math.floor(seed);
+        if (frac > 0.45) {
+          tCtx.globalAlpha = 0.25 + frac * 0.5;
+          tCtx.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+    const pattern = ctx.createPattern(tile, "repeat");
+    tile.width = 0;
+    tile.height = 0;
+    this.pencilPatternCache.set(color, pattern);
+    return pattern;
+  }
+
   static renderStroke(ctx: CanvasRenderingContext2D, stroke: StrokeObject): void {
     if (stroke.points.length === 0) {
       return;
     }
 
     if (stroke.strokePattern === "dashed" || stroke.strokePattern === "dotted") {
+      const cleanPoints = this.sanitizePoints(stroke.points);
+      if (cleanPoints.length === 0) {
+        return;
+      }
       const effectiveWidth =
-        stroke.tool === "highlighter"
-          ? this.getToolSize("highlighter", stroke.width)
+        stroke.tool === "highlighter" || stroke.tool === "pressure" || stroke.tool === "fountain" || stroke.tool === "pencil"
+          ? this.getToolSize(stroke.tool, stroke.width)
           : Math.max(1, stroke.width);
       const dash = this.getLineDashArray(stroke.strokePattern, effectiveWidth);
       ctx.save();
@@ -452,7 +519,7 @@ export class StrokeGeometry {
         ctx.setLineDash(dash);
       }
       this.applyStrokeCompositeStyle(ctx, stroke);
-      this.drawCenterlinePath(ctx, stroke.points);
+      this.drawCenterlinePath(ctx, cleanPoints);
       ctx.restore();
       return;
     }
@@ -476,19 +543,13 @@ export class StrokeGeometry {
       stroke.tool === "pencil" &&
       stroke.points.length > 2 &&
       geometry.path &&
-      typeof ctx.clip === "function" &&
-      typeof ctx.fillRect === "function"
+      typeof ctx.fill === "function"
     ) {
-      ctx.clip(geometry.path);
-      ctx.globalAlpha = Math.min(0.28, ctx.globalAlpha * 0.35);
-      const grainSize = Math.max(0.5, stroke.width * 0.22);
-      for (let i = 0; i < stroke.points.length; i += 2) {
-        const pt = stroke.points[i];
-        const seed = Math.sin(pt.x * 12.9898 + pt.y * 78.233) * 43758.5453;
-        const frac = seed - Math.floor(seed);
-        const offsetX = (frac - 0.5) * stroke.width * 0.65;
-        const offsetY = (((frac * 7.13) % 1) - 0.5) * stroke.width * 0.65;
-        ctx.fillRect(pt.x + offsetX, pt.y + offsetY, grainSize, grainSize);
+      const grainPattern = this.getPencilGrainPattern(ctx, stroke.color);
+      if (grainPattern) {
+        ctx.fillStyle = grainPattern;
+        ctx.globalAlpha = Math.min(0.28, ctx.globalAlpha * 0.35);
+        ctx.fill(geometry.path);
       }
     }
     ctx.restore();

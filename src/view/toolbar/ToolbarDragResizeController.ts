@@ -37,12 +37,19 @@ export class ToolbarDragResizeController {
       e.stopPropagation();
       e.preventDefault();
       const wrapperEl = this.host.getWrapperEl();
+      const dockEl = this.host.getToolbarEl();
       this.isDraggingDock = true;
       this.dragDockMoved = false;
       this.dragDockStartX = e.clientX;
       this.dragDockStartY = e.clientY;
-      const rect = wrapperEl.getBoundingClientRect();
-      const parentRect = wrapperEl.parentElement?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      const rect =
+        typeof dockEl.getBoundingClientRect === "function"
+          ? dockEl.getBoundingClientRect()
+          : { left: wrapperEl.offsetLeft || 0, top: wrapperEl.offsetTop || 0 };
+      const parentRect =
+        typeof wrapperEl.parentElement?.getBoundingClientRect === "function"
+          ? wrapperEl.parentElement.getBoundingClientRect()
+          : { left: 0, top: 0 };
       this.dragDockInitLeft = rect.left - parentRect.left;
       this.dragDockInitTop = rect.top - parentRect.top;
 
@@ -66,10 +73,22 @@ export class ToolbarDragResizeController {
         return;
       }
 
-      const newLeft = Math.max(0, this.dragDockInitLeft + dx);
-      const newTop = Math.max(0, this.dragDockInitTop + dy);
+      const wrapperEl = this.host.getWrapperEl();
+      const dockEl = this.host.getToolbarEl();
+      const dockRect =
+        typeof dockEl.getBoundingClientRect === "function"
+          ? dockEl.getBoundingClientRect()
+          : { width: 0, height: 0 };
+      const parentRect =
+        typeof wrapperEl.parentElement?.getBoundingClientRect === "function"
+          ? wrapperEl.parentElement.getBoundingClientRect()
+          : undefined;
+      const maxLeft = parentRect ? Math.max(0, parentRect.width - dockRect.width) : Infinity;
+      const maxTop = parentRect ? Math.max(0, parentRect.height - dockRect.height) : Infinity;
+      const newLeft = Math.max(0, Math.min(maxLeft, this.dragDockInitLeft + dx));
+      const newTop = Math.max(0, Math.min(maxTop, this.dragDockInitTop + dy));
 
-      this.host.getWrapperEl().setCssStyles({
+      wrapperEl.setCssStyles({
         left: `${newLeft}px`,
         top: `${newTop}px`,
         right: "auto",

@@ -266,13 +266,25 @@ export class NotePagesSidebar {
     });
     preview.style.backgroundColor = page.template.backgroundColor;
 
+    const onCardEl = <K extends keyof HTMLElementEventMap>(
+      el: HTMLElement,
+      type: K,
+      callback: (ev: HTMLElementEventMap[K]) => void
+    ) => {
+      if (typeof el.addEventListener === "function") {
+        el.addEventListener(type, callback as EventListener);
+      } else {
+        this.delegate.registerDomEvent(el, type, callback);
+      }
+    };
+
     const bookmarkBtn = preview.createEl("button", {
       cls: page.bookmarked ? "notepages-bookmark-badge is-bookmarked" : "notepages-bookmark-badge"
     });
     bookmarkBtn.setAttribute("type", "button");
     setIcon(bookmarkBtn, "star");
     bookmarkBtn.setAttribute("title", page.bookmarked ? "Remove bookmark" : "Bookmark page");
-    this.delegate.registerDomEvent(bookmarkBtn, "click", (e) => {
+    onCardEl(bookmarkBtn, "click", (e) => {
       e.stopPropagation();
       this.delegate.onTogglePageBookmark?.(page.id);
     });
@@ -301,7 +313,7 @@ export class NotePagesSidebar {
       text: this.formatPageLabel(page)
     });
     labelEl.setAttribute("title", "Double-click to rename page");
-    this.delegate.registerDomEvent(labelEl, "dblclick", (e) => {
+    onCardEl(labelEl, "dblclick", (e) => {
       e.stopPropagation();
       this.startInlineRename(page.id, labelEl);
     });
@@ -319,7 +331,7 @@ export class NotePagesSidebar {
     });
     setIcon(duplicateThumbBtn, "copy");
     duplicateThumbBtn.setAttribute("title", "Duplicate");
-    this.delegate.registerDomEvent(duplicateThumbBtn, "click", (e) => {
+    onCardEl(duplicateThumbBtn, "click", (e) => {
       e.stopPropagation();
       const pageManager = this.delegate.getPageManager();
       if (pageManager) {
@@ -337,7 +349,7 @@ export class NotePagesSidebar {
       this.appendDeleteButtonToThumbnail(thumbActions, page.id);
     }
 
-    this.delegate.registerDomEvent(card, "click", () => {
+    onCardEl(card, "click", () => {
       const pm = this.delegate.getPageManager();
       const pageToScroll = pm?.getPage(page.id);
       if (pageToScroll) {
@@ -345,7 +357,7 @@ export class NotePagesSidebar {
       }
     });
 
-    this.delegate.registerDomEvent(card, "dragstart", (e: DragEvent) => {
+    onCardEl(card, "dragstart", (e: DragEvent) => {
       const currentIndex = Number(card.dataset.pageIndex);
       this.draggedPageIndex = currentIndex;
       card.addClass("is-dragging");
@@ -355,7 +367,7 @@ export class NotePagesSidebar {
       }
     });
 
-    this.delegate.registerDomEvent(card, "dragover", (e: DragEvent) => {
+    onCardEl(card, "dragover", (e: DragEvent) => {
       e.preventDefault();
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = "move";
@@ -372,12 +384,12 @@ export class NotePagesSidebar {
       }
     });
 
-    this.delegate.registerDomEvent(card, "dragleave", () => {
+    onCardEl(card, "dragleave", () => {
       card.removeClass("drag-over-top");
       card.removeClass("drag-over-bottom");
     });
 
-    this.delegate.registerDomEvent(card, "drop", (e: DragEvent) => {
+    onCardEl(card, "drop", (e: DragEvent) => {
       e.preventDefault();
       card.removeClass("drag-over-top");
       card.removeClass("drag-over-bottom");
@@ -391,8 +403,14 @@ export class NotePagesSidebar {
       const rect = card.getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       let targetIndex = currentIndex;
-      if (e.clientY >= midY && currentIndex > this.draggedPageIndex) {
-        targetIndex = currentIndex;
+      if (this.draggedPageIndex < currentIndex) {
+        targetIndex = e.clientY < midY ? currentIndex - 1 : currentIndex;
+      } else {
+        targetIndex = e.clientY < midY ? currentIndex : currentIndex + 1;
+      }
+      targetIndex = Math.max(0, Math.min(pm.getPageCount() - 1, targetIndex));
+      if (targetIndex === this.draggedPageIndex) {
+        return;
       }
 
       const success = pm.reorderPages(this.draggedPageIndex, targetIndex);
@@ -403,7 +421,7 @@ export class NotePagesSidebar {
       }
     });
 
-    this.delegate.registerDomEvent(card, "dragend", () => {
+    onCardEl(card, "dragend", () => {
       card.removeClass("is-dragging");
       card.removeClass("drag-over-top");
       card.removeClass("drag-over-bottom");
@@ -420,10 +438,15 @@ export class NotePagesSidebar {
     });
     setIcon(deleteThumbBtn, "trash-2");
     deleteThumbBtn.setAttribute("title", "Delete");
-    this.delegate.registerDomEvent(deleteThumbBtn, "click", (e) => {
+    const onDelClick = (e: MouseEvent) => {
       e.stopPropagation();
       this.delegate.deletePageAndSyncDom(pageId);
-    });
+    };
+    if (typeof deleteThumbBtn.addEventListener === "function") {
+      deleteThumbBtn.addEventListener("click", onDelClick);
+    } else {
+      this.delegate.registerDomEvent(deleteThumbBtn, "click", onDelClick);
+    }
   }
 
   updateThumbnailStrokes(page: PageData): void {
@@ -454,7 +477,16 @@ export class NotePagesSidebar {
       if (svgFile instanceof TFile) {
         const img = new Image();
         img.onload = () => {
+          if (this.thumbnailCanvasMap.get(page.id) !== previewCanvas) {
+            return;
+          }
           ctx.drawImage(img, 0, 0, previewWidth, previewHeight);
+          this.drawThumbnailStrokesOnly(ctx, page, previewWidth, previewHeight);
+        };
+        img.onerror = () => {
+          if (this.thumbnailCanvasMap.get(page.id) !== previewCanvas) {
+            return;
+          }
           this.drawThumbnailStrokesOnly(ctx, page, previewWidth, previewHeight);
         };
         img.src = this.delegate.resolveResourcePath(svgFile.path);
@@ -521,15 +553,15 @@ export class NotePagesSidebar {
     }
     const thumbCanvas = this.thumbnailCanvasMap.get(pageId);
     if (thumbCanvas) {
-      thumbCanvas.width = 1;
-      thumbCanvas.height = 1;
+      thumbCanvas.width = 0;
+      thumbCanvas.height = 0;
       this.thumbnailCanvasMap.delete(pageId);
     }
     if (thumbCard) {
       const extraThumbCanvases = thumbCard.querySelectorAll("canvas");
       extraThumbCanvases.forEach((c) => {
-        c.width = 1;
-        c.height = 1;
+        c.width = 0;
+        c.height = 0;
       });
       thumbCard.remove();
     }
@@ -592,11 +624,28 @@ export class NotePagesSidebar {
     if (!pm || !this.sidebarListEl) {
       return;
     }
+    let visibleCount = 0;
     for (const page of pm.getPages()) {
+      const matches = this.matchesFilter(page);
+      if (matches) {
+        visibleCount++;
+      }
       const card = this.sidebarListEl.querySelector<HTMLElement>(`[data-page-id="${page.id}"]`);
       if (card) {
-        card.toggleClass("is-filtered-out", !this.matchesFilter(page));
+        card.toggleClass("is-filtered-out", !matches);
       }
+    }
+    let emptyEl = this.sidebarListEl.querySelector<HTMLElement>(".notepages-sidebar-empty");
+    if (visibleCount === 0) {
+      if (!emptyEl) {
+        emptyEl = this.sidebarListEl.createDiv({ cls: "notepages-sidebar-empty" });
+      }
+      emptyEl.setText(
+        this.filterMode === "bookmarked" ? "No bookmarked pages match" : "No pages match your search"
+      );
+      emptyEl.removeClass("is-hidden");
+    } else if (emptyEl) {
+      emptyEl.addClass("is-hidden");
     }
   }
 
@@ -642,17 +691,21 @@ export class NotePagesSidebar {
       finished = true;
       const nextVal = input.value.trim();
       const latestPage = this.delegate.getPageManager()?.getPage(pageId);
+      labelEl.empty();
       if (save && nextVal !== initialTitle.trim()) {
+        labelEl.textContent = latestPage
+          ? this.formatPageLabel({ ...latestPage, title: nextVal || undefined })
+          : nextVal;
         this.delegate.onRenamePage?.(pageId, nextVal);
       } else if (latestPage) {
         labelEl.textContent = this.formatPageLabel(latestPage);
       }
     };
 
-    this.delegate.registerDomEvent(input, "click", (ev) => {
+    input.addEventListener("click", (ev) => {
       ev.stopPropagation();
     });
-    this.delegate.registerDomEvent(input, "keydown", (ev: KeyboardEvent) => {
+    input.addEventListener("keydown", (ev: KeyboardEvent) => {
       ev.stopPropagation();
       if (ev.key === "Enter") {
         ev.preventDefault();
@@ -662,7 +715,7 @@ export class NotePagesSidebar {
         commit(false);
       }
     });
-    this.delegate.registerDomEvent(input, "blur", () => {
+    input.addEventListener("blur", () => {
       commit(true);
     });
   }
@@ -670,8 +723,8 @@ export class NotePagesSidebar {
   clear(): void {
     this.dirtyPageThumbnails.clear();
     this.thumbnailCanvasMap.forEach((c) => {
-      c.width = 1;
-      c.height = 1;
+      c.width = 0;
+      c.height = 0;
     });
     if (this.sidebarListEl) {
       this.sidebarListEl.empty();

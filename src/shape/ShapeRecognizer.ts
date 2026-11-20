@@ -186,8 +186,8 @@ export class ShapeRecognizer {
 
     const width = bounds.maxX - bounds.minX;
     const height = bounds.maxY - bounds.minY;
-    const rx = width / 2;
-    const ry = height / 2;
+    const rx = Math.max(1, (width - strokeWidth * 2) / 2);
+    const ry = Math.max(1, (height - strokeWidth * 2) / 2);
 
     if (rx > 5 && ry > 5) {
       let ellipseDev = 0;
@@ -235,27 +235,31 @@ export class ShapeRecognizer {
       uniqueVertices.push(pt);
     }
 
-    if (uniqueVertices.length === 3) {
-      const shape: ShapeObject = {
-        id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        elementType: "shape",
-        type: "triangle",
-        color,
-        strokeWidth,
-        bounds,
-        geometryData: {
-          x1: uniqueVertices[0].x,
-          y1: uniqueVertices[0].y,
-          x2: uniqueVertices[1].x,
-          y2: uniqueVertices[1].y,
-          x3: uniqueVertices[2].x,
-          y3: uniqueVertices[2].y
-        }
-      };
-      return { shape, confidence: 0.85 };
+    if (uniqueVertices.length === 3 && confidenceThreshold <= 0.85) {
+      const [v0, v1, v2] = uniqueVertices;
+      const area = Math.abs((v1.x - v0.x) * (v2.y - v0.y) - (v2.x - v0.x) * (v1.y - v0.y)) / 2;
+      if (area > diag * 4) {
+        const shape: ShapeObject = {
+          id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          elementType: "shape",
+          type: "triangle",
+          color,
+          strokeWidth,
+          bounds,
+          geometryData: {
+            x1: v0.x,
+            y1: v0.y,
+            x2: v1.x,
+            y2: v1.y,
+            x3: v2.x,
+            y3: v2.y
+          }
+        };
+        return { shape, confidence: 0.85 };
+      }
     }
 
-    if (uniqueVertices.length === 4) {
+    if (uniqueVertices.length === 4 && confidenceThreshold <= 0.88) {
       const shape: ShapeObject = {
         id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         elementType: "shape",
@@ -266,8 +270,8 @@ export class ShapeRecognizer {
         geometryData: {
           x: bounds.minX + strokeWidth,
           y: bounds.minY + strokeWidth,
-          width: width - strokeWidth * 2,
-          height: height - strokeWidth * 2
+          width: Math.max(4, width - strokeWidth * 2),
+          height: Math.max(4, height - strokeWidth * 2)
         }
       };
       return { shape, confidence: 0.88 };
@@ -306,7 +310,7 @@ export class ShapeRecognizer {
       case "circle": {
         const { cx, cy, r } = shape.geometryData;
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.arc(cx, cy, Math.max(0.5, r ?? 0.5), 0, Math.PI * 2);
         if (shape.fillColor) ctx.fill();
         ctx.stroke();
         break;
@@ -332,15 +336,17 @@ export class ShapeRecognizer {
 
       case "rounded-rectangle": {
         const { x, y, width, height } = shape.geometryData;
-        const rad = Math.min(Math.max(2, shape.geometryData.radius || 10), width / 2, height / 2);
+        const w = Math.max(0, width ?? 0);
+        const h = Math.max(0, height ?? 0);
+        const rad = Math.max(0, Math.min(Math.max(2, shape.geometryData.radius || 10), w / 2, h / 2));
         ctx.beginPath();
         ctx.moveTo(x + rad, y);
-        ctx.lineTo(x + width - rad, y);
-        ctx.quadraticCurveTo(x + width, y, x + width, y + rad);
-        ctx.lineTo(x + width, y + height - rad);
-        ctx.quadraticCurveTo(x + width, y + height, x + width - rad, y + height);
-        ctx.lineTo(x + rad, y + height);
-        ctx.quadraticCurveTo(x, y + height, x, y + height - rad);
+        ctx.lineTo(x + w - rad, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+        ctx.lineTo(x + w, y + h - rad);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+        ctx.lineTo(x + rad, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
         ctx.lineTo(x, y + rad);
         ctx.quadraticCurveTo(x, y, x + rad, y);
         ctx.closePath();
@@ -398,6 +404,9 @@ export class ShapeRecognizer {
         ctx.lineTo(x2, y2);
         ctx.stroke();
 
+        if (typeof ctx.setLineDash === "function") {
+          ctx.setLineDash([]);
+        }
         ctx.beginPath();
         ctx.moveTo(x2, y2);
         ctx.lineTo(

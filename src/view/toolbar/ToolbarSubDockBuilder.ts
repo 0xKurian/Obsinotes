@@ -210,6 +210,7 @@ export function buildToolbarSubDock(
     const chip = stickyControlsContainer.createEl("button", {
       cls: item.color === currentStickyColor ? "notepages-sticky-chip is-active" : "notepages-sticky-chip"
     });
+    chip.setAttribute("data-color", item.color.toLowerCase());
     chip.setCssStyles({ backgroundColor: item.color });
     chip.setAttribute("title", `Sticky Note ${item.title}`);
     stickyChips.push(chip);
@@ -233,6 +234,13 @@ export function buildToolbarSubDock(
     cls: "notepages-palette-group notepages-subdock-group notepages-presets-group"
   });
 
+  let currentPresets: PenPreset[] = [];
+  const chipRefs: Array<{
+    chip: HTMLElement;
+    swatch: HTMLElement;
+    widthEl: HTMLElement;
+  }> = [];
+
   const renderPenPresets = (
     presets: PenPreset[],
     activeTool: string,
@@ -240,28 +248,52 @@ export function buildToolbarSubDock(
     activeWidth: number,
     activePattern: StrokePattern
   ) => {
-    penPresetsContainer.empty();
+    currentPresets = presets;
     if (presets.length === 0) {
+      penPresetsContainer.empty();
+      chipRefs.length = 0;
       penPresetsContainer.toggleClass("is-hidden", true);
       penPresetsContainer.toggle(false);
       return;
     }
 
     const activePatternNormalized = activePattern || "solid";
-    presets.forEach((preset, idx) => {
+    const isPresetActive = (preset: PenPreset): boolean => {
       const presetPattern = preset.strokePattern ?? "solid";
       const isPenFamilyMatch =
         preset.tool === activeTool ||
         ((preset.tool === "pen" || preset.tool === "pressure" || preset.tool === "fountain") &&
           (activeTool === "pen" || activeTool === "pressure" || activeTool === "fountain"));
-      const isActive =
+      return (
         isPenFamilyMatch &&
         preset.color.toLowerCase() === activeColor.toLowerCase() &&
         Math.abs(preset.width - activeWidth) < 0.26 &&
-        presetPattern === activePatternNormalized;
+        presetPattern === activePatternNormalized
+      );
+    };
 
+    if (chipRefs.length === presets.length) {
+      presets.forEach((preset, idx) => {
+        const ref = chipRefs[idx];
+        ref.chip.toggleClass("is-active", isPresetActive(preset));
+        ref.chip.setAttribute(
+          "title",
+          `${preset.label} (${preset.width} pt) — click to apply, shift-click or right-click to save current pen`
+        );
+        ref.swatch.setCssStyles({ backgroundColor: preset.color });
+        ref.swatch.toggleClass("is-pencil", preset.tool === "pencil");
+        ref.swatch.toggleClass("is-highlighter", preset.tool === "highlighter");
+        ref.widthEl.setText(String(Math.round(preset.width * 10) / 10));
+      });
+      return;
+    }
+
+    penPresetsContainer.empty();
+    chipRefs.length = 0;
+
+    presets.forEach((preset, idx) => {
       const chip = penPresetsContainer.createEl("button", {
-        cls: isActive ? "notepages-preset-chip is-active" : "notepages-preset-chip"
+        cls: isPresetActive(preset) ? "notepages-preset-chip is-active" : "notepages-preset-chip"
       });
       chip.setAttribute("type", "button");
       chip.setAttribute(
@@ -275,17 +307,23 @@ export function buildToolbarSubDock(
       } else if (preset.tool === "highlighter") {
         swatch.addClass("is-highlighter");
       }
-      chip.createSpan({
+      const widthEl = chip.createSpan({
         cls: "notepages-preset-width",
         text: String(Math.round(preset.width * 10) / 10)
       });
 
+      chipRefs.push({ chip, swatch, widthEl });
+
       delegate.registerDomEvent(chip, "click", (e: MouseEvent) => {
+        const targetPreset = currentPresets[idx];
+        if (!targetPreset) {
+          return;
+        }
         if (e.shiftKey) {
           delegate.onSavePenPreset?.(idx);
           return;
         }
-        delegate.onSelectPenPreset?.(preset);
+        delegate.onSelectPenPreset?.(targetPreset);
       });
       delegate.registerDomEvent(chip, "contextmenu", (e: MouseEvent) => {
         e.preventDefault();
@@ -316,6 +354,7 @@ export function buildToolbarSubDock(
     const chip = colorPaletteContainer.createEl("button", {
       cls: color === currentActiveColor ? "notepages-color-chip is-active" : "notepages-color-chip"
     });
+    chip.setAttribute("data-color", color.toLowerCase());
     chip.setCssStyles({ backgroundColor: color });
     chip.setAttribute("title", `Select color ${color}`);
     colorChips.push(chip);

@@ -223,16 +223,22 @@ export class SelectionEngine {
       }
     }
 
+    let interiorFallbackShape: ShapeObject | undefined;
     for (let i = candidateShapes.length - 1; i >= 0; i--) {
       const sh = candidateShapes[i];
-      const b = sh.bounds;
-      if (
-        x >= b.minX - tolerance &&
-        x <= b.maxX + tolerance &&
-        y >= b.minY - tolerance &&
-        y <= b.maxY + tolerance
-      ) {
+      if (EraserEngine.hitTestShape(sh, x, y, tolerance)) {
         return { shape: sh };
+      }
+      if (!interiorFallbackShape && sh.type !== "line" && sh.type !== "arrow") {
+        const b = sh.bounds;
+        if (
+          x >= b.minX - tolerance &&
+          x <= b.maxX + tolerance &&
+          y >= b.minY - tolerance &&
+          y <= b.maxY + tolerance
+        ) {
+          interiorFallbackShape = sh;
+        }
       }
     }
 
@@ -250,6 +256,10 @@ export class SelectionEngine {
       if (x >= img.x - tolerance && x <= img.x + img.width + tolerance && y >= img.y - tolerance && y <= img.y + img.height + tolerance) {
         return { image: img };
       }
+    }
+
+    if (interiorFallbackShape) {
+      return { shape: interiorFallbackShape };
     }
 
     return null;

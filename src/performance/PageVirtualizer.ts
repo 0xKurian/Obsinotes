@@ -1,7 +1,7 @@
 export interface PageVirtualizerDelegate {
   getTotalPages(): number;
   mountPageCanvases(pageNumber: number): void;
-  unmountPageCanvases(pageNumber: number): void;
+  unmountPageCanvases(pageNumber: number): boolean | void;
   isPageDrawing?(pageNumber: number): boolean;
 }
 
@@ -82,7 +82,10 @@ export class PageVirtualizer {
       return;
     }
 
-    this.destroy();
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
 
     this.observer = new IntersectionObserver(
       (entries) => {
@@ -101,6 +104,10 @@ export class PageVirtualizer {
   }
 
   observePage(pageNumber: number, element: HTMLElement, isMounted: boolean = true): void {
+    const prevEl = this.observedElements.get(pageNumber);
+    if (prevEl && prevEl !== element && this.observer) {
+      this.observer.unobserve(prevEl);
+    }
     this.observedElements.set(pageNumber, element);
     if (isMounted) {
       this.mountedPages.add(pageNumber);
@@ -207,8 +214,10 @@ export class PageVirtualizer {
       if (!pagesToKeep.has(p)) {
         const isDrawing = this.delegate.isPageDrawing?.(p) ?? false;
         if (!isDrawing) {
-          this.mountedPages.delete(p);
-          this.delegate.unmountPageCanvases(p);
+          const didUnmount = this.delegate.unmountPageCanvases(p);
+          if (didUnmount !== false) {
+            this.mountedPages.delete(p);
+          }
         }
       }
     }

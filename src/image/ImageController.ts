@@ -6,16 +6,24 @@ export interface ImageControllerCallbacks {
   onImageModified: (page: PageData, prevImage: ImageObject, nextImage: ImageObject) => void;
   onImageDeleted: (page: PageData, imageId: string) => void;
   getActiveTool?: () => string;
+  canInteractWithDomObjects?: () => boolean;
 }
 
 export class ImageController {
   callbacks: ImageControllerCallbacks;
   private app: App;
   private selectedImageId: string | null = null;
+  private activeSessionCleanup: (() => void) | null = null;
 
   constructor(app: App, callbacks: ImageControllerCallbacks) {
     this.app = app;
     this.callbacks = callbacks;
+  }
+
+  destroy(): void {
+    this.activeSessionCleanup?.();
+    this.activeSessionCleanup = null;
+    this.selectedImageId = null;
   }
 
   getSelectedImageId(): string | null {
@@ -69,6 +77,8 @@ export class ImageController {
     pageEl: HTMLElement,
     getResourcePath: (vaultPath: string) => string
   ): void {
+    this.activeSessionCleanup?.();
+    this.activeSessionCleanup = null;
     let layer = pageEl.querySelector<HTMLElement>(".notepages-image-layer");
     if (!layer) {
       layer = pageEl.createDiv({ cls: "notepages-image-layer" });
@@ -87,17 +97,22 @@ export class ImageController {
     }
 
     const activeTool = this.callbacks.getActiveTool ? this.callbacks.getActiveTool() : "";
+    const canInteract = this.callbacks.canInteractWithDomObjects
+      ? this.callbacks.canInteractWithDomObjects()
+      : activeTool === "select" || activeTool === "image";
     const isDrawingTool =
-      activeTool === "pen" ||
-      activeTool === "pressure" ||
-      activeTool === "fountain" ||
-      activeTool === "highlighter" ||
-      activeTool === "eraser" ||
-      activeTool === "shape" ||
-      activeTool === "connector" ||
-      activeTool === "text" ||
-      activeTool === "sticky" ||
-      activeTool === "lasso";
+      !canInteract &&
+      (activeTool === "pen" ||
+        activeTool === "pressure" ||
+        activeTool === "fountain" ||
+        activeTool === "pencil" ||
+        activeTool === "highlighter" ||
+        activeTool === "eraser" ||
+        activeTool === "shape" ||
+        activeTool === "connector" ||
+        activeTool === "text" ||
+        activeTool === "sticky" ||
+        activeTool === "lasso");
 
     page.images.forEach((img) => {
       const isSelected = this.selectedImageId === img.id;
@@ -117,6 +132,12 @@ export class ImageController {
 
       const imgEl = frame.createEl("img", { cls: "notepages-image-content" });
       imgEl.draggable = false;
+      imgEl.loading = "lazy";
+      imgEl.decoding = "async";
+      imgEl.addEventListener("error", () => {
+        frame.addClass("is-broken");
+        imgEl.setAttribute("alt", `Missing image: ${img.vaultPath}`);
+      });
       imgEl.src = getResourcePath(img.vaultPath);
 
       if (isSelected && !isDrawingTool) {
@@ -176,8 +197,13 @@ export class ImageController {
           let currentY = initY;
           let currentW = initW;
           let currentH = initH;
+          const activePointerId = e.pointerId;
+          let cleanedUp = false;
 
           const onPointerMove = (moveEv: PointerEvent) => {
+            if (moveEv.pointerId !== activePointerId) {
+              return;
+            }
             const dx = (moveEv.clientX - startClientX) * scaleX;
             const dy = (moveEv.clientY - startClientY) * scaleY;
 
@@ -253,20 +279,30 @@ export class ImageController {
             frame.style.height = `${currentH}px`;
           };
 
-          const onPointerUp = (upEv: PointerEvent) => {
+          const finishResize = (commit: boolean) => {
+            if (cleanedUp) {
+              return;
+            }
+            cleanedUp = true;
             try {
-              target.releasePointerCapture(upEv.pointerId);
+              target.releasePointerCapture(activePointerId);
             } catch (err) {
               void err;
             }
             window.removeEventListener("pointermove", onPointerMove);
             window.removeEventListener("pointerup", onPointerUp);
+            window.removeEventListener("pointercancel", onPointerCancel);
+            window.removeEventListener("blur", onBlur);
+            if (this.activeSessionCleanup === abortResize) {
+              this.activeSessionCleanup = null;
+            }
 
             if (
-              currentW !== initW ||
-              currentH !== initH ||
-              currentX !== initX ||
-              currentY !== initY
+              commit &&
+              (currentW !== initW ||
+                currentH !== initH ||
+                currentX !== initX ||
+                currentY !== initY)
             ) {
               const prevImg: ImageObject = { ...img };
               img.x = currentX;
@@ -283,8 +319,28 @@ export class ImageController {
             }
           };
 
+          const onPointerUp = (upEv: PointerEvent) => {
+            if (upEv.pointerId !== activePointerId) {
+              return;
+            }
+            finishResize(true);
+          };
+          const onPointerCancel = (cancelEv: PointerEvent) => {
+            if (cancelEv.pointerId !== activePointerId) {
+              return;
+            }
+            finishResize(false);
+          };
+          const onBlur = () => finishResize(false);
+          const abortResize = () => finishResize(false);
+
+          this.activeSessionCleanup?.();
+          this.activeSessionCleanup = abortResize;
+
           window.addEventListener("pointermove", onPointerMove);
           window.addEventListener("pointerup", onPointerUp);
+          window.addEventListener("pointercancel", onPointerCancel);
+          window.addEventListener("blur", onBlur);
           return;
         }
 
@@ -313,8 +369,13 @@ export class ImageController {
 
         let currentX = initX;
         let currentY = initY;
+        const activePointerId = e.pointerId;
+        let cleanedUp = false;
 
         const onDragMove = (moveEv: PointerEvent) => {
+          if (moveEv.pointerId !== activePointerId) {
+            return;
+          }
           const dx = (moveEv.clientX - startClientX) * scaleX;
           const dy = (moveEv.clientY - startClientY) * scaleY;
           currentX = Math.max(0, Math.min(initX + dx, page.dimensions.width - img.width));
@@ -323,16 +384,25 @@ export class ImageController {
           frame.style.top = `${currentY}px`;
         };
 
-        const onDragUp = (upEv: PointerEvent) => {
+        const finishDrag = (commit: boolean) => {
+          if (cleanedUp) {
+            return;
+          }
+          cleanedUp = true;
           try {
-            frame.releasePointerCapture(upEv.pointerId);
+            frame.releasePointerCapture(activePointerId);
           } catch (err) {
             void err;
           }
           window.removeEventListener("pointermove", onDragMove);
           window.removeEventListener("pointerup", onDragUp);
+          window.removeEventListener("pointercancel", onDragCancel);
+          window.removeEventListener("blur", onDragBlur);
+          if (this.activeSessionCleanup === abortDrag) {
+            this.activeSessionCleanup = null;
+          }
 
-          if (currentX !== initX || currentY !== initY) {
+          if (commit && (currentX !== initX || currentY !== initY)) {
             const prevImg: ImageObject = { ...img };
             img.x = currentX;
             img.y = currentY;
@@ -346,8 +416,28 @@ export class ImageController {
           }
         };
 
+        const onDragUp = (upEv: PointerEvent) => {
+          if (upEv.pointerId !== activePointerId) {
+            return;
+          }
+          finishDrag(true);
+        };
+        const onDragCancel = (cancelEv: PointerEvent) => {
+          if (cancelEv.pointerId !== activePointerId) {
+            return;
+          }
+          finishDrag(false);
+        };
+        const onDragBlur = () => finishDrag(false);
+        const abortDrag = () => finishDrag(false);
+
+        this.activeSessionCleanup?.();
+        this.activeSessionCleanup = abortDrag;
+
         window.addEventListener("pointermove", onDragMove);
         window.addEventListener("pointerup", onDragUp);
+        window.addEventListener("pointercancel", onDragCancel);
+        window.addEventListener("blur", onDragBlur);
       });
 
       if (layer) {
@@ -384,13 +474,24 @@ export class ImageController {
     };
   }
 
+  private static getExtensionFromMime(mime: string): string {
+    const lower = (mime || "").toLowerCase();
+    if (lower.includes("png")) return "png";
+    if (lower.includes("webp")) return "webp";
+    if (lower.includes("gif")) return "gif";
+    if (lower.includes("svg")) return "svg";
+    if (lower.includes("bmp")) return "bmp";
+    return "jpg";
+  }
+
   async saveBlobToVault(blob: Blob, baseName: string, sourcePath: string): Promise<string> {
     const buffer = await blob.arrayBuffer();
     const folder = "attachments";
+    const ext = ImageController.getExtensionFromMime(blob.type);
     if (this.app.fileManager && this.app.fileManager.getAvailablePathForAttachment) {
       try {
         const availablePath = await this.app.fileManager.getAvailablePathForAttachment(
-          `${baseName}.${blob.type.includes("png") ? "png" : "jpg"}`,
+          `${baseName}.${ext}`,
           sourcePath
         );
         await this.app.vault.createBinary(availablePath, buffer);
@@ -407,8 +508,8 @@ export class ImageController {
       }
     }
 
-    const ext = blob.type.includes("png") ? "png" : "jpg";
-    const targetPath = `${folder}/${baseName}_${Date.now()}.${ext}`;
+    const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const targetPath = `${folder}/${baseName}_${uniqueSuffix}.${ext}`;
     await this.app.vault.createBinary(targetPath, buffer);
     return targetPath;
   }

@@ -98,35 +98,68 @@ export class PageSizeModal extends Modal {
           });
       });
 
+    let rawWidthStr = String(this.customWidth);
+    let rawHeightStr = String(this.customHeight);
+    let submitBtn!: HTMLButtonElement;
+    let errorEl!: HTMLElement;
+
+    const validateCustomDims = (): boolean => {
+      if (this.selectedPreset !== "Custom") {
+        if (errorEl) errorEl.addClass("is-hidden");
+        if (submitBtn) submitBtn.disabled = false;
+        return true;
+      }
+      const w = parseFloat(rawWidthStr);
+      const h = parseFloat(rawHeightStr);
+      const valid =
+        Number.isFinite(w) &&
+        Number.isFinite(h) &&
+        w >= 100 &&
+        w <= 4000 &&
+        h >= 100 &&
+        h <= 4000;
+      if (valid) {
+        this.customWidth = Math.round(w);
+        this.customHeight = Math.round(h);
+        if (errorEl) errorEl.addClass("is-hidden");
+        if (submitBtn) submitBtn.disabled = false;
+      } else {
+        if (errorEl) {
+          errorEl.setText("Width and height must be between 100 and 4000 pt.");
+          errorEl.removeClass("is-hidden");
+        }
+        if (submitBtn) submitBtn.disabled = true;
+      }
+      return valid;
+    };
+
     this.widthSettingEl = new Setting(contentEl)
       .setName("Width (pt)")
-      .setDesc("Page width in points (1 pt ≈ 0.353 mm).")
+      .setDesc("Page width in points (100–4000 pt; 1 pt ≈ 0.353 mm).")
       .addText((text) => {
         text
           .setValue(String(this.customWidth))
           .setDisabled(this.selectedPreset !== "Custom")
           .onChange((val) => {
-            const num = parseFloat(val);
-            if (Number.isFinite(num) && num > 50) {
-              this.customWidth = Math.round(num);
-            }
+            rawWidthStr = val;
+            validateCustomDims();
           });
       });
 
     this.heightSettingEl = new Setting(contentEl)
       .setName("Height (pt)")
-      .setDesc("Page height in points.")
+      .setDesc("Page height in points (100–4000 pt).")
       .addText((text) => {
         text
           .setValue(String(this.customHeight))
           .setDisabled(this.selectedPreset !== "Custom")
           .onChange((val) => {
-            const num = parseFloat(val);
-            if (Number.isFinite(num) && num > 50) {
-              this.customHeight = Math.round(num);
-            }
+            rawHeightStr = val;
+            validateCustomDims();
           });
       });
+
+    errorEl = contentEl.createDiv({ cls: "notepages-page-size-error is-hidden" });
 
     new Setting(contentEl)
       .setName("Scope")
@@ -145,16 +178,13 @@ export class PageSizeModal extends Modal {
     const cancelBtn = footer.createEl("button", { text: "Cancel" });
     cancelBtn.addEventListener("click", () => this.close());
 
-    const submitBtn = footer.createEl("button", {
-      text: "Apply size",
-      cls: "mod-cta"
-    });
-    submitBtn.addEventListener("click", () => {
+    const submit = () => {
+      if (!validateCustomDims()) return;
       let finalDimensions: PageDimensions;
       if (this.selectedPreset === "Custom") {
         finalDimensions = {
-          width: Math.max(100, this.customWidth),
-          height: Math.max(100, this.customHeight),
+          width: Math.min(4000, Math.max(100, this.customWidth)),
+          height: Math.min(4000, Math.max(100, this.customHeight)),
           unit: "pt"
         };
       } else {
@@ -168,6 +198,19 @@ export class PageSizeModal extends Modal {
         applyToAll: this.applyToAll
       });
       this.close();
+    };
+
+    submitBtn = footer.createEl("button", {
+      text: "Apply size",
+      cls: "mod-cta"
+    });
+    submitBtn.addEventListener("click", submit);
+
+    contentEl.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !submitBtn.disabled) {
+        e.preventDefault();
+        submit();
+      }
     });
   }
 

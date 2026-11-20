@@ -201,6 +201,22 @@ export function findHotkeyConflicts(
     const resolved = resolveHotkeyBinding(meta.id, customHotkeys);
     if (resolved && areHotkeyBindingsEqual(candidate, resolved)) {
       conflicts.push(meta.id);
+      continue;
+    }
+    if (
+      meta.id === "zoomIn" &&
+      resolved &&
+      areHotkeyBindingsEqual(resolved, { modifiers: [], key: "=" }) &&
+      areHotkeyBindingsEqual(candidate, { modifiers: [], key: "+" })
+    ) {
+      conflicts.push(meta.id);
+    } else if (
+      meta.id === "deleteSelection" &&
+      resolved &&
+      areHotkeyBindingsEqual(resolved, { modifiers: [], key: "Delete" }) &&
+      areHotkeyBindingsEqual(candidate, { modifiers: [], key: "Backspace" })
+    ) {
+      conflicts.push(meta.id);
     }
   }
   return conflicts;
@@ -240,13 +256,16 @@ export function sanitizeHotkeyMap(raw: unknown): HotkeyMap {
     }
     if (entry && typeof entry === "object" && !Array.isArray(entry)) {
       const candidate = entry as { modifiers?: unknown; key?: unknown };
-      if (typeof candidate.key === "string" && candidate.key.trim().length > 0) {
-        const rawMods = Array.isArray(candidate.modifiers) ? candidate.modifiers : [];
-        const validMods = rawMods.filter((m): m is Modifier => typeof m === "string" && VALID_MODIFIERS.has(m));
-        result[meta.id] = {
-          modifiers: sortModifiers(validMods),
-          key: normalizeKeyName(candidate.key)
-        };
+      if (typeof candidate.key === "string") {
+        const normalizedKey = normalizeKeyName(candidate.key);
+        if (normalizedKey.length > 0) {
+          const rawMods = Array.isArray(candidate.modifiers) ? candidate.modifiers : [];
+          const validMods = rawMods.filter((m): m is Modifier => typeof m === "string" && VALID_MODIFIERS.has(m));
+          result[meta.id] = {
+            modifiers: sortModifiers(validMods),
+            key: normalizedKey
+          };
+        }
       }
     }
   }

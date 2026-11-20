@@ -66,6 +66,7 @@ export class ExportModal extends Modal {
             if (customRangeSetting) {
               customRangeSetting.settingEl.toggle(this.options.pageRange === "custom");
             }
+            this.updateVisibility();
           });
       });
 
@@ -78,6 +79,7 @@ export class ExportModal extends Modal {
           .setValue(this.options.customPageRange || `1-${this.totalPages}`)
           .onChange((value) => {
             this.options.customPageRange = value;
+            this.updateVisibility();
           });
       });
     customRangeSetting.settingEl.toggle(this.options.pageRange === "custom");
@@ -131,6 +133,25 @@ export class ExportModal extends Modal {
           });
       });
 
+    const errorEl = contentEl.createDiv({ cls: "notepages-page-size-error is-hidden" });
+
+    const isCustomRangeValid = (): boolean => {
+      if (this.options.pageRange !== "custom") return true;
+      const raw = (this.options.customPageRange || "").trim();
+      if (!raw) return false;
+      const parts = raw.split(",");
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) return false;
+        const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(trimmed);
+        if (!m) return false;
+        const start = parseInt(m[1], 10);
+        const end = m[2] ? parseInt(m[2], 10) : start;
+        if (start < 1 || end < start || end > this.totalPages) return false;
+      }
+      return true;
+    };
+
     const buttonRow = contentEl.createDiv({ cls: "notepages-export-actions" });
 
     const cancelBtn = buttonRow.createEl("button", { text: "Cancel" });
@@ -142,14 +163,38 @@ export class ExportModal extends Modal {
       cls: "mod-cta",
       text: "Export"
     });
+
+    const syncValidation = () => {
+      const valid = isCustomRangeValid();
+      exportBtn.disabled = !valid;
+      if (!valid) {
+        errorEl.setText(`Enter valid page numbers between 1 and ${this.totalPages} (e.g. 1-3, 5).`);
+        errorEl.removeClass("is-hidden");
+      } else {
+        errorEl.addClass("is-hidden");
+      }
+    };
+
     exportBtn.addEventListener("click", () => {
+      if (!isCustomRangeValid()) {
+        syncValidation();
+        return;
+      }
       exportBtn.disabled = true;
+      cancelBtn.disabled = true;
       exportBtn.setText("Exporting...");
+      errorEl.addClass("is-hidden");
       void (async () => {
         try {
           await this.onExport(this.options);
-        } finally {
           this.close();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          errorEl.setText(`Export failed: ${message}`);
+          errorEl.removeClass("is-hidden");
+          exportBtn.disabled = false;
+          cancelBtn.disabled = false;
+          exportBtn.setText("Export");
         }
       })();
     });
@@ -157,6 +202,7 @@ export class ExportModal extends Modal {
     this.updateVisibility = () => {
       const isSvg = this.options.format === "svg";
       resolutionSetting.settingEl.toggle(!isSvg);
+      syncValidation();
     };
     this.updateVisibility();
   }

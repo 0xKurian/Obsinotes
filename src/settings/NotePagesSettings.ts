@@ -11,6 +11,7 @@ import {
   ToolType,
   ToolbarPlacement
 } from "../types";
+import { sanitizeHotkeyMap } from "./HotkeyHelper";
 
 const PRESET_INK_TOOLS: ReadonlySet<ToolType> = new Set([
   "pen",
@@ -141,3 +142,119 @@ export const DEFAULT_SETTINGS: NotePagesSettings = {
   penPresets: createDefaultPenPresets(),
   customHotkeys: {}
 };
+
+export const FALLBACK_FEEDBACK_URL = "https://github.com/0xKurian/Obsinotes/issues/new/choose";
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+}
+
+/**
+ * Sanitize persisted plugin settings so corrupt/out-of-range values cannot break UI or rendering.
+ */
+export function sanitizeSettings(raw: unknown): NotePagesSettings {
+  const input =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Partial<NotePagesSettings>) : {};
+  const merged: NotePagesSettings = Object.assign({}, DEFAULT_SETTINGS, input);
+
+  merged.defaultPenWidth = clampNumber(input.defaultPenWidth, DEFAULT_SETTINGS.defaultPenWidth, 0.5, 15);
+  merged.defaultHighlighterWidth = clampNumber(
+    input.defaultHighlighterWidth,
+    DEFAULT_SETTINGS.defaultHighlighterWidth,
+    4,
+    36
+  );
+  merged.defaultEraserRadius = clampNumber(
+    input.defaultEraserRadius,
+    DEFAULT_SETTINGS.defaultEraserRadius,
+    4,
+    50
+  );
+  merged.palmRejectionDelayMs = clampNumber(
+    input.palmRejectionDelayMs,
+    DEFAULT_SETTINGS.palmRejectionDelayMs,
+    0,
+    1000
+  );
+  merged.autosaveIntervalMs = clampNumber(
+    input.autosaveIntervalMs,
+    DEFAULT_SETTINGS.autosaveIntervalMs,
+    300,
+    30000
+  );
+  merged.defaultLineSpacing = clampNumber(
+    input.defaultLineSpacing,
+    DEFAULT_SETTINGS.defaultLineSpacing,
+    8,
+    120
+  );
+  merged.toolbarScale = clampNumber(input.toolbarScale, DEFAULT_SETTINGS.toolbarScale, 0.75, 1.4);
+
+  if (input.toolbarMaxWidth !== null && input.toolbarMaxWidth !== undefined) {
+    merged.toolbarMaxWidth = clampNumber(input.toolbarMaxWidth, 960, 280, 2400);
+  } else {
+    merged.toolbarMaxWidth = null;
+  }
+
+  if (
+    input.toolbarFloatingPos &&
+    typeof input.toolbarFloatingPos === "object" &&
+    typeof input.toolbarFloatingPos.left === "number" &&
+    Number.isFinite(input.toolbarFloatingPos.left) &&
+    typeof input.toolbarFloatingPos.top === "number" &&
+    Number.isFinite(input.toolbarFloatingPos.top)
+  ) {
+    merged.toolbarFloatingPos = {
+      left: Math.max(0, input.toolbarFloatingPos.left),
+      top: Math.max(0, input.toolbarFloatingPos.top)
+    };
+  } else {
+    merged.toolbarFloatingPos = null;
+  }
+
+  merged.defaultEraserMode = input.defaultEraserMode === "precision" ? "precision" : "stroke";
+  merged.stylusButtonAction =
+    input.stylusButtonAction === "toggle" || input.stylusButtonAction === "off"
+      ? input.stylusButtonAction
+      : "hold";
+  merged.toolbarPlacement =
+    input.toolbarPlacement === "bottom" ||
+    input.toolbarPlacement === "left" ||
+    input.toolbarPlacement === "right"
+      ? input.toolbarPlacement
+      : "top";
+
+  merged.penPresets = sanitizePenPresets(input.penPresets);
+  merged.customHotkeys = sanitizeHotkeyMap(input.customHotkeys);
+
+  return merged;
+}
+
+/**
+ * Validate that an external URL uses http(s) before opening in a new window with noopener/noreferrer.
+ */
+export function openSafeExternalUrl(rawUrl: string, fallbackUrl = FALLBACK_FEEDBACK_URL): boolean {
+  const candidate = (rawUrl || "").trim() || fallbackUrl;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+      return true;
+    }
+  } catch {
+    // Fall through to fallback
+  }
+  if (candidate !== fallbackUrl) {
+    try {
+      const parsedFallback = new URL(fallbackUrl);
+      if (parsedFallback.protocol === "https:" || parsedFallback.protocol === "http:") {
+        window.open(parsedFallback.toString(), "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return false;
+}

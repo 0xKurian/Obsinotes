@@ -20,8 +20,12 @@ export function validateNotebookTitle(
     return { valid: false, error: "Notebook title cannot be empty." };
   }
 
-  if (trimmed.startsWith(".")) {
-    return { valid: false, error: "Title cannot start with a dot (.)" };
+  if (trimmed.startsWith(".") || trimmed.endsWith(".")) {
+    return { valid: false, error: "Title cannot start or end with a dot (.)" };
+  }
+
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(trimmed)) {
+    return { valid: false, error: `"${trimmed}" is a reserved filename.` };
   }
 
   const illegalCharsRegex = /[\\/:*?"<>|]/;
@@ -60,6 +64,8 @@ export class QuickRenameModal extends Modal {
   private inputEl!: HTMLInputElement;
   private errorEl!: HTMLElement;
   private submitBtn!: HTMLButtonElement;
+  private focusTimer: number | null = null;
+  private isSubmitting: boolean = false;
 
   constructor(
     app: App,
@@ -130,7 +136,8 @@ export class QuickRenameModal extends Modal {
       }
     });
 
-    window.setTimeout(() => {
+    this.focusTimer = window.setTimeout(() => {
+      this.focusTimer = null;
       this.inputEl.focus();
       this.inputEl.select();
     }, 50);
@@ -153,7 +160,7 @@ export class QuickRenameModal extends Modal {
   }
 
   private async handleSubmit(): Promise<void> {
-    if (!this.validateCurrentInput()) {
+    if (this.isSubmitting || !this.validateCurrentInput()) {
       return;
     }
     const validation = validateNotebookTitle(this.inputEl.value, this.existingFileNames, this.currentTitle);
@@ -164,6 +171,7 @@ export class QuickRenameModal extends Modal {
       return;
     }
 
+    this.isSubmitting = true;
     this.submitBtn.disabled = true;
     try {
       const result = await this.onRename(sanitizedTitle);
@@ -171,11 +179,16 @@ export class QuickRenameModal extends Modal {
         this.close();
       }
     } finally {
+      this.isSubmitting = false;
       this.submitBtn.disabled = false;
     }
   }
 
   onClose(): void {
+    if (this.focusTimer !== null) {
+      window.clearTimeout(this.focusTimer);
+      this.focusTimer = null;
+    }
     const { contentEl } = this;
     contentEl.empty();
   }

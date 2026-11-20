@@ -32,6 +32,10 @@ export class PageGridOverviewModal extends Modal {
   private batchDuplicateBtn?: HTMLButtonElement;
   private batchDeleteBtn?: HTMLButtonElement;
   private clearSelBtn?: HTMLButtonElement;
+  private previewObserver: IntersectionObserver | null = null;
+  private searchDebounceTimer: number | null = null;
+  private sharedOffscreenCanvas: HTMLCanvasElement | null = null;
+  private cardCheckboxes: Map<string, { card: HTMLElement; checkbox: HTMLInputElement }> = new Map();
 
   constructor(app: App, delegate: PageGridOverviewDelegate) {
     super(app);
@@ -92,7 +96,13 @@ export class PageGridOverviewModal extends Modal {
     searchInput.setAttribute("placeholder", "Filter by page number or title...");
     searchInput.addEventListener("input", () => {
       this.searchQuery = searchInput.value;
-      this.renderGrid();
+      if (this.searchDebounceTimer !== null) {
+        window.clearTimeout(this.searchDebounceTimer);
+      }
+      this.searchDebounceTimer = window.setTimeout(() => {
+        this.searchDebounceTimer = null;
+        this.renderGrid();
+      }, 150);
     });
 
     const batchBar = contentEl.createDiv({ cls: "notepages-grid-batch-bar" });
@@ -106,8 +116,13 @@ export class PageGridOverviewModal extends Modal {
     selectAllBtn.addEventListener("click", () => {
       for (const page of this.getFilteredPages()) {
         this.selectedPageIds.add(page.id);
+        const ref = this.cardCheckboxes.get(page.id);
+        if (ref) {
+          ref.checkbox.checked = true;
+          ref.card.toggleClass("is-selected", true);
+        }
       }
-      this.renderGrid();
+      this.updateBatchToolbarState();
     });
 
     this.clearSelBtn = selInfoGroup.createEl("button", {
@@ -117,7 +132,11 @@ export class PageGridOverviewModal extends Modal {
     this.clearSelBtn.setAttribute("type", "button");
     this.clearSelBtn.addEventListener("click", () => {
       this.selectedPageIds.clear();
-      this.renderGrid();
+      this.cardCheckboxes.forEach((ref) => {
+        ref.checkbox.checked = false;
+        ref.card.toggleClass("is-selected", false);
+      });
+      this.updateBatchToolbarState();
     });
 
     this.batchCountEl = selInfoGroup.createSpan({ cls: "notepages-grid-batch-count" });
@@ -161,12 +180,14 @@ export class PageGridOverviewModal extends Modal {
       this.renderGrid();
     });
 
-    this.batchDeleteBtn = batchActionGroup.createEl("button", {
+    let pendingBatchDeleteTimer: number | null = null;
+    const batchDeleteBtn = batchActionGroup.createEl("button", {
       cls: "notepages-grid-batch-btn mod-warning",
       text: "Delete"
     });
-    this.batchDeleteBtn.setAttribute("type", "button");
-    this.batchDeleteBtn.addEventListener("click", () => {
+    this.batchDeleteBtn = batchDeleteBtn;
+    batchDeleteBtn.setAttribute("type", "button");
+    batchDeleteBtn.addEventListener("click", () => {
       const ids = this.getValidSelectedIds();
       const total = this.delegate.getPages().length;
       if (ids.length === 0) return;
@@ -174,6 +195,25 @@ export class PageGridOverviewModal extends Modal {
         new Notice("A notebook must keep at least one page");
         return;
       }
+      if (batchDeleteBtn.dataset.confirmPending !== "true") {
+        batchDeleteBtn.dataset.confirmPending = "true";
+        batchDeleteBtn.setText(`Confirm (${ids.length})?`);
+        if (pendingBatchDeleteTimer !== null) {
+          window.clearTimeout(pendingBatchDeleteTimer);
+        }
+        pendingBatchDeleteTimer = window.setTimeout(() => {
+          batchDeleteBtn.dataset.confirmPending = "false";
+          batchDeleteBtn.setText("Delete");
+          pendingBatchDeleteTimer = null;
+        }, 3500);
+        return;
+      }
+      if (pendingBatchDeleteTimer !== null) {
+        window.clearTimeout(pendingBatchDeleteTimer);
+        pendingBatchDeleteTimer = null;
+      }
+      batchDeleteBtn.dataset.confirmPending = "false";
+      batchDeleteBtn.setText("Delete");
       this.delegate.onDeletePages(ids);
       this.selectedPageIds.clear();
       this.renderGrid();
@@ -185,6 +225,22 @@ export class PageGridOverviewModal extends Modal {
   }
 
   onClose(): void {
+    if (this.searchDebounceTimer !== null) {
+      window.clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
+    this.previewObserver?.disconnect();
+    this.previewObserver = null;
+    this.gridEl?.querySelectorAll("canvas").forEach((c) => {
+      c.width = 0;
+      c.height = 0;
+    });
+    if (this.sharedOffscreenCanvas) {
+      this.sharedOffscreenCanvas.width = 0;
+      this.sharedOffscreenCanvas.height = 0;
+      this.sharedOffscreenCanvas = null;
+    }
+    this.cardCheckboxes.clear();
     this.contentEl.empty();
     this.selectedPageIds.clear();
     this.draggedIndex = null;
@@ -244,6 +300,13 @@ export class PageGridOverviewModal extends Modal {
     }
     this.updateBatchToolbarState();
 
+    this.previewObserver?.disconnect();
+    this.previewObserver = null;
+    this.gridEl.querySelectorAll("canvas").forEach((c) => {
+      c.width = 0;
+      c.height = 0;
+    });
+    this.cardCheckboxes.clear();
     this.gridEl.empty();
     if (filtered.length === 0) {
       this.gridEl.createDiv({
@@ -251,6 +314,30 @@ export class PageGridOverviewModal extends Modal {
         text: this.filterMode === "bookmarked" ? "No bookmarked pages match your filter" : "No pages match your filter"
       });
       return;
+    }
+
+    const pendingDrawMap = new Map<HTMLElement, { canvas: HTMLCanvasElement; page: PageData; w: number; h: number }>();
+    if (typeof IntersectionObserver !== "undefined") {
+      this.previewObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) {
+              continue;
+            }
+            const cardEl = entry.target as HTMLElement;
+            const job = pendingDrawMap.get(cardEl);
+            if (job) {
+              pendingDrawMap.delete(cardEl);
+              this.previewObserver?.unobserve(cardEl);
+              this.drawMiniPreview(job.canvas, job.page, job.w, job.h);
+            }
+          }
+        },
+        {
+          root: this.gridEl,
+          rootMargin: "200px 0px"
+        }
+      );
     }
 
     for (const page of filtered) {
@@ -271,6 +358,7 @@ export class PageGridOverviewModal extends Modal {
         type: "checkbox"
       });
       checkbox.checked = isSelected;
+      this.cardCheckboxes.set(page.id, { card, checkbox });
       checkbox.setAttribute("aria-label", `Select page ${page.pageNumber}`);
       checkbox.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -331,7 +419,12 @@ export class PageGridOverviewModal extends Modal {
       const thumbH = isLandscape ? 148 : 212;
       canvas.width = thumbW;
       canvas.height = thumbH;
-      this.drawMiniPreview(canvas, page, thumbW, thumbH);
+      if (this.previewObserver) {
+        pendingDrawMap.set(card, { canvas, page, w: thumbW, h: thumbH });
+        this.previewObserver.observe(card);
+      } else {
+        this.drawMiniPreview(canvas, page, thumbW, thumbH);
+      }
 
       previewWrap.addEventListener("click", () => {
         this.delegate.onJumpToPage(page.pageNumber);
@@ -352,6 +445,8 @@ export class PageGridOverviewModal extends Modal {
           ev.preventDefault();
           titleInput.blur();
         } else if (ev.key === "Escape") {
+          ev.preventDefault();
+          ev.stopPropagation();
           titleInput.value = page.title ?? "";
           titleInput.blur();
         }
@@ -414,7 +509,10 @@ export class PageGridOverviewModal extends Modal {
       return;
     }
     if (!page.pdfSource) {
-      const offscreen = createEl("canvas");
+      if (!this.sharedOffscreenCanvas) {
+        this.sharedOffscreenCanvas = createEl("canvas");
+      }
+      const offscreen = this.sharedOffscreenCanvas;
       offscreen.width = page.dimensions.width;
       offscreen.height = page.dimensions.height;
       TemplateRenderer.renderTemplate(offscreen, page.dimensions, page.template);

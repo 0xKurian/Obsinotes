@@ -9,9 +9,19 @@ import {
   View
 } from "obsidian";
 import { NotePagesView } from "./view/NotePagesView";
-import { NotePagesSettings, DEFAULT_SETTINGS, sanitizePenPresets } from "./settings/NotePagesSettings";
+import { NotePagesImportHandler } from "./view/NotePagesImportHandler";
+import { PdfBackgroundManager } from "./pdf/PdfBackgroundManager";
+import { ImageController } from "./image/ImageController";
+import { HistoryManager } from "./history/HistoryManager";
+import {
+  NotePagesSettings,
+  DEFAULT_SETTINGS,
+  sanitizeSettings,
+  openSafeExternalUrl,
+  FALLBACK_FEEDBACK_URL
+} from "./settings/NotePagesSettings";
 import { NotePagesSettingTab } from "./settings/NotePagesSettingTab";
-import { sanitizeHotkeyMap } from "./settings/HotkeyHelper";
+import { DocumentSerializer } from "./storage/DocumentSerializer";
 import {
   NOTE_PAGES_VIEW_TYPE,
   NOTE_PAGES_EXTENSION,
@@ -50,6 +60,44 @@ export default class NotePagesPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf: WorkspaceLeaf | null) => {
         this.handleActiveLeafChange(leaf);
+      })
+    );
+
+    this.registerEvent(
+      this.app.metadataCache.on("changed", (file: TFile) => {
+        if (!(file instanceof TFile) || file.extension.toLowerCase() !== "md") {
+          return;
+        }
+        if (!this.isNotePagesDocument(file)) {
+          return;
+        }
+        this.app.workspace.iterateAllLeaves((leaf) => {
+          if (this.manualMarkdownLeaves.has(leaf)) {
+            return;
+          }
+          const view = leaf.view;
+          const leafFile = (view as { file?: TFile } | undefined)?.file;
+          if (
+            view &&
+            view.getViewType() === "markdown" &&
+            leafFile?.path === file.path
+          ) {
+            this.handleFileOpen(file);
+          }
+        });
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        if (!(file instanceof TFile)) {
+          return;
+        }
+        this.app.workspace.iterateAllLeaves((leaf) => {
+          if (leaf.view instanceof NotePagesView) {
+            leaf.view.handleVaultFileRename(oldPath, file.path);
+          }
+        });
       })
     );
 
@@ -123,8 +171,12 @@ export default class NotePagesPlugin extends Plugin {
                 .setTitle("Import PDF as notebook")
                 .setIcon("book-open")
                 .onClick(async () => {
-                  const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
-                  await tempView.promptAndImportVaultPdf(file, true);
+                  const { handler, destroy } = this.createStandaloneImportHandler();
+                  try {
+                    await handler.promptAndImportVaultPdf(file, true);
+                  } finally {
+                    destroy();
+                  }
                 });
             });
           }
@@ -223,8 +275,9 @@ export default class NotePagesPlugin extends Plugin {
         if (activeView) {
           activeView.openPdfPicker(false);
         } else {
-          const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
-          tempView.openPdfPicker(true);
+          const { handler, destroy } = this.createStandaloneImportHandler();
+          handler.openPdfPicker(true);
+          window.setTimeout(destroy, 60_000);
         }
       }
     });
@@ -253,8 +306,9 @@ export default class NotePagesPlugin extends Plugin {
         if (activeView) {
           activeView.openPdfPicker(true);
         } else {
-          const tempView = new NotePagesView(this.app.workspace.getLeaf(false), this);
-          tempView.openPdfPicker(true);
+          const { handler, destroy } = this.createStandaloneImportHandler();
+          handler.openPdfPicker(true);
+          window.setTimeout(destroy, 60_000);
         }
       }
     });
@@ -295,8 +349,10 @@ export default class NotePagesPlugin extends Plugin {
       id: "submit-feedback",
       name: "Submit feedback or feature request",
       callback: () => {
-        const url = this.settings.feedbackUrl || "https://github.com/0xKurian/Obsinotes/issues/new/choose";
-        window.open(url, "_blank");
+        const url = this.settings.feedbackUrl || FALLBACK_FEEDBACK_URL;
+        if (!openSafeExternalUrl(url, FALLBACK_FEEDBACK_URL)) {
+          new Notice("Invalid feedback URL in settings; opened default issue page.");
+        }
       }
     });
 
@@ -359,10 +415,8 @@ export default class NotePagesPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    const loadedData = (await this.loadData()) as Partial<NotePagesSettings> | null;
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
-    this.settings.customHotkeys = sanitizeHotkeyMap(loadedData?.customHotkeys);
-    this.settings.penPresets = sanitizePenPresets(loadedData?.penPresets);
+    const loadedData: unknown = await this.loadData();
+    this.settings = sanitizeSettings(loadedData);
   }
 
   async saveSettings(): Promise<void> {
@@ -571,24 +625,44 @@ export default class NotePagesPlugin extends Plugin {
       ]
     };
 
-    const isoDate = new Date(now).toISOString();
-    const jsonBlock = JSON.stringify(initialDoc, null, 2);
+    return DocumentSerializer.serializeDocument(initialDoc);
+  }
 
-    return `---
-${NOTE_PAGES_FRONTMATTER_KEY}: true
-notepages-version: ${CURRENT_SCHEMA_VERSION}
-title: "${title}"
-page-count: 1
-updated: "${isoDate}"
----
-
-> [!NOTE] NotePages Notebook
-> Pages: 1 | Format: ${this.settings.defaultPageSize} ${this.settings.defaultOrientation}
-> Created: ${isoDate}
-
-\`\`\`notepages-data
-${jsonBlock}
-\`\`\`
-`;
+  private createStandaloneImportHandler(): { handler: NotePagesImportHandler; destroy: () => void } {
+    const pdfManager = new PdfBackgroundManager(this.app);
+    const noopImageController = new ImageController(this.app, {
+      onImageAdded: () => {},
+      onImageModified: () => {},
+      onImageDeleted: () => {}
+    });
+    const noopHistory = new HistoryManager(1);
+    const handler = new NotePagesImportHandler({
+      app: this.app,
+      getFile: () => null,
+      getDocument: () => null,
+      getPageManager: () => null,
+      getCurrentPageNumber: () => 1,
+      getPdfBackgroundManager: () => pdfManager,
+      getImageController: () => noopImageController,
+      getHistoryManager: () => noopHistory,
+      resolveResourcePath: (p) => p,
+      handleMutation: () => {},
+      getPageFrame: () => null,
+      renderDocument: () => {},
+      renderPage: () => {},
+      renderThumbnail: () => {},
+      ensureDragOverlay: () => {},
+      appendDeleteButtonToThumbnail: () => {},
+      getThumbnailActionsEl: () => null,
+      requestSave: () => {},
+      scrollToPage: () => {}
+    });
+    return {
+      handler,
+      destroy: () => {
+        pdfManager.destroy();
+        noopImageController.destroy();
+      }
+    };
   }
 }

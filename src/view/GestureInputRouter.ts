@@ -22,6 +22,7 @@ import { RulerOverlayController } from "../ink/RulerOverlayController";
 export interface GestureInputDelegate {
   app: App;
   getRootContainerEl(): HTMLElement | undefined;
+  isViewActive?(): boolean;
   getScrollerEl(): HTMLElement | undefined;
   getPagesContainerEl(): HTMLElement | undefined;
   getEraserCursorEl(): HTMLElement | undefined;
@@ -90,7 +91,10 @@ export class GestureInputRouter {
   private panStartY: number = 0;
   private panScrollLeft: number = 0;
   private panScrollTop: number = 0;
+  private panPointerId: number | null = null;
+  private panCaptureTarget: HTMLElement | null = null;
   private isSpacePressed: boolean = false;
+  private lastTouchTimestamp: number = 0;
 
   private touchPointers: Map<number, { clientX: number; clientY: number }> = new Map();
   private touchStartCoords: Map<number, { x: number; y: number }> = new Map();
@@ -120,6 +124,7 @@ export class GestureInputRouter {
   private dragConnectorCurrentX: number = 0;
   private dragConnectorCurrentY: number = 0;
   private recoveredEraserPointerId: number | null = null;
+  private pageAbortControllers: Map<string, AbortController> = new Map();
 
   constructor(delegate: GestureInputDelegate) {
     this.delegate = delegate;
@@ -140,6 +145,22 @@ export class GestureInputRouter {
     this.dragConnectorCanvas = null;
     this.recoveredEraserPointerId = null;
     this.stylusButtonState.reset();
+    this.cleanupAllPageListeners();
+  }
+
+  cleanupPageListeners(pageId: string): void {
+    const existing = this.pageAbortControllers.get(pageId);
+    if (existing) {
+      existing.abort();
+      this.pageAbortControllers.delete(pageId);
+    }
+  }
+
+  cleanupAllPageListeners(): void {
+    for (const ac of this.pageAbortControllers.values()) {
+      ac.abort();
+    }
+    this.pageAbortControllers.clear();
   }
 
   bindScrollerAndGlobalEvents(
@@ -246,7 +267,10 @@ export class GestureInputRouter {
     );
 
     this.delegate.registerDomEvent(scrollerEl, "dragover", (e: DragEvent) => {
-      if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
+      if (
+        e.dataTransfer &&
+        (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/plain"))
+      ) {
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
       }
@@ -290,10 +314,16 @@ export class GestureInputRouter {
             this.touchTapCandidate.maxDistance = dist;
           }
         }
-        if (this.touchPointers.size === 2 && this.isTouchPinching && this.touchPinchDistance > 10) {
-          this.touchTapCandidate = null;
+        if (this.touchPointers.size === 2 && this.touchPinchDistance > 10) {
           const [p1, p2] = Array.from(this.touchPointers.values());
           const currentDist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          if (!this.isTouchPinching) {
+            if (Math.abs(currentDist - this.touchPinchDistance) < 12) {
+              return;
+            }
+            this.isTouchPinching = true;
+          }
+          this.touchTapCandidate = null;
           const factor = currentDist / this.touchPinchDistance;
           const targetZoom = this.touchPinchStartZoom * factor;
           const midX = (p1.clientX + p2.clientX) / 2;
@@ -313,7 +343,9 @@ export class GestureInputRouter {
       }
 
       if (this.isPanning) {
-        this.updatePan(e.clientX, e.clientY);
+        if (this.panPointerId === null || e.pointerId === this.panPointerId) {
+          this.updatePan(e.clientX, e.clientY);
+        }
         return;
       }
       const dragCoord = this.delegate.getDragCoordinator();
@@ -352,14 +384,41 @@ export class GestureInputRouter {
         }
         this.touchPointers.delete(e.pointerId);
         this.touchStartCoords.delete(e.pointerId);
-        if (this.touchPointers.size < 2 && this.isTouchPinching) {
+        if (this.touchPointers.size === 2) {
+          const [p1, p2] = Array.from(this.touchPointers.values());
+          this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          this.touchPinchStartZoom = this.delegate.getZoomController().getZoomLevel();
+        } else if (this.touchPointers.size < 2 && this.isTouchPinching) {
           this.isTouchPinching = false;
           this.touchPinchDistance = 0;
           this.delegate.getZoomController().scheduleCanvasResolutionUpdate(180);
         }
       }
+      if (this.isDraggingTextRect) {
+        this.isDraggingTextRect = false;
+        if (this.dragTextCanvas) {
+          this.clearCanvasRect(this.dragTextCanvas);
+          this.dragTextCanvas = null;
+        }
+      }
+      if (this.isDraggingShape) {
+        this.isDraggingShape = false;
+        if (this.dragShapeCanvas) {
+          this.clearCanvasRect(this.dragShapeCanvas);
+          this.dragShapeCanvas = null;
+        }
+      }
+      if (this.isDraggingConnector) {
+        this.isDraggingConnector = false;
+        if (this.dragConnectorCanvas) {
+          this.clearCanvasRect(this.dragConnectorCanvas);
+          this.dragConnectorCanvas = null;
+        }
+      }
       if (this.isPanning) {
-        this.finishPan();
+        if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
+          this.finishPan();
+        }
         return;
       }
       const dragCoord = this.delegate.getDragCoordinator();
@@ -385,14 +444,41 @@ export class GestureInputRouter {
         this.touchTapCandidate = null;
         this.touchPointers.delete(e.pointerId);
         this.touchStartCoords.delete(e.pointerId);
-        if (this.touchPointers.size < 2 && this.isTouchPinching) {
+        if (this.touchPointers.size === 2) {
+          const [p1, p2] = Array.from(this.touchPointers.values());
+          this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+          this.touchPinchStartZoom = this.delegate.getZoomController().getZoomLevel();
+        } else if (this.touchPointers.size < 2 && this.isTouchPinching) {
           this.isTouchPinching = false;
           this.touchPinchDistance = 0;
           this.delegate.getZoomController().scheduleCanvasResolutionUpdate(180);
         }
       }
+      if (this.isDraggingTextRect) {
+        this.isDraggingTextRect = false;
+        if (this.dragTextCanvas) {
+          this.clearCanvasRect(this.dragTextCanvas);
+          this.dragTextCanvas = null;
+        }
+      }
+      if (this.isDraggingShape) {
+        this.isDraggingShape = false;
+        if (this.dragShapeCanvas) {
+          this.clearCanvasRect(this.dragShapeCanvas);
+          this.dragShapeCanvas = null;
+        }
+      }
+      if (this.isDraggingConnector) {
+        this.isDraggingConnector = false;
+        if (this.dragConnectorCanvas) {
+          this.clearCanvasRect(this.dragConnectorCanvas);
+          this.dragConnectorCanvas = null;
+        }
+      }
       if (this.isPanning) {
-        this.finishPan();
+        if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
+          this.finishPan();
+        }
         return;
       }
       const dragCoord = this.delegate.getDragCoordinator();
@@ -416,8 +502,20 @@ export class GestureInputRouter {
         if (this.delegate.getTextController().isEditing()) {
           return;
         }
-        const targetTag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-        if (targetTag === "input" || targetTag === "textarea" || targetTag === "select") {
+        const targetEl = e.target as HTMLElement | null;
+        const targetTag = targetEl?.tagName?.toLowerCase();
+        if (
+          targetTag === "input" ||
+          targetTag === "textarea" ||
+          targetTag === "select" ||
+          targetEl?.isContentEditable ||
+          targetEl?.closest?.(".modal-container, .prompt, .suggestion-container")
+        ) {
+          return;
+        }
+        const insideView = targetEl ? rootContainerEl.contains(targetEl) : false;
+        const isViewActive = this.delegate.isViewActive ? this.delegate.isViewActive() : insideView;
+        if (!insideView && !isViewActive) {
           return;
         }
         if (!this.isSpacePressed) {
@@ -437,6 +535,31 @@ export class GestureInputRouter {
         }
       }
     });
+
+    const resetTransientInputState = () => {
+      if (this.isSpacePressed) {
+        this.isSpacePressed = false;
+        rootContainerEl.removeClass("is-space-panning");
+      }
+      this.finishPan();
+      this.touchPointers.clear();
+      this.touchStartCoords.clear();
+      this.isTouchPinching = false;
+      this.touchTapCandidate = null;
+    };
+
+    this.delegate.registerWindowDomEvent("blur", resetTransientInputState);
+    if (typeof document !== "undefined") {
+      this.delegate.registerDomEvent(
+        document as unknown as HTMLElement,
+        "visibilitychange" as keyof HTMLElementEventMap,
+        () => {
+          if (document.hidden) {
+            resetTransientInputState();
+          }
+        }
+      );
+    }
 
     this.delegate.registerDomEvent(rootContainerEl, "paste", async (e: ClipboardEvent) => {
       if (this.delegate.getTextController().isEditing()) {
@@ -507,14 +630,40 @@ export class GestureInputRouter {
     committedCanvas: HTMLCanvasElement,
     toolbarWrapperEl?: HTMLElement
   ): void {
-    this.delegate.registerDomEvent(pageFrame, "dragover", (e: DragEvent) => {
-      if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
+    this.cleanupPageListeners(page.id);
+    const pageAc = typeof AbortController !== "undefined" ? new AbortController() : null;
+    if (pageAc) {
+      this.pageAbortControllers.set(page.id, pageAc);
+    }
+
+    const onPageEl = <K extends keyof HTMLElementEventMap>(
+      el: HTMLElement,
+      type: K,
+      callback: (ev: HTMLElementEventMap[K]) => void | Promise<void>,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (pageAc && typeof el.addEventListener === "function") {
+        const opts: AddEventListenerOptions =
+          typeof options === "object" && options !== null
+            ? { ...options, signal: pageAc.signal }
+            : { capture: Boolean(options), signal: pageAc.signal };
+        el.addEventListener(type, callback as EventListener, opts);
+      } else {
+        this.delegate.registerDomEvent(el, type, callback, options);
+      }
+    };
+
+    onPageEl(pageFrame, "dragover", (e: DragEvent) => {
+      if (
+        e.dataTransfer &&
+        (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("text/plain"))
+      ) {
         e.preventDefault();
         e.dataTransfer.dropEffect = "copy";
       }
     });
 
-    this.delegate.registerDomEvent(pageFrame, "drop", async (e: DragEvent) => {
+    onPageEl(pageFrame, "drop", async (e: DragEvent) => {
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         const file = files[0];
@@ -522,6 +671,9 @@ export class GestureInputRouter {
           e.preventDefault();
           e.stopPropagation();
           const rect = pageFrame.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) {
+            return;
+          }
           const scaleX = page.dimensions.width / rect.width;
           const scaleY = page.dimensions.height / rect.height;
           const dropX = (e.clientX - rect.left) * scaleX;
@@ -580,7 +732,7 @@ export class GestureInputRouter {
       }
     });
 
-    this.delegate.registerDomEvent(
+    onPageEl(
       activeCanvas,
       "touchstart",
       (e: TouchEvent) => {
@@ -595,7 +747,7 @@ export class GestureInputRouter {
       { passive: false }
     );
 
-    this.delegate.registerDomEvent(activeCanvas, "mousedown", (e: MouseEvent) => {
+    onPageEl(activeCanvas, "mousedown", (e: MouseEvent) => {
       if (
         e.button !== 0 ||
         this.stylusButtonState.temporaryEraserTool !== null ||
@@ -605,7 +757,7 @@ export class GestureInputRouter {
       }
     });
 
-    this.delegate.registerDomEvent(activeCanvas, "auxclick", (e: MouseEvent) => {
+    onPageEl(activeCanvas, "auxclick", (e: MouseEvent) => {
       if (
         this.stylusButtonState.temporaryEraserTool !== null ||
         this.stylusButtonState.isRecentPenActivity(400)
@@ -615,7 +767,7 @@ export class GestureInputRouter {
       }
     });
 
-    this.delegate.registerDomEvent(activeCanvas, "pointerdown", (e: PointerEvent) => {
+    onPageEl(activeCanvas, "pointerdown", (e: PointerEvent) => {
       this.delegate.blurFocusedToolbarControl();
       this.stylusButtonState.recordPointerEvent(e.pointerType);
       this.recoveredEraserPointerId = null;
@@ -626,6 +778,13 @@ export class GestureInputRouter {
       const scrollerEl = this.delegate.getScrollerEl();
 
       if (e.pointerType === "touch") {
+        this.lastTouchTimestamp = Date.now();
+        const palmDelay = inking.palmRejectionDelayMs || 350;
+        const isPenBlocked =
+          inking.isCurrentlyDrawing() || this.stylusButtonState.isRecentPenActivity(palmDelay);
+        if (isPenBlocked) {
+          return;
+        }
         this.touchPointers.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY });
         this.touchStartCoords.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (!this.touchTapCandidate) {
@@ -643,7 +802,6 @@ export class GestureInputRouter {
           const [p1, p2] = Array.from(this.touchPointers.values());
           this.touchPinchDistance = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
           this.touchPinchStartZoom = this.delegate.getZoomController().getZoomLevel();
-          this.isTouchPinching = true;
           e.stopPropagation();
           return;
         }
@@ -679,11 +837,12 @@ export class GestureInputRouter {
       }
 
       if (e.pointerType === "touch" && !this.delegate.getDrawWithFinger()) {
+        const palmDelay = inking.palmRejectionDelayMs || 350;
         if (
           this.touchPointers.size === 1 &&
           !this.isTouchPinching &&
           !inking.isCurrentlyDrawing() &&
-          !this.stylusButtonState.isRecentPenActivity(400) &&
+          !this.stylusButtonState.isRecentPenActivity(palmDelay) &&
           scrollerEl
         ) {
           if (textController.isEditing()) {
@@ -691,6 +850,7 @@ export class GestureInputRouter {
           }
           this.startPan(e.clientX, e.clientY, scrollerEl, e.pointerId);
           e.preventDefault();
+          e.stopPropagation();
         }
         return;
       }
@@ -795,7 +955,7 @@ export class GestureInputRouter {
       }
     });
 
-    this.delegate.registerDomEvent(activeCanvas, "pointermove", (e: PointerEvent) => {
+    onPageEl(activeCanvas, "pointermove", (e: PointerEvent) => {
       this.stylusButtonState.recordPointerEvent(e.pointerType);
       this.tryFinishRecoveredEraserOnHover(e);
       const inking = this.delegate.getInkingController();
@@ -968,13 +1128,36 @@ export class GestureInputRouter {
       }
     });
 
-    this.delegate.registerDomEvent(activeCanvas, "pointerup", (e: PointerEvent) => {
+    onPageEl(activeCanvas, "pointerup", (e: PointerEvent) => {
       this.delegate.setToolbarDrawingActive(false);
       if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
         this.recoveredEraserPointerId = null;
       }
+      if (this.isDraggingTextRect) {
+        this.isDraggingTextRect = false;
+        if (this.dragTextCanvas) {
+          this.clearCanvasRect(this.dragTextCanvas);
+          this.dragTextCanvas = null;
+        }
+      }
+      if (this.isDraggingShape) {
+        this.isDraggingShape = false;
+        if (this.dragShapeCanvas) {
+          this.clearCanvasRect(this.dragShapeCanvas);
+          this.dragShapeCanvas = null;
+        }
+      }
+      if (this.isDraggingConnector) {
+        this.isDraggingConnector = false;
+        if (this.dragConnectorCanvas) {
+          this.clearCanvasRect(this.dragConnectorCanvas);
+          this.dragConnectorCanvas = null;
+        }
+      }
       if (this.isPanning) {
-        this.finishPan();
+        if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
+          this.finishPan();
+        }
         return;
       }
 
@@ -1020,13 +1203,36 @@ export class GestureInputRouter {
       this.revertTemporaryStylusEraser(e);
     });
 
-    this.delegate.registerDomEvent(activeCanvas, "pointercancel", (e: PointerEvent) => {
+    onPageEl(activeCanvas, "pointercancel", (e: PointerEvent) => {
       this.delegate.setToolbarDrawingActive(false);
       if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
         this.recoveredEraserPointerId = null;
       }
+      if (this.isDraggingTextRect) {
+        this.isDraggingTextRect = false;
+        if (this.dragTextCanvas) {
+          this.clearCanvasRect(this.dragTextCanvas);
+          this.dragTextCanvas = null;
+        }
+      }
+      if (this.isDraggingShape) {
+        this.isDraggingShape = false;
+        if (this.dragShapeCanvas) {
+          this.clearCanvasRect(this.dragShapeCanvas);
+          this.dragShapeCanvas = null;
+        }
+      }
+      if (this.isDraggingConnector) {
+        this.isDraggingConnector = false;
+        if (this.dragConnectorCanvas) {
+          this.clearCanvasRect(this.dragConnectorCanvas);
+          this.dragConnectorCanvas = null;
+        }
+      }
       if (this.isPanning) {
-        this.finishPan();
+        if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
+          this.finishPan();
+        }
         return;
       }
 
@@ -1072,14 +1278,16 @@ export class GestureInputRouter {
       this.revertTemporaryStylusEraser(e, true);
     });
 
-    this.delegate.registerDomEvent(activeCanvas, "dblclick", (e: MouseEvent) => {
+    onPageEl(activeCanvas, "dblclick", (e: MouseEvent) => {
       const tool = this.delegate.getInkingController().activeTool;
       if (tool !== "select" && tool !== "lasso" && tool !== "text" && tool !== "sticky") {
         return;
       }
 
       const pointerEvent = e as unknown as PointerEvent;
-      if (pointerEvent.pointerType === "touch" && !this.delegate.getDrawWithFinger()) {
+      const isRecentTouch =
+        pointerEvent.pointerType === "touch" || Date.now() - this.lastTouchTimestamp < 600;
+      if (isRecentTouch && !this.delegate.getDrawWithFinger()) {
         return;
       }
 
@@ -1162,6 +1370,9 @@ export class GestureInputRouter {
     this.clearCanvasRect(activeCanvas);
 
     const rect = activeCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
     const scaleX = page.dimensions.width / rect.width;
     const scaleY = page.dimensions.height / rect.height;
     const pageX = (e.clientX - rect.left) * scaleX;
@@ -1230,6 +1441,9 @@ export class GestureInputRouter {
 
     const margin = 10;
     const rect = activeCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
     const scaleX = page.dimensions.width / rect.width;
     const scaleY = page.dimensions.height / rect.height;
     const pageX = (e.clientX - rect.left) * scaleX;
@@ -1288,6 +1502,9 @@ export class GestureInputRouter {
 
     const margin = 10;
     const rect = activeCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
     const scaleX = page.dimensions.width / rect.width;
     const scaleY = page.dimensions.height / rect.height;
     const pageX = (e.clientX - rect.left) * scaleX;
@@ -1545,6 +1762,8 @@ export class GestureInputRouter {
     this.panStartY = clientY;
     this.panScrollLeft = scrollerEl.scrollLeft;
     this.panScrollTop = scrollerEl.scrollTop;
+    this.panPointerId = pointerId ?? null;
+    this.panCaptureTarget = (target as HTMLElement) ?? null;
     this.delegate.getRootContainerEl()?.addClass("is-panning");
     scrollerEl.addClass("is-panning");
     if (target && pointerId !== undefined && typeof (target as HTMLElement).setPointerCapture === "function") {
@@ -1571,7 +1790,20 @@ export class GestureInputRouter {
     if (!this.isPanning) {
       return;
     }
+    if (
+      this.panCaptureTarget &&
+      this.panPointerId !== null &&
+      typeof this.panCaptureTarget.releasePointerCapture === "function"
+    ) {
+      try {
+        this.panCaptureTarget.releasePointerCapture(this.panPointerId);
+      } catch (err) {
+        void err;
+      }
+    }
     this.isPanning = false;
+    this.panPointerId = null;
+    this.panCaptureTarget = null;
     this.delegate.getRootContainerEl()?.removeClass("is-panning");
     this.delegate.getScrollerEl()?.removeClass("is-panning");
   }

@@ -695,7 +695,9 @@ export class SelectionController {
 
     this.combinedBounds = SelectionEngine.computeCombinedBoundingBox(
       this.selectedStrokes,
-      this.selectedShapes
+      this.selectedShapes,
+      this.selectedTexts,
+      this.selectedImages
     );
 
     this.callbacks.onTransformCommitted(
@@ -736,15 +738,18 @@ export class SelectionController {
       };
     });
 
-    this.selectedShapes = this.initialShapes.map((sh) => {
-      const center = {
-        x: (targetBox.minX + targetBox.maxX) / 2,
-        y: (targetBox.minY + targetBox.maxY) / 2
-      };
-      const w = Math.max(10, targetBox.maxX - targetBox.minX);
-      const h = Math.max(10, targetBox.maxY - targetBox.minY);
+    const origW = Math.max(1, origin.maxX - origin.minX);
+    const origH = Math.max(1, origin.maxY - origin.minY);
+    const targetW = Math.max(1, targetBox.maxX - targetBox.minX);
+    const targetH = Math.max(1, targetBox.maxY - targetBox.minY);
+    const shapeScaleX = targetW / origW;
+    const shapeScaleY = targetH / origH;
 
+    this.selectedShapes = this.initialShapes.map((sh) => {
+      const pad = Math.max(4, sh.strokeWidth + (sh.type === "arrow" ? Math.max(10, Math.min(24, sh.strokeWidth * 4)) : 4));
       const newGeometry = { ...sh.geometryData };
+      let shapeBounds: StrokeBoundingBox;
+
       if (
         sh.type === "rectangle" ||
         sh.type === "rounded-rectangle" ||
@@ -752,81 +757,138 @@ export class SelectionController {
         sh.type === "star" ||
         sh.type === "callout"
       ) {
-        newGeometry.x = targetBox.minX;
-        newGeometry.y = targetBox.minY;
-        newGeometry.width = w;
-        newGeometry.height = h;
+        const sx = sh.geometryData.x ?? sh.bounds.minX;
+        const sy = sh.geometryData.y ?? sh.bounds.minY;
+        const sw = sh.geometryData.width ?? Math.max(1, sh.bounds.maxX - sh.bounds.minX);
+        const shH = sh.geometryData.height ?? Math.max(1, sh.bounds.maxY - sh.bounds.minY);
+        const oldCenter = { x: sx + sw / 2, y: sy + shH / 2 };
+        const newCenter = SelectionEngine.transformPoint(
+          { x: oldCenter.x, y: oldCenter.y, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        const newW = Math.max(4, sw * shapeScaleX);
+        const newH = Math.max(4, shH * shapeScaleY);
+        newGeometry.x = newCenter.x - newW / 2;
+        newGeometry.y = newCenter.y - newH / 2;
+        newGeometry.width = newW;
+        newGeometry.height = newH;
+        shapeBounds = {
+          minX: newGeometry.x - pad,
+          minY: newGeometry.y - pad,
+          maxX: newGeometry.x + newW + pad,
+          maxY: newGeometry.y + newH + pad
+        };
       } else if (sh.type === "circle") {
-        newGeometry.cx = center.x;
-        newGeometry.cy = center.y;
-        newGeometry.r = Math.min(w, h) / 2;
+        const oldCx = sh.geometryData.cx ?? (sh.bounds.minX + sh.bounds.maxX) / 2;
+        const oldCy = sh.geometryData.cy ?? (sh.bounds.minY + sh.bounds.maxY) / 2;
+        const oldR = sh.geometryData.r ?? Math.max(2, (sh.bounds.maxX - sh.bounds.minX) / 2);
+        const newCenter = SelectionEngine.transformPoint(
+          { x: oldCx, y: oldCy, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        const newR = Math.max(2, oldR * Math.min(shapeScaleX, shapeScaleY));
+        newGeometry.cx = newCenter.x;
+        newGeometry.cy = newCenter.y;
+        newGeometry.r = newR;
+        shapeBounds = {
+          minX: newCenter.x - newR - pad,
+          minY: newCenter.y - newR - pad,
+          maxX: newCenter.x + newR + pad,
+          maxY: newCenter.y + newR + pad
+        };
       } else if (sh.type === "ellipse") {
-        newGeometry.cx = center.x;
-        newGeometry.cy = center.y;
-        newGeometry.rx = w / 2;
-        newGeometry.ry = h / 2;
+        const oldCx = sh.geometryData.cx ?? (sh.bounds.minX + sh.bounds.maxX) / 2;
+        const oldCy = sh.geometryData.cy ?? (sh.bounds.minY + sh.bounds.maxY) / 2;
+        const oldRx = sh.geometryData.rx ?? Math.max(2, (sh.bounds.maxX - sh.bounds.minX) / 2);
+        const oldRy = sh.geometryData.ry ?? Math.max(2, (sh.bounds.maxY - sh.bounds.minY) / 2);
+        const newCenter = SelectionEngine.transformPoint(
+          { x: oldCx, y: oldCy, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        const newRx = Math.max(2, oldRx * shapeScaleX);
+        const newRy = Math.max(2, oldRy * shapeScaleY);
+        newGeometry.cx = newCenter.x;
+        newGeometry.cy = newCenter.y;
+        newGeometry.rx = newRx;
+        newGeometry.ry = newRy;
+        shapeBounds = {
+          minX: newCenter.x - newRx - pad,
+          minY: newCenter.y - newRy - pad,
+          maxX: newCenter.x + newRx + pad,
+          maxY: newCenter.y + newRy + pad
+        };
       } else if (sh.type === "line" || sh.type === "arrow") {
-        if (
-          sh.geometryData.x1 !== undefined &&
-          sh.geometryData.y1 !== undefined &&
-          sh.geometryData.x2 !== undefined &&
-          sh.geometryData.y2 !== undefined
-        ) {
-          const p1 = SelectionEngine.transformPoint(
-            { x: sh.geometryData.x1, y: sh.geometryData.y1, pressure: 1, timestamp: 0 },
-            origin,
-            targetBox,
-            rotationDelta
-          );
-          const p2 = SelectionEngine.transformPoint(
-            { x: sh.geometryData.x2, y: sh.geometryData.y2, pressure: 1, timestamp: 0 },
-            origin,
-            targetBox,
-            rotationDelta
-          );
-          newGeometry.x1 = p1.x;
-          newGeometry.y1 = p1.y;
-          newGeometry.x2 = p2.x;
-          newGeometry.y2 = p2.y;
-        } else {
-          newGeometry.x = targetBox.minX;
-          newGeometry.y = targetBox.minY;
-          newGeometry.width = w;
-          newGeometry.height = h;
-        }
+        const rawX1 = sh.geometryData.x1 ?? sh.geometryData.x ?? sh.bounds.minX;
+        const rawY1 = sh.geometryData.y1 ?? ((sh.geometryData.y ?? sh.bounds.minY) + (sh.geometryData.height ?? 0) / 2);
+        const rawX2 = sh.geometryData.x2 ?? ((sh.geometryData.x ?? sh.bounds.minX) + (sh.geometryData.width ?? Math.max(1, sh.bounds.maxX - sh.bounds.minX)));
+        const rawY2 = sh.geometryData.y2 ?? rawY1;
+        const p1 = SelectionEngine.transformPoint(
+          { x: rawX1, y: rawY1, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        const p2 = SelectionEngine.transformPoint(
+          { x: rawX2, y: rawY2, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        newGeometry.x1 = p1.x;
+        newGeometry.y1 = p1.y;
+        newGeometry.x2 = p2.x;
+        newGeometry.y2 = p2.y;
+        shapeBounds = {
+          minX: Math.min(p1.x, p2.x) - pad,
+          minY: Math.min(p1.y, p2.y) - pad,
+          maxX: Math.max(p1.x, p2.x) + pad,
+          maxY: Math.max(p1.y, p2.y) + pad
+        };
       } else if (sh.type === "triangle") {
-        if (sh.geometryData.x1 !== undefined && sh.geometryData.y1 !== undefined) {
-          const p1 = SelectionEngine.transformPoint(
-            { x: sh.geometryData.x1, y: sh.geometryData.y1, pressure: 1, timestamp: 0 },
-            origin,
-            targetBox,
-            rotationDelta
-          );
-          const p2 = SelectionEngine.transformPoint(
-            { x: sh.geometryData.x2, y: sh.geometryData.y2, pressure: 1, timestamp: 0 },
-            origin,
-            targetBox,
-            rotationDelta
-          );
-          const p3 = SelectionEngine.transformPoint(
-            { x: sh.geometryData.x3, y: sh.geometryData.y3, pressure: 1, timestamp: 0 },
-            origin,
-            targetBox,
-            rotationDelta
-          );
-          newGeometry.x1 = p1.x;
-          newGeometry.y1 = p1.y;
-          newGeometry.x2 = p2.x;
-          newGeometry.y2 = p2.y;
-          newGeometry.x3 = p3.x;
-          newGeometry.y3 = p3.y;
-        }
+        const p1 = SelectionEngine.transformPoint(
+          { x: sh.geometryData.x1 ?? sh.bounds.minX, y: sh.geometryData.y1 ?? sh.bounds.maxY, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        const p2 = SelectionEngine.transformPoint(
+          { x: sh.geometryData.x2 ?? (sh.bounds.minX + sh.bounds.maxX) / 2, y: sh.geometryData.y2 ?? sh.bounds.minY, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        const p3 = SelectionEngine.transformPoint(
+          { x: sh.geometryData.x3 ?? sh.bounds.maxX, y: sh.geometryData.y3 ?? sh.bounds.maxY, pressure: 1, timestamp: 0 },
+          origin,
+          targetBox,
+          rotationDelta
+        );
+        newGeometry.x1 = p1.x;
+        newGeometry.y1 = p1.y;
+        newGeometry.x2 = p2.x;
+        newGeometry.y2 = p2.y;
+        newGeometry.x3 = p3.x;
+        newGeometry.y3 = p3.y;
+        shapeBounds = {
+          minX: Math.min(p1.x, p2.x, p3.x) - pad,
+          minY: Math.min(p1.y, p2.y, p3.y) - pad,
+          maxX: Math.max(p1.x, p2.x, p3.x) + pad,
+          maxY: Math.max(p1.y, p2.y, p3.y) + pad
+        };
+      } else {
+        shapeBounds = { ...targetBox };
       }
 
       return {
         ...sh,
         geometryData: newGeometry,
-        bounds: { ...targetBox }
+        bounds: shapeBounds
       };
     });
 
@@ -1147,7 +1209,13 @@ export class SelectionController {
   }
 
   destroy(): void {
-    this.flushPreview();
+    if (this.previewRafId !== null) {
+      if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(this.previewRafId);
+      }
+      this.previewRafId = null;
+    }
+    this.pendingPreviewAction = null;
     this.clearSelection();
   }
 }

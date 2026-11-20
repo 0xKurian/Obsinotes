@@ -35,7 +35,7 @@ export class PdfExporter {
           if (!sourcePdf) {
             const bytes = await dependencies.readBinary(page.pdfSource.pdfPath);
             if (bytes) {
-              sourcePdf = await PDFDocument.load(bytes);
+              sourcePdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
               pdfCache.set(page.pdfSource.pdfPath, sourcePdf);
             }
           }
@@ -45,7 +45,8 @@ export class PdfExporter {
             targetPage = pdfDoc.addPage(copied);
             isCopiedPdf = true;
           }
-        } catch {
+        } catch (err) {
+          console.warn(`[NotePages] Could not copy source PDF page ${pageNum}:`, err);
           targetPage = null;
         }
       }
@@ -62,26 +63,26 @@ export class PdfExporter {
         (!isCopiedPdf && options.includeBackgroundTemplate);
 
       if (hasContent || !isCopiedPdf) {
-        try {
-          const pngBytes = await renderPng(page, {
-            scale: options.resolution,
-            includeTemplate: isCopiedPdf ? false : options.includeBackgroundTemplate,
-            includePdfBackground: !isCopiedPdf && options.includePdfBackground,
-            transparentBackground: isCopiedPdf,
-            resourceResolver: dependencies.resourceResolver
-          });
+        const pngBytes = await renderPng(page, {
+          scale: options.resolution,
+          includeTemplate: isCopiedPdf ? false : options.includeBackgroundTemplate,
+          includePdfBackground: !isCopiedPdf && options.includePdfBackground,
+          transparentBackground: isCopiedPdf,
+          resourceResolver: dependencies.resourceResolver
+        });
 
-          if (pngBytes && pngBytes.length > 0) {
-            const embeddedPng = await pdfDoc.embedPng(pngBytes);
-            targetPage.drawImage(embeddedPng, {
-              x: 0,
-              y: 0,
-              width: page.dimensions.width,
-              height: page.dimensions.height
-            });
-          }
-        } catch (err) {
-          void err;
+        if (pngBytes && pngBytes.length > 0) {
+          const embeddedPng = await pdfDoc.embedPng(pngBytes);
+          const cropBox =
+            isCopiedPdf && typeof targetPage.getCropBox === "function"
+              ? targetPage.getCropBox()
+              : { x: 0, y: 0, width: page.dimensions.width, height: page.dimensions.height };
+          targetPage.drawImage(embeddedPng, {
+            x: cropBox.x,
+            y: cropBox.y,
+            width: cropBox.width || page.dimensions.width,
+            height: cropBox.height || page.dimensions.height
+          });
         }
       }
     }

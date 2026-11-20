@@ -81,4 +81,16 @@ describe("TextTokenizer", () => {
     assert.strictEqual(tokens[7].value, "\\psi");
     assert.strictEqual(tokens[8].value, " done");
   });
+
+  it("does not misparse currency amounts like $5 + $10 as inline math", () => {
+    const tokens = tokenizeText("Total is $5 + $10 today");
+    assert.strictEqual(tokens.some((t) => t.type === "math-inline"), false);
+  });
+
+  it("handles escaped dollar signs inside math expressions", () => {
+    const tokens = tokenizeText("Cost $x = \\$5$ ok");
+    const math = tokens.find((t) => t.type === "math-inline");
+    assert.ok(math);
+    assert.strictEqual(math?.value, "x = \\$5");
+  });
 });

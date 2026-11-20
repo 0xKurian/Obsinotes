@@ -176,6 +176,9 @@ export class NotePagesToolbar {
   duplicateSelectionBtn!: HTMLButtonElement;
   deleteSelectionBtn!: HTMLButtonElement;
   paperTemplateButtons: Map<PaperTemplateType, HTMLElement> = new Map();
+  pageSizeButtons: Map<PageSizePreset, HTMLElement> = new Map();
+  paperColorSwatches: Map<string, HTMLElement> = new Map();
+  customPaperInput?: HTMLInputElement;
   notebookOrientationBtn!: HTMLButtonElement;
   zoomResetBtn!: HTMLButtonElement;
   titleBtn!: HTMLButtonElement;
@@ -496,6 +499,9 @@ export class NotePagesToolbar {
 
     const pageRefs = buildPagePopover(this.pagePopoverEl, this.delegate, popoverHost);
     this.paperTemplateButtons = pageRefs.paperTemplateButtons;
+    this.pageSizeButtons = pageRefs.pageSizeButtons;
+    this.paperColorSwatches = pageRefs.paperColorSwatches;
+    this.customPaperInput = pageRefs.customPaperInput;
     this.notebookOrientationBtn = pageRefs.notebookOrientationBtn;
     this.addPageBtn = pageRefs.addPageBtn;
     this.duplicatePageBtn = pageRefs.duplicatePageBtn;
@@ -587,6 +593,48 @@ export class NotePagesToolbar {
     }
     popoverEl.removeClass("is-popover-above");
     popoverEl.removeClass("is-popover-align-left");
+
+    const hostEl = this.toolbarWrapperEl.parentElement;
+    if (!hostEl || typeof hostEl.getBoundingClientRect !== "function") {
+      return;
+    }
+    const hostRect = hostEl.getBoundingClientRect();
+    const popRect = popoverEl.getBoundingClientRect();
+    if (hostRect.width <= 0 || hostRect.height <= 0 || popRect.width <= 0) {
+      return;
+    }
+
+    popoverEl.setCssStyles({
+      maxWidth: `${Math.max(220, Math.floor(hostRect.width - 16))}px`,
+      maxHeight: `${Math.max(180, Math.floor(hostRect.height - 24))}px`
+    });
+
+    if (popRect.right > hostRect.right - 8) {
+      popoverEl.setCssStyles({ right: "8px", left: "auto" });
+    } else if (popRect.left < hostRect.left + 8) {
+      popoverEl.setCssStyles({ left: "8px", right: "auto" });
+    }
+  }
+
+  updatePageSizeButtons(preset: PageSizePreset): void {
+    this.pageSizeButtons.forEach((btn, key) => {
+      btn.toggleClass("is-active", key === preset);
+    });
+  }
+
+  updatePaperColorSwatches(color: string): void {
+    const normalized = (color || "#ffffff").toLowerCase();
+    this.paperColorSwatches.forEach((btn, key) => {
+      btn.toggleClass("is-active", key === normalized);
+    });
+    if (this.customPaperInput && /^#[0-9a-f]{6}$/i.test(normalized)) {
+      this.customPaperInput.value = normalized;
+    }
+  }
+
+  closeAllPopovers(): void {
+    this.closePagePopover();
+    this.closeToolbarPopover();
   }
 
   private registerGlobalEvents(): void {
@@ -762,13 +810,19 @@ export class NotePagesToolbar {
       return labels.length > 0 ? `${base} (${labels.join(", ")})` : base;
     };
 
-    this.sidebarToggleBtn?.setAttribute("title", formatTitle("Toggle pages sidebar", "toggleSidebar"));
-    this.titleBtn?.setAttribute("title", formatTitle("Quick rename notebook", "quickRename"));
-    this.undoBtn?.setAttribute("title", formatTitle("Undo", "undo"));
-    this.redoBtn?.setAttribute("title", formatTitle("Redo", "redo", "redoAlt"));
-    this.zoomOutBtn?.setAttribute("title", formatTitle("Zoom out", "zoomOut"));
-    this.zoomResetBtn?.setAttribute("title", formatTitle("Reset zoom to 100%", "zoomReset"));
-    this.zoomInBtn?.setAttribute("title", formatTitle("Zoom in", "zoomIn"));
+    const setTitleAndAria = (el: HTMLElement | null | undefined, label: string): void => {
+      if (!el) return;
+      el.setAttribute("title", label);
+      el.setAttribute("aria-label", label);
+    };
+
+    setTitleAndAria(this.sidebarToggleBtn, formatTitle("Toggle pages sidebar", "toggleSidebar"));
+    setTitleAndAria(this.titleBtn, formatTitle("Quick rename notebook", "quickRename"));
+    setTitleAndAria(this.undoBtn, formatTitle("Undo", "undo"));
+    setTitleAndAria(this.redoBtn, formatTitle("Redo", "redo", "redoAlt"));
+    setTitleAndAria(this.zoomOutBtn, formatTitle("Zoom out", "zoomOut"));
+    setTitleAndAria(this.zoomResetBtn, formatTitle("Reset zoom to 100%", "zoomReset"));
+    setTitleAndAria(this.zoomInBtn, formatTitle("Zoom in", "zoomIn"));
 
     const toolTitleMap: Partial<Record<ToolType, { base: string; ids: HotkeyActionId[] }>> = {
       lasso: { base: "Select & Pan", ids: ["toolLasso", "toolPan"] },
@@ -897,8 +951,12 @@ export class NotePagesToolbar {
   }
 
   setActiveColor(color: string): void {
+    const normalizedTarget = color.toLowerCase();
     for (const chip of this.colorChips) {
-      const active = chip.style.backgroundColor === color || this.normalizeColor(chip.style.backgroundColor) === color;
+      const chipColor = chip.getAttribute?.("data-color");
+      const active = chipColor
+        ? chipColor === normalizedTarget
+        : chip.style.backgroundColor === color || this.normalizeColor(chip.style.backgroundColor) === normalizedTarget;
       chip.toggleClass("is-active", active);
     }
     if (this.colorPickerInput) {
@@ -996,8 +1054,13 @@ export class NotePagesToolbar {
   }
 
   setStickyColor(color: string): void {
+    const normalizedTarget = color.toLowerCase();
     for (const c of this.stickyChips) {
-      c.toggleClass("is-active", c.style.backgroundColor === color || this.normalizeColor(c.style.backgroundColor) === color);
+      const chipColor = c.getAttribute?.("data-color");
+      const active = chipColor
+        ? chipColor === normalizedTarget
+        : c.style.backgroundColor === color || this.normalizeColor(c.style.backgroundColor) === normalizedTarget;
+      c.toggleClass("is-active", active);
     }
   }
 

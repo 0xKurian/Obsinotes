@@ -64,47 +64,56 @@ export class NotePagesImportHandler {
         cls: "notepages-hidden-file-input"
       });
       input.accept = "image/*";
+      const cleanupInput = () => {
+        input.remove();
+      };
+      input.addEventListener("cancel", cleanupInput);
       input.addEventListener("change", () => {
         void (async () => {
-          if (input.files && input.files.length > 0) {
-            const file = input.files[0];
-            const baseName = file.name.replace(/\.[^/.]+$/, "");
-            const activeFile = this.delegate.getFile();
-            const imageController = this.delegate.getImageController();
-            const savedPath = await imageController.saveBlobToVault(
-              file,
-              baseName,
-              activeFile?.path || ""
-            );
-            const resourceUrl = this.delegate.resolveResourcePath(savedPath);
-            const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
-            const fittedDims = ImageController.calculateFittedDimensions(
-              naturalDims.width,
-              naturalDims.height,
-              Math.min(450, targetPage.dimensions.width - 60),
-              Math.min(450, targetPage.dimensions.height - 60)
-            );
-            const posX = Math.max(20, Math.round((targetPage.dimensions.width - fittedDims.width) / 2));
-            const posY = Math.max(50, Math.round((targetPage.dimensions.height - fittedDims.height) / 2));
-            const imgObj = imageController.createImageObject(
-              savedPath,
-              posX,
-              posY,
-              fittedDims.width,
-              fittedDims.height
-            );
-            this.delegate.getHistoryManager().execute(
-              new AddImageCommand(targetPage, imgObj, () => {
-                this.delegate.handleMutation(targetPage);
-                const frameEl = this.delegate.getPageFrame(targetPage.pageNumber);
-                if (frameEl) {
-                  imageController.renderPageImages(targetPage, frameEl, (p) => this.delegate.resolveResourcePath(p));
-                }
-              })
-            );
-            new Notice(`Inserted image: ${file.name}`);
+          try {
+            if (input.files && input.files.length > 0) {
+              const file = input.files[0];
+              const baseName = file.name.replace(/\.[^/.]+$/, "");
+              const activeFile = this.delegate.getFile();
+              const imageController = this.delegate.getImageController();
+              const savedPath = await imageController.saveBlobToVault(
+                file,
+                baseName,
+                activeFile?.path || ""
+              );
+              const resourceUrl = this.delegate.resolveResourcePath(savedPath);
+              const naturalDims = await ImageController.getImageNaturalDimensions(resourceUrl);
+              const fittedDims = ImageController.calculateFittedDimensions(
+                naturalDims.width,
+                naturalDims.height,
+                Math.min(450, targetPage.dimensions.width - 60),
+                Math.min(450, targetPage.dimensions.height - 60)
+              );
+              const posX = Math.max(20, Math.round((targetPage.dimensions.width - fittedDims.width) / 2));
+              const posY = Math.max(50, Math.round((targetPage.dimensions.height - fittedDims.height) / 2));
+              const imgObj = imageController.createImageObject(
+                savedPath,
+                posX,
+                posY,
+                fittedDims.width,
+                fittedDims.height
+              );
+              this.delegate.getHistoryManager().execute(
+                new AddImageCommand(targetPage, imgObj, () => {
+                  this.delegate.handleMutation(targetPage);
+                  const frameEl = this.delegate.getPageFrame(targetPage.pageNumber);
+                  if (frameEl) {
+                    imageController.renderPageImages(targetPage, frameEl, (p) => this.delegate.resolveResourcePath(p));
+                  }
+                })
+              );
+              new Notice(`Inserted image: ${file.name}`);
+            }
+          } catch (err) {
+            new Notice(`Failed to insert image: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            cleanupInput();
           }
-          input.remove();
         })();
       });
       document.body.appendChild(input);
@@ -169,13 +178,22 @@ export class NotePagesImportHandler {
         cls: "notepages-hidden-file-input"
       });
       input.accept = "application/pdf,.pdf";
+      const cleanupInput = () => {
+        input.remove();
+      };
+      input.addEventListener("cancel", cleanupInput);
       input.addEventListener("change", () => {
         void (async () => {
-          if (input.files && input.files.length > 0) {
-            const file = input.files[0];
-            await this.promptAndImportLocalPdf(file, forceNewNotebook, targetPageNumber);
+          try {
+            if (input.files && input.files.length > 0) {
+              const file = input.files[0];
+              await this.promptAndImportLocalPdf(file, forceNewNotebook, targetPageNumber);
+            }
+          } catch (err) {
+            new Notice(`Failed to import PDF: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            cleanupInput();
           }
-          input.remove();
         })();
       });
       document.body.appendChild(input);
@@ -238,6 +256,10 @@ export class NotePagesImportHandler {
       if (svgFiles.length > 0) {
         return { folder: directFile, svgFiles: sortSvgFilesByPageNumber(svgFiles) };
       }
+    }
+
+    if (destinationFolder !== undefined) {
+      return null;
     }
 
     const allLoaded = this.delegate.app.vault.getAllLoadedFiles();

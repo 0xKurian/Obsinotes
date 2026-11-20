@@ -3,6 +3,7 @@ import { StrokeGeometry } from "../ink/StrokeGeometry";
 
 export class TessellationScheduler {
   private queue: StrokeObject[] = [];
+  private queueIndex: number = 0;
   private scheduledIds: Set<string> = new Set();
   private idleHandle: number | null = null;
   private isUsingIdleCallback: boolean = false;
@@ -11,7 +12,12 @@ export class TessellationScheduler {
   scheduleStrokes(strokes: StrokeObject[]): void {
     let added = false;
     for (const stroke of strokes) {
-      if (stroke.id === "active" || stroke.points.length === 0) {
+      if (
+        stroke.id === "active" ||
+        stroke.points.length === 0 ||
+        stroke.strokePattern === "dashed" ||
+        stroke.strokePattern === "dotted"
+      ) {
         continue;
       }
       if (StrokeGeometry.hasCachedGeometry(stroke) || this.scheduledIds.has(stroke.id)) {
@@ -37,11 +43,12 @@ export class TessellationScheduler {
       this.idleHandle = null;
     }
     this.queue = [];
+    this.queueIndex = 0;
     this.scheduledIds.clear();
   }
 
   getPendingCount(): number {
-    return this.queue.length;
+    return Math.max(0, this.queue.length - this.queueIndex);
   }
 
   private scheduleNextBatch(): void {
@@ -74,29 +81,39 @@ export class TessellationScheduler {
 
   private processUntilBudget(deadline?: { timeRemaining: () => number }): void {
     const start = typeof performance !== "undefined" ? performance.now() : Date.now();
-    while (this.queue.length > 0) {
-      const stroke = this.queue.shift();
+    while (this.queueIndex < this.queue.length) {
+      const stroke = this.queue[this.queueIndex++];
       if (stroke) {
         this.scheduledIds.delete(stroke.id);
         if (!StrokeGeometry.hasCachedGeometry(stroke)) {
           StrokeGeometry.getCachedGeometry(stroke);
         }
       }
-      const remaining = deadline ? deadline.timeRemaining() : this.frameBudgetMs - ((typeof performance !== "undefined" ? performance.now() : Date.now()) - start);
+      const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - start;
+      const budgetRemaining = this.frameBudgetMs - elapsed;
+      const remaining = deadline ? Math.min(deadline.timeRemaining(), budgetRemaining) : budgetRemaining;
       if (remaining <= 0.5) {
         break;
       }
     }
 
-    if (this.queue.length > 0) {
+    if (this.queueIndex >= this.queue.length) {
+      this.queue = [];
+      this.queueIndex = 0;
+    } else if (this.queueIndex > 256) {
+      this.queue = this.queue.slice(this.queueIndex);
+      this.queueIndex = 0;
+    }
+
+    if (this.queueIndex < this.queue.length) {
       this.scheduleNextBatch();
     }
   }
 
   private processBatchSync(limit: number): void {
     let processed = 0;
-    while (this.queue.length > 0 && processed < limit) {
-      const stroke = this.queue.shift();
+    while (this.queueIndex < this.queue.length && processed < limit) {
+      const stroke = this.queue[this.queueIndex++];
       if (stroke) {
         this.scheduledIds.delete(stroke.id);
         if (!StrokeGeometry.hasCachedGeometry(stroke)) {
@@ -104,6 +121,10 @@ export class TessellationScheduler {
         }
       }
       processed++;
+    }
+    if (this.queueIndex >= this.queue.length) {
+      this.queue = [];
+      this.queueIndex = 0;
     }
   }
 }

@@ -50,7 +50,10 @@ export class InkingController {
   private activePageId: string | null = null;
   private activeCanvas: HTMLCanvasElement | null = null;
   private committedCanvas: HTMLCanvasElement | null = null;
+  private activePointerId: number | null = null;
+  private activePointerType: string | null = null;
   private currentPoints: PointSample[] = [];
+  private lastActiveDirtyBox: StrokeBoundingBox | null = null;
   private lastPenTimestamp: number = 0;
   private lastMoveTimestamp: number = 0;
   private holdAnchorX: number = 0;
@@ -75,6 +78,7 @@ export class InkingController {
     dimensions: PageDimensions;
     spatialIndex: PageSpatialIndex;
     pendingDirtyBox: StrokeBoundingBox | null;
+    lastEraserPoint?: { x: number; y: number };
   } | null = null;
   private eraserRafId: number | null = null;
   private isEraserRafScheduled: boolean = false;
@@ -186,9 +190,16 @@ export class InkingController {
     if (e.pointerType === "pen") {
       this.lastPenTimestamp = Date.now();
     } else if (e.pointerType === "touch") {
+      if (this.isDrawing && this.activePointerType === "pen") {
+        return;
+      }
       if (Date.now() - this.lastPenTimestamp < this.palmRejectionDelayMs) {
         return;
       }
+    }
+
+    if (this.isDrawing) {
+      return;
     }
 
     if (e.button !== 0 && e.pointerType === "mouse" && this.activeTool !== "eraser") {
@@ -207,6 +218,8 @@ export class InkingController {
       return;
     }
 
+    this.activePointerId = e.pointerId;
+    this.activePointerType = e.pointerType;
     this.activePageId = pageId;
     this.activeCanvas = activeCanvas;
     this.committedCanvas = committedCanvas;
@@ -286,6 +299,12 @@ export class InkingController {
   ): void {
     if (!this.isDrawing || !this.activePageId) {
       return;
+    }
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) {
+      return;
+    }
+    if (e.pointerType === "pen") {
+      this.lastPenTimestamp = Date.now();
     }
 
     if (this.activeTool === "eraser") {
@@ -368,6 +387,12 @@ export class InkingController {
     if (!this.isDrawing || !this.activePageId) {
       return;
     }
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) {
+      return;
+    }
+    if (e.pointerType === "pen") {
+      this.lastPenTimestamp = Date.now();
+    }
 
     if (this.activeCanvas) {
       try {
@@ -387,6 +412,9 @@ export class InkingController {
   }
 
   handlePointerCancel(e: PointerEvent): void {
+    if (this.activePointerId !== null && e.pointerId !== this.activePointerId) {
+      return;
+    }
     if (this.activeCanvas) {
       try {
         this.activeCanvas.releasePointerCapture(e.pointerId);
@@ -399,7 +427,11 @@ export class InkingController {
     if (this.isDrawing && this.activePageId) {
       if (this.activeTool === "eraser") {
         this.commitEraserSession();
-      } else if (this.currentPoints.length > 0) {
+      } else if (
+        this.currentPoints.length > 0 &&
+        e.pointerType === "pen" &&
+        (this.currentPoints.length >= 5 || Date.now() - this.strokeStartTimestamp >= 150)
+      ) {
         this.commitCurrentStroke();
       }
     }
@@ -437,9 +469,8 @@ export class InkingController {
       this.shapeRecognitionEnabled &&
       (this.activeTool === "pen" ||
         this.activeTool === "pressure" ||
-        this.activeTool === "fountain" ||
-        this.activeTool === "shape") &&
-      (holdDuration >= 350 || this.activeTool === "shape");
+        this.activeTool === "fountain") &&
+      holdDuration >= 350;
 
     if (shouldCheckShape && this.callbacks.onShapeCommitted) {
       const recognized = ShapeRecognizer.recognize(
@@ -453,11 +484,25 @@ export class InkingController {
           recognized.shape.strokePattern = this.currentStrokePattern;
         }
         if (this.committedCanvas) {
-          const ctx = this.committedCanvas.getContext("2d");
           const pageW =
             Number(this.committedCanvas.dataset?.pageWidth) ||
             this.committedCanvas.clientWidth ||
             this.committedCanvas.width;
+          const pageH =
+            Number(this.committedCanvas.dataset?.pageHeight) ||
+            this.committedCanvas.clientHeight ||
+            this.committedCanvas.height;
+          if (
+            this.backingCache &&
+            this.backingCache.hasValidBacking(
+              this.activePageId,
+              this.committedCanvas.width,
+              this.committedCanvas.height
+            )
+          ) {
+            this.backingCache.release(this.activePageId);
+          }
+          const ctx = this.committedCanvas.getContext("2d");
           if (ctx && pageW > 0) {
             const scale = this.committedCanvas.width / pageW;
             if (typeof ctx.setTransform === "function") {
@@ -467,7 +512,7 @@ export class InkingController {
             ctx.imageSmoothingQuality = "high";
             ShapeRecognizer.renderShape(ctx, recognized.shape);
           }
-          this.backingCache?.release(this.activePageId);
+          void pageH;
         }
         this.callbacks.onShapeCommitted(this.activePageId, recognized.shape, stroke);
         return;
@@ -548,7 +593,10 @@ export class InkingController {
     this.activePageId = null;
     this.activeCanvas = null;
     this.committedCanvas = null;
+    this.activePointerId = null;
+    this.activePointerType = null;
     this.currentPoints = [];
+    this.lastActiveDirtyBox = null;
     this.strokeStartTimestamp = 0;
   }
 
@@ -569,11 +617,23 @@ export class InkingController {
     }
     const scale = this.activeCanvas.width / pageW;
 
-    this.clearCanvas(this.activeCanvas);
-
+    const pad = StrokeGeometry.getBoundsPadding(this.activeTool, this.currentWidth) + 6;
+    const currBox = StrokeGeometry.computeBoundingBox(this.currentPoints, pad);
     if (typeof ctx.setTransform === "function") {
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
     }
+    if (this.lastActiveDirtyBox) {
+      const clearBox = this.expandDirtyBox(this.lastActiveDirtyBox, currBox);
+      const cw = Math.max(0, clearBox.maxX - clearBox.minX);
+      const ch = Math.max(0, clearBox.maxY - clearBox.minY);
+      if (cw > 0 && ch > 0) {
+        ctx.clearRect(clearBox.minX, clearBox.minY, cw, ch);
+      }
+    } else {
+      this.clearCanvas(this.activeCanvas);
+    }
+    this.lastActiveDirtyBox = currBox;
+
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
@@ -587,10 +647,7 @@ export class InkingController {
       opacity,
       strokePattern: this.currentStrokePattern !== "solid" ? this.currentStrokePattern : undefined,
       points: this.currentPoints,
-      bounds: StrokeGeometry.computeBoundingBox(
-        this.currentPoints,
-        StrokeGeometry.getBoundsPadding(this.activeTool, this.currentWidth)
-      ),
+      bounds: currBox,
       createdAt: 0
     };
 
@@ -622,8 +679,12 @@ export class InkingController {
     let shapes = this.eraserSession.currentShapes;
     const spatialIndex = this.eraserSession.spatialIndex;
     const effectiveRadius = this.getEffectiveEraserRadius();
+    const trajectory = this.eraserSession.lastEraserPoint
+      ? [this.eraserSession.lastEraserPoint, ...coordsList]
+      : coordsList;
+    this.eraserSession.lastEraserPoint = coordsList[coordsList.length - 1];
 
-    const shapeResult = EraserEngine.eraseShapesTrajectory(shapes, coordsList, effectiveRadius, spatialIndex);
+    const shapeResult = EraserEngine.eraseShapesTrajectory(shapes, trajectory, effectiveRadius, spatialIndex);
     if (shapeResult.deletedIds.length > 0) {
       const deletedSet = new Set(shapeResult.deletedIds);
       for (const sh of shapes) {
@@ -637,7 +698,7 @@ export class InkingController {
     }
 
     if (this.eraserMode === "stroke") {
-      const strokeResult = EraserEngine.eraseByStrokeTrajectory(strokes, coordsList, effectiveRadius, spatialIndex);
+      const strokeResult = EraserEngine.eraseByStrokeTrajectory(strokes, trajectory, effectiveRadius, spatialIndex);
       if (strokeResult.deletedIds.length > 0) {
         const deletedSet = new Set(strokeResult.deletedIds);
         for (const s of strokes) {
@@ -650,32 +711,29 @@ export class InkingController {
         changed = true;
       }
     } else {
-      for (const pt of coordsList) {
-        const precisionResult = EraserEngine.erasePrecision(strokes, pt.x, pt.y, effectiveRadius, spatialIndex);
-        if (precisionResult.changed) {
-          const prevMap = new Map(strokes.map((s) => [s.id, s]));
-          const nextMap = new Map(precisionResult.updatedStrokes.map((s) => [s.id, s]));
-          for (const [id, oldStroke] of prevMap) {
-            if (!nextMap.has(id)) {
-              spatialIndex.removeStroke(id);
-              this.eraserSession.pendingDirtyBox = this.expandDirtyBox(
-                this.eraserSession.pendingDirtyBox,
-                oldStroke.bounds
-              );
-            }
-          }
-          for (const [id, newStroke] of nextMap) {
-            if (!prevMap.has(id)) {
-              spatialIndex.insertStroke(newStroke);
-              this.eraserSession.pendingDirtyBox = this.expandDirtyBox(
-                this.eraserSession.pendingDirtyBox,
-                newStroke.bounds
-              );
-            }
-          }
-          strokes = precisionResult.updatedStrokes;
-          changed = true;
+      const precisionResult = EraserEngine.erasePrecisionTrajectory(
+        strokes,
+        trajectory,
+        effectiveRadius,
+        spatialIndex
+      );
+      if (precisionResult.changed) {
+        for (const oldStroke of precisionResult.removedStrokes) {
+          spatialIndex.removeStroke(oldStroke.id);
+          this.eraserSession.pendingDirtyBox = this.expandDirtyBox(
+            this.eraserSession.pendingDirtyBox,
+            oldStroke.bounds
+          );
         }
+        for (const newStroke of precisionResult.addedStrokes) {
+          spatialIndex.insertStroke(newStroke);
+          this.eraserSession.pendingDirtyBox = this.expandDirtyBox(
+            this.eraserSession.pendingDirtyBox,
+            newStroke.bounds
+          );
+        }
+        strokes = precisionResult.updatedStrokes;
+        changed = true;
       }
     }
 

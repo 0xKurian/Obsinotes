@@ -34,9 +34,23 @@ export class FolderPickerModal extends Modal {
 
     const breadcrumbContainer = header.createDiv({ cls: "notepages-folder-breadcrumbs" });
 
+    const bindActivate = (el: HTMLElement, handler: (e: Event) => void) => {
+      el.setAttribute("tabindex", "0");
+      el.setAttribute("role", "button");
+      el.addEventListener("click", handler);
+      el.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handler(e);
+        }
+      });
+    };
+
     const rootPart = breadcrumbContainer.createSpan({ cls: "notepages-breadcrumb-item" });
-    rootPart.setText("📁 Vault root");
-    rootPart.addEventListener("click", () => {
+    const rootIcon = rootPart.createSpan({ cls: "notepages-folder-icon" });
+    setIcon(rootIcon, "folder");
+    rootPart.createSpan({ text: " Vault root" });
+    bindActivate(rootPart, () => {
       this.currentFolder = this.app.vault.getRoot();
       this.filterQuery = "";
       this.render();
@@ -56,7 +70,7 @@ export class FolderPickerModal extends Modal {
           partEl.addClass("is-active");
         } else {
           const targetPath = accumulated;
-          partEl.addEventListener("click", () => {
+          bindActivate(partEl, () => {
             const targetFolder = this.app.vault.getAbstractFileByPath(targetPath);
             if (targetFolder instanceof TFolder) {
               this.currentFolder = targetFolder;
@@ -143,12 +157,17 @@ export class FolderPickerModal extends Modal {
     subfolders.sort((a, b) => a.name.localeCompare(b.name));
 
     if (subfolders.length === 0) {
-      container.createDiv({ cls: "notepages-folder-empty", text: "No subfolders" });
+      const emptyText = this.filterQuery
+        ? `No folders matching "${this.filterQuery}"`
+        : "No subfolders";
+      container.createDiv({ cls: "notepages-folder-empty", text: emptyText });
       return;
     }
 
     for (const folder of subfolders) {
       const item = container.createDiv({ cls: "notepages-folder-item" });
+      item.setAttribute("tabindex", "0");
+      item.setAttribute("role", "button");
 
       const left = item.createDiv({ cls: "notepages-folder-item-left" });
       const folderIcon = left.createSpan({ cls: "notepages-folder-icon" });
@@ -158,10 +177,17 @@ export class FolderPickerModal extends Modal {
       const chevron = item.createSpan({ cls: "notepages-folder-chevron" });
       setIcon(chevron, "chevron-right");
 
-      item.addEventListener("click", () => {
+      const openFolder = () => {
         this.currentFolder = folder;
         this.filterQuery = "";
         this.render();
+      };
+      item.addEventListener("click", openFolder);
+      item.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openFolder();
+        }
       });
     }
   }

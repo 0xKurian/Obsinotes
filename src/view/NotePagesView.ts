@@ -141,6 +141,10 @@ export class NotePagesView
   isCorrupted: boolean = false;
   rawCorruptedData: string = "";
   corruptionError: string = "";
+  private preservedFrontmatter: string | null = null;
+  private lastSavedData: string | null = null;
+  private hasUnsavedChanges: boolean = false;
+  private isSaving: boolean = false;
   saveStatusResetTimer: number | null = null;
   inkingController: InkingController;
   selectionController: SelectionController;
@@ -159,7 +163,7 @@ export class NotePagesView
   statusSaveInfoEl!: HTMLElement;
 
   currentPageNumber: number = 1;
-  pageIntersectionObserver: IntersectionObserver | null = null;
+  private scrollRafId: number | null = null;
   private toolbarResizeObserver: ResizeObserver | null = null;
   performanceMonitor: PerformanceMonitor = new PerformanceMonitor();
   pageVirtualizer!: PageVirtualizer;
@@ -207,21 +211,19 @@ export class NotePagesView
       if (this.isCorrupted) {
         return;
       }
+      this.hasUnsavedChanges = true;
       if (this.document) {
         this.document.metadata.updatedAt = Date.now();
       }
+      if (this.saveStatusResetTimer !== null) {
+        window.clearTimeout(this.saveStatusResetTimer);
+        this.saveStatusResetTimer = null;
+      }
       if (this.statusSaveInfoEl) {
+        this.statusSaveInfoEl.removeClass("notepages-status-error");
         this.statusSaveInfoEl.setText("Saving...");
       }
       originalRequestSave();
-      if (this.saveStatusResetTimer !== null) {
-        window.clearTimeout(this.saveStatusResetTimer);
-      }
-      this.saveStatusResetTimer = window.setTimeout(() => {
-        if (this.statusSaveInfoEl && !this.isCorrupted) {
-          this.statusSaveInfoEl.setText("All changes saved");
-        }
-      }, 800);
     };
 
     this.historyManager = new HistoryManager(80, (canUndo, canRedo) => {
@@ -254,11 +256,29 @@ export class NotePagesView
             );
           }
         },
-        onTextDeleted: (page) => {
-          this.handleMutation(page);
-          const frameEl = this.getPageFrame(page.pageNumber);
-          if (frameEl) {
-            this.textController.renderPageTexts(page, frameEl);
+        onTextDeleted: (page, _textId, deletedText) => {
+          if (deletedText) {
+            this.historyManager.execute(
+              new DeleteElementsCommand(
+                page,
+                [],
+                [],
+                () => {
+                  this.handleMutation(page);
+                  const frameEl = this.getPageFrame(page.pageNumber);
+                  if (frameEl) {
+                    this.textController.renderPageTexts(page, frameEl);
+                  }
+                },
+                [deletedText]
+              )
+            );
+          } else {
+            this.handleMutation(page);
+            const frameEl = this.getPageFrame(page.pageNumber);
+            if (frameEl) {
+              this.textController.renderPageTexts(page, frameEl);
+            }
           }
         },
         onWikilinkClick: (linkTarget, event) => {
@@ -288,7 +308,11 @@ export class NotePagesView
             this.setActiveTool(targetTool, false);
           }
         },
-        getActiveTool: () => this.inkingController.activeTool
+        getActiveTool: () => this.inkingController.activeTool,
+        canInteractWithDomObjects: () =>
+          (this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan") ||
+          this.inkingController.activeTool === "text" ||
+          this.inkingController.activeTool === "sticky"
       },
       renderMath,
       finishRenderMath
@@ -338,7 +362,9 @@ export class NotePagesView
           );
         }
       },
-      getActiveTool: () => this.inkingController.activeTool
+      getActiveTool: () => this.inkingController.activeTool,
+      canInteractWithDomObjects: () =>
+        this.inkingController.activeTool === "lasso" && this.selectionSubMode === "pan"
     });
 
     this.pdfBackgroundManager = new PdfBackgroundManager(this.app);
@@ -508,6 +534,8 @@ export class NotePagesView
             sourceShapes,
             targetShapes,
             (src, tgt) => {
+              PageSpatialIndexRegistry.invalidate(src);
+              PageSpatialIndexRegistry.invalidate(tgt);
               this.canvasHost.redrawCommittedCanvas(src.id);
               this.canvasHost.redrawCommittedCanvas(tgt.id);
               const srcFrame = this.getPageFrame(src.pageNumber);
@@ -593,6 +621,7 @@ export class NotePagesView
       getCommittedCanvas: (pageId) => this.canvasHost.getCommittedCanvas(pageId),
       getActiveCanvas: (pageId) => this.canvasHost.getActiveCanvas(pageId),
       redrawCommittedCanvas: (pageId) => this.canvasHost.redrawCommittedCanvas(pageId),
+      isPageDrawing: (pageId) => this.inkingController.isCurrentlyDrawing(pageId),
       onZoomUpdated: (zoom) => {
         this.toolbar.updateZoomDisplay(zoom);
         this.updateStatusDisplay();
@@ -641,6 +670,7 @@ export class NotePagesView
     this.gestureRouter = new GestureInputRouter({
       app: this.app,
       getRootContainerEl: () => this.rootContainerEl,
+      isViewActive: () => this.app.workspace.getActiveViewOfType(NotePagesView) === this,
       getScrollerEl: () => this.scrollerEl,
       getPagesContainerEl: () => this.pagesContainerEl,
       getEraserCursorEl: () => this.eraserCursorEl,
@@ -789,9 +819,41 @@ export class NotePagesView
     await super.onRename(file);
     if (this.document && this.document.metadata) {
       this.document.metadata.title = file.basename;
+      this.requestSave();
     }
     this.toolbar?.updateTitle(this.getNotebookTitle());
     this.updateStatusDisplay();
+  }
+
+  handleVaultFileRename(oldPath: string, newPath: string): void {
+    if (!this.document || !this.pageManager) {
+      return;
+    }
+    let changed = false;
+    for (const page of this.pageManager.getPages()) {
+      if (page.pdfSource) {
+        if (page.pdfSource.pdfPath === oldPath) {
+          page.pdfSource.pdfPath = newPath;
+          changed = true;
+        }
+        if (page.pdfSource.svgPath === oldPath) {
+          page.pdfSource.svgPath = newPath;
+          changed = true;
+        }
+      }
+      if (page.images) {
+        for (const img of page.images) {
+          if (img.vaultPath === oldPath) {
+            img.vaultPath = newPath;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (changed) {
+      this.renderDocument();
+      this.requestSave();
+    }
   }
 
   getNotebookTitle(): string {
@@ -977,11 +1039,14 @@ export class NotePagesView
         return;
       }
       const keyHandler = this.scope.register(modifiers, key, (e) => {
-        const targetTag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-        const activeTag =
-          typeof document !== "undefined" ? document.activeElement?.tagName?.toLowerCase() : undefined;
+        const targetEl = e.target as HTMLElement | null;
+        const activeEl = typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
+        const targetTag = targetEl?.tagName?.toLowerCase();
+        const activeTag = activeEl?.tagName?.toLowerCase();
         if (
           this.textController.isEditing() ||
+          targetEl?.isContentEditable ||
+          activeEl?.isContentEditable ||
           targetTag === "input" ||
           targetTag === "textarea" ||
           targetTag === "select" ||
@@ -1057,6 +1122,7 @@ export class NotePagesView
   }
 
   private handleEscapeShortcut(): boolean | void {
+    this.toolbar?.closeAllPopovers();
     if (this.selectionController.hasSelection()) {
       this.clearActiveSelectionCanvas();
       return false;
@@ -1078,6 +1144,18 @@ export class NotePagesView
     if (this.textController?.isEditing()) {
       this.textController.commitActiveEdit();
     }
+    if (this.document && !this.isCorrupted && this.hasUnsavedChanges && this.file) {
+      try {
+        await this.save();
+      } catch (err) {
+        console.error("[NotePages] Failed to flush unsaved changes on close:", err);
+      }
+    }
+    for (const handler of this.registeredKeyHandlers) {
+      this.scope?.unregister(handler);
+    }
+    this.registeredKeyHandlers = [];
+    this.historyManager.clear();
     this.zoomController.destroy();
     this.rulerController.destroy();
     this.clearThumbnailDebounceTimers();
@@ -1087,38 +1165,54 @@ export class NotePagesView
       window.clearTimeout(this.saveStatusResetTimer);
       this.saveStatusResetTimer = null;
     }
-    this.pageIntersectionObserver?.disconnect();
-    this.pageIntersectionObserver = null;
+    if (this.scrollRafId !== null) {
+      window.cancelAnimationFrame(this.scrollRafId);
+      this.scrollRafId = null;
+    }
     this.toolbarResizeObserver?.disconnect();
     this.toolbarResizeObserver = null;
     this.pageVirtualizer.destroy();
     this.sidebar.destroy();
     this.minimap?.destroy();
     this.selectionController?.destroy();
+    this.imageController?.destroy();
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
+    this.preservedFrontmatter = null;
+    this.lastSavedData = null;
+    this.hasUnsavedChanges = false;
+    this.isSaving = false;
     this.canvasHost.clearAll();
     this.contentEl.empty();
+    await super.onClose();
   }
 
   clear(): void {
     if (this.textController?.isEditing()) {
-      this.textController.commitActiveEdit();
+      this.textController.cancelActiveEdit();
     }
+    this.historyManager.clear();
     this.zoomController.destroy();
     this.rulerController.destroy();
     this.clearThumbnailDebounceTimers();
     this.gestureRouter.resetState();
     this.dragCoordinator.clearOverlayRef();
-    this.pageIntersectionObserver?.disconnect();
-    this.pageVirtualizer.destroy();
+    if (this.scrollRafId !== null) {
+      window.cancelAnimationFrame(this.scrollRafId);
+      this.scrollRafId = null;
+    }
+    this.pageVirtualizer.clear();
     this.selectionController?.destroy();
     this.sidebar.clear();
     this.minimap?.clear();
     this.pdfBackgroundManager.destroy();
     this.document = null;
     this.pageManager = null;
+    this.preservedFrontmatter = null;
+    this.lastSavedData = null;
+    this.hasUnsavedChanges = false;
+    this.isSaving = false;
     this.canvasHost.clearAll();
 
     if (this.pagesContainerEl) {
@@ -1137,6 +1231,56 @@ export class NotePagesView
     this.updateStatusDisplay();
   }
 
+  async save(clear?: boolean): Promise<void> {
+    if (this.isCorrupted) {
+      return;
+    }
+    if (this.document) {
+      const validation = DocumentSerializer.fastValidateDocumentForSave(this.document);
+      if (!validation.valid) {
+        if (this.file) {
+          try {
+            const rawFallback = JSON.stringify(this.document);
+            await this.storageManager.createEmergencyBackup(this.file, rawFallback);
+          } catch {
+            // Best-effort emergency backup
+          }
+        }
+        new Notice(`Save blocked: invalid notebook structure (${validation.errors[0] || "unknown error"})`);
+        throw new Error(`Document validation failed before save: ${validation.errors.join("; ")}`);
+      }
+    }
+
+    this.isSaving = true;
+    try {
+      await super.save(clear);
+      this.hasUnsavedChanges = false;
+      this.lastSavedData = this.data;
+      if (this.statusSaveInfoEl && !this.isCorrupted) {
+        this.statusSaveInfoEl.removeClass("notepages-status-error");
+        this.statusSaveInfoEl.setText("All changes saved");
+        if (this.saveStatusResetTimer !== null) {
+          window.clearTimeout(this.saveStatusResetTimer);
+        }
+        this.saveStatusResetTimer = window.setTimeout(() => {
+          this.saveStatusResetTimer = null;
+          if (this.statusSaveInfoEl && !this.isCorrupted && !this.hasUnsavedChanges && !this.isSaving) {
+            this.statusSaveInfoEl.setText("Ready");
+          }
+        }, 2000);
+      }
+    } catch (err) {
+      if (this.statusSaveInfoEl) {
+        this.statusSaveInfoEl.addClass("notepages-status-error");
+        this.statusSaveInfoEl.setText("Save failed");
+      }
+      new Notice(`Failed to save notebook: ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    } finally {
+      this.isSaving = false;
+    }
+  }
+
   getViewData(): string {
     if (this.textController?.isEditing()) {
       this.textController.commitActiveEdit();
@@ -1145,10 +1289,11 @@ export class NotePagesView
       return this.rawCorruptedData;
     }
     if (!this.document) {
-      this.document = this.createDefaultDocument();
-      this.pageManager = new PageManager(this.document);
+      return this.data ?? "";
     }
-    return DocumentSerializer.serializeDocument(this.document);
+    return DocumentSerializer.serializeDocument(this.document, {
+      existingFrontmatter: this.preservedFrontmatter
+    });
   }
 
   setViewData(data: string, clear: boolean): void {
@@ -1167,10 +1312,37 @@ export class NotePagesView
 
     if (clear) {
       this.clear();
+    } else if (this.document && !this.isCorrupted && this.lastSavedData !== null) {
+      if (data === this.lastSavedData) {
+        return;
+      }
+      const prevBody = this.lastSavedData.slice(DocumentSerializer.getFrontmatterEndOffset(this.lastSavedData));
+      const nextBody = data.slice(DocumentSerializer.getFrontmatterEndOffset(data));
+      if (prevBody === nextBody) {
+        this.preservedFrontmatter = DocumentSerializer.extractFrontmatter(data);
+        this.lastSavedData = data;
+        return;
+      }
     }
+
+    if (!clear && this.textController?.isEditing()) {
+      this.textController.cancelActiveEdit();
+    }
+
+    this.preservedFrontmatter = DocumentSerializer.extractFrontmatter(data);
 
     const trimmed = data.trim();
     if (trimmed.length === 0) {
+      if (!clear && this.document !== null) {
+        this.isCorrupted = true;
+        this.rawCorruptedData = data;
+        this.corruptionError = "File became empty unexpectedly (possible sync conflict).";
+        if (this.file) {
+          this.storageManager.markCorrupted(this.file.path);
+        }
+        this.renderCorruptedView(this.corruptionError);
+        return;
+      }
       this.isCorrupted = false;
       this.rawCorruptedData = "";
       this.corruptionError = "";
@@ -1179,6 +1351,8 @@ export class NotePagesView
       }
       this.document = this.createDefaultDocument();
       this.pageManager = new PageManager(this.document);
+      this.lastSavedData = data;
+      this.hasUnsavedChanges = false;
       this.renderDocument();
       return;
     }
@@ -1201,8 +1375,13 @@ export class NotePagesView
     if (this.file) {
       this.storageManager.clearCorrupted(this.file.path);
     }
+    if (!clear) {
+      this.historyManager.clear();
+    }
     this.document = result.document;
     this.pageManager = new PageManager(this.document);
+    this.lastSavedData = data;
+    this.hasUnsavedChanges = false;
     this.renderDocument();
   }
 
@@ -1240,9 +1419,10 @@ export class NotePagesView
       text: "Open as raw Markdown",
       cls: "mod-cta"
     });
-    this.registerDomEvent(rawBtn, "click", async () => {
+    rawBtn.addEventListener("click", () => {
       if (this.file) {
-        await this.leaf.setViewState({
+        this.plugin.manualMarkdownLeaves.add(this.leaf);
+        void this.leaf.setViewState({
           type: "markdown",
           state: { file: this.file.path }
         });
@@ -1628,6 +1808,7 @@ export class NotePagesView
       orientation: currentPage.orientation,
       applyToAll: false
     });
+    this.toolbar.updatePageSizeButtons(preset);
   }
 
   onSelectPaperColor(color: string): void {
@@ -1639,6 +1820,7 @@ export class NotePagesView
       ...tpl,
       backgroundColor: color
     });
+    this.toolbar.updatePaperColorSwatches(color);
     this.renderDocument();
     this.requestSave();
     if (this.minimap) {
@@ -1776,6 +1958,7 @@ export class NotePagesView
     }
     this.toolbarResizeObserver = new ResizeObserver(() => {
       this.syncScrollerTopPadding();
+      this.minimap?.scheduleViewfinderUpdate();
     });
     if (this.canvasStageEl) {
       this.toolbarResizeObserver.observe(this.canvasStageEl);
@@ -1818,6 +2001,7 @@ export class NotePagesView
         result.preset === "Custom" ? result.dimensions : undefined,
         result.orientation
       );
+      this.toolbar.updatePageSizeButtons(result.preset);
       this.renderDocument();
       this.requestSave();
       if (this.minimap) {
@@ -2061,36 +2245,6 @@ export class NotePagesView
 
     this.pageVirtualizer.initialize(this.scrollerEl);
 
-    if (typeof IntersectionObserver !== "undefined") {
-      this.pageIntersectionObserver = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            const target = entry.target as HTMLElement;
-            const pageNumber = Number(target.dataset.pageNumber);
-            const page = this.pageManager?.getPageByNumber(pageNumber);
-            if (!page || !page.pdfSource || Boolean(page.pdfSource.svgPath)) {
-              continue;
-            }
-            const frameEl = target.querySelector<HTMLElement>(".notepages-page-frame");
-            if (!frameEl) {
-              continue;
-            }
-            if (entry.isIntersecting) {
-              void this.pdfBackgroundManager.renderPdfBackground(page, frameEl, () => {
-                this.updateThumbnailStrokes(page);
-              });
-            } else {
-              this.pdfBackgroundManager.unrenderPdfBackground(page, frameEl);
-            }
-          }
-        },
-        {
-          root: this.scrollerEl,
-          rootMargin: "800px 0px"
-        }
-      );
-    }
-
     this.dragCoordinator.ensureDragOverlay();
     if (this.rulerController?.isVisible()) {
       this.rulerController.show();
@@ -2164,16 +2318,12 @@ export class NotePagesView
       this.toolbar.setActiveWidth(this.penWidth);
     }
 
-    if (this.document && this.pageManager) {
-      this.document.pages.forEach((p) => {
-        const frameEl = this.getPageFrame(p.pageNumber);
-        if (frameEl) {
-          this.imageController.renderPageImages(p, frameEl, (path) => this.resolveResourcePath(path));
-          this.textController.renderPageTexts(p, frameEl);
-        }
-      });
-    }
+    const isInteractiveDomMode =
+      (tool === "lasso" && this.selectionSubMode === "pan") ||
+      tool === "text" ||
+      tool === "sticky";
 
+    this.rootContainerEl.toggleClass("is-tool-drawing", !isInteractiveDomMode);
     this.rootContainerEl.toggleClass("is-tool-select", tool === "lasso" && this.selectionSubMode === "pan");
     this.rootContainerEl.toggleClass("is-tool-text", tool === "text");
     this.rootContainerEl.toggleClass("is-tool-sticky", tool === "sticky");
@@ -2316,6 +2466,7 @@ export class NotePagesView
   private toggleSidebar(): void {
     this.isSidebarCollapsed = !this.isSidebarCollapsed;
     this.sidebar.toggle();
+    this.minimap?.scheduleViewfinderUpdate();
   }
 
   private updateStatusDisplay(): void {
@@ -2347,7 +2498,7 @@ export class NotePagesView
     if (this.statusZoomInfoEl) {
       this.statusZoomInfoEl.setText(`Zoom: ${Math.round(this.zoomController.getZoomLevel() * 100)}%`);
     }
-    if (this.statusSaveInfoEl) {
+    if (this.statusSaveInfoEl && !this.isCorrupted && !this.isSaving && !this.hasUnsavedChanges) {
       if (pageCount === 0) {
         this.statusSaveInfoEl.setText("Loading...");
       } else {
@@ -2371,24 +2522,11 @@ export class NotePagesView
 
     this.clearActiveSelectionCanvas();
 
-    this.canvasHost.committedCanvasMap.forEach((c) => {
-      c.width = 1;
-      c.height = 1;
-    });
-    this.canvasHost.activeCanvasMap.forEach((c) => {
-      c.width = 1;
-      c.height = 1;
-    });
-    this.canvasHost.templateCanvasMap.forEach((c) => {
-      c.width = 1;
-      c.height = 1;
-    });
-
     this.sidebar.clear();
     this.pagesContainerEl.empty();
+    this.gestureRouter.cleanupAllPageListeners();
     this.canvasHost.clearAll();
     this.pageVirtualizer.clear();
-    this.pageIntersectionObserver?.disconnect();
 
     const pages = this.pageManager.getPages();
     for (let index = 0; index < pages.length; index++) {
@@ -2403,8 +2541,10 @@ export class NotePagesView
     }
 
     if (this.pageManager) {
-      const activeType = this.pageManager.getNotebookTemplate().type;
-      this.toolbar.updatePaperTemplateButtons(activeType);
+      const activeTemplate = this.pageManager.getNotebookTemplate();
+      this.toolbar.updatePaperTemplateButtons(activeTemplate.type);
+      this.toolbar.updatePaperColorSwatches(activeTemplate.backgroundColor);
+      this.toolbar.updatePageSizeButtons(this.pageManager.getDocument().metadata.defaultPageSize);
       const orient = this.pageManager.getNotebookOrientation();
       this.toolbar.updateOrientationButtonDisplay(orient);
       this.toolbar.updateTitle(this.getNotebookTitle());
@@ -2495,20 +2635,18 @@ export class NotePagesView
           const bgImg = pageFrame.createEl("img", {
             cls: "notepages-pdf-svg-background"
           });
+          bgImg.loading = "lazy";
+          bgImg.decoding = "async";
           bgImg.src = this.resolveResourcePath(svgFile.path);
           bgImg.draggable = false;
           if (pageFrame.firstChild && pageFrame.firstChild !== bgImg) {
             pageFrame.insertBefore(bgImg, pageFrame.firstChild);
           }
         }
-      } else {
-        if (this.pageIntersectionObserver) {
-          this.pageIntersectionObserver.observe(pageWrapper);
-        } else {
-          void this.pdfBackgroundManager.renderPdfBackground(page, pageFrame, () => {
-            this.updateThumbnailStrokes(page);
-          });
-        }
+      } else if (shouldInitialMount) {
+        void this.pdfBackgroundManager.renderPdfBackground(page, pageFrame, () => {
+          this.updateThumbnailStrokes(page);
+        });
       }
     }
     this.imageController.renderPageImages(page, pageFrame, (path) => this.resolveResourcePath(path));
@@ -2611,22 +2749,34 @@ export class NotePagesView
       this.minimap.scheduleViewfinderUpdate();
     }
 
-    const scrollerRect = this.scrollerEl.getBoundingClientRect();
-    let closestPage = this.currentPageNumber;
-    let minDistance = Infinity;
+    if (this.scrollRafId !== null) {
+      return;
+    }
 
-    this.canvasHost.pageElements.forEach((el, num) => {
-      const rect = el.getBoundingClientRect();
-      const distance = Math.abs(rect.top - scrollerRect.top - 40);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestPage = num;
+    this.scrollRafId = window.requestAnimationFrame(() => {
+      this.scrollRafId = null;
+      if (!this.scrollerEl || this.canvasHost.pageElements.size === 0) {
+        return;
+      }
+
+      const zoom = this.zoomController.getZoomLevel();
+      const targetScrollY = this.scrollerEl.scrollTop + 40;
+      let closestPage = this.currentPageNumber;
+      let minDistance = Infinity;
+
+      this.canvasHost.pageElements.forEach((el, num) => {
+        const topInScroller = el.offsetTop * zoom;
+        const distance = Math.abs(topInScroller - targetScrollY);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPage = num;
+        }
+      });
+
+      if (closestPage !== this.currentPageNumber) {
+        this.updateActivePage(closestPage);
       }
     });
-
-    if (closestPage !== this.currentPageNumber) {
-      this.updateActivePage(closestPage);
-    }
   }
 
   private addNewPage(): void {
@@ -2725,11 +2875,7 @@ export class NotePagesView
       const pageWrapper = this.pagesContainerEl.querySelector<HTMLElement>(`[data-page-id="${deletedPage.id}"]`);
 
       this.pageVirtualizer.unobservePage(deletedPageNumber);
-
-      if (pageWrapper && this.pageIntersectionObserver) {
-        this.pageIntersectionObserver.unobserve(pageWrapper);
-      }
-
+      this.gestureRouter.cleanupPageListeners(deletedPage.id);
       this.canvasHost.cleanupPageCanvases(deletedPage.id, pageWrapper);
       this.sidebar.removeThumbnail(deletedPage.id);
 
@@ -2921,13 +3067,13 @@ export class NotePagesView
     const newFilePath = normalizePath(parentPath ? `${parentPath}/${newFileName}` : newFileName);
 
     try {
+      await this.app.fileManager.renameFile(currentFile, newFilePath);
       if (this.document && this.document.metadata) {
         this.document.metadata.title = trimmed;
         this.document.metadata.updatedAt = Date.now();
       }
 
       await this.save();
-      await this.app.fileManager.renameFile(currentFile, newFilePath);
 
       this.toolbar.updateTitle(trimmed);
       this.updateStatusDisplay();

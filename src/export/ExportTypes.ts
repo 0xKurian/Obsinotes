@@ -77,7 +77,7 @@ export function parsePageRange(
   }
 
   if (result.size === 0) {
-    return [1];
+    return [];
   }
 
   return Array.from(result).sort((a, b) => a - b);

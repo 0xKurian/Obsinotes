@@ -22,6 +22,24 @@ const VALID_PAGE_SIZES: ReadonlySet<string> = new Set<PageSizePreset>([
   "Custom"
 ]);
 
+export const PLUGIN_OWNED_FRONTMATTER_KEYS = [
+  NOTE_PAGES_FRONTMATTER_KEY,
+  "notepages-version",
+  "title",
+  "page-count",
+  "updated"
+] as const;
+
+export interface SerializeOptions {
+  /** Raw YAML content (excluding enclosing `---` delimiters) from the existing file. User-defined keys are preserved. */
+  existingFrontmatter?: string | null;
+}
+
+interface FrontmatterBlock {
+  key: string | null;
+  lines: string[];
+}
+
 export class DocumentSerializer {
   static fastValidateDocumentForSave(data: unknown): ValidationResult {
     const errors: string[] = [];
@@ -69,17 +87,17 @@ export class DocumentSerializer {
         if (typeof page.id !== "string" || page.id.trim() === "") {
           errors.push(`${prefix}.id must be a non-empty string`);
         }
-        if (typeof page.pageNumber !== "number" || page.pageNumber < 1) {
+        if (typeof page.pageNumber !== "number" || !Number.isFinite(page.pageNumber) || page.pageNumber < 1) {
           errors.push(`${prefix}.pageNumber must be a positive integer`);
         }
         if (!page.dimensions || typeof page.dimensions !== "object") {
           errors.push(`${prefix}.dimensions must be an object`);
         } else {
           const dim = page.dimensions as Record<string, unknown>;
-          if (typeof dim.width !== "number" || dim.width <= 0) {
+          if (typeof dim.width !== "number" || !Number.isFinite(dim.width) || dim.width <= 0) {
             errors.push(`${prefix}.dimensions.width must be a positive number`);
           }
-          if (typeof dim.height !== "number" || dim.height <= 0) {
+          if (typeof dim.height !== "number" || !Number.isFinite(dim.height) || dim.height <= 0) {
             errors.push(`${prefix}.dimensions.height must be a positive number`);
           }
         }
@@ -165,7 +183,7 @@ export class DocumentSerializer {
     if (p.bookmarked !== undefined && typeof p.bookmarked !== "boolean") {
       errors.push(`${prefix}.bookmarked must be a boolean`);
     }
-    if (typeof p.pageNumber !== "number" || p.pageNumber < 1) {
+    if (typeof p.pageNumber !== "number" || !Number.isFinite(p.pageNumber) || p.pageNumber < 1) {
       errors.push(`${prefix}.pageNumber must be a positive integer`);
     }
 
@@ -173,10 +191,10 @@ export class DocumentSerializer {
       errors.push(`${prefix}.dimensions must be an object`);
     } else {
       const dim = p.dimensions as Record<string, unknown>;
-      if (typeof dim.width !== "number" || dim.width <= 0) {
+      if (typeof dim.width !== "number" || !Number.isFinite(dim.width) || dim.width <= 0) {
         errors.push(`${prefix}.dimensions.width must be a positive number`);
       }
-      if (typeof dim.height !== "number" || dim.height <= 0) {
+      if (typeof dim.height !== "number" || !Number.isFinite(dim.height) || dim.height <= 0) {
         errors.push(`${prefix}.dimensions.height must be a positive number`);
       }
       if (dim.unit !== "pt") {
@@ -202,10 +220,10 @@ export class DocumentSerializer {
       if (typeof tmpl.lineColor !== "string") {
         errors.push(`${prefix}.template.lineColor must be a string`);
       }
-      if (typeof tmpl.spacing !== "number" || tmpl.spacing <= 0) {
+      if (typeof tmpl.spacing !== "number" || !Number.isFinite(tmpl.spacing) || tmpl.spacing <= 0) {
         errors.push(`${prefix}.template.spacing must be a positive number`);
       }
-      if (typeof tmpl.opacity !== "number" || tmpl.opacity < 0 || tmpl.opacity > 1) {
+      if (typeof tmpl.opacity !== "number" || !Number.isFinite(tmpl.opacity) || tmpl.opacity < 0 || tmpl.opacity > 1) {
         errors.push(`${prefix}.template.opacity must be a number between 0 and 1`);
       }
     }
@@ -264,10 +282,10 @@ export class DocumentSerializer {
     if (typeof s.color !== "string") {
       errors.push(`${prefix}.color must be a string`);
     }
-    if (typeof s.width !== "number" || s.width <= 0) {
+    if (typeof s.width !== "number" || !Number.isFinite(s.width) || s.width <= 0) {
       errors.push(`${prefix}.width must be a positive number`);
     }
-    if (typeof s.opacity !== "number" || s.opacity < 0 || s.opacity > 1) {
+    if (typeof s.opacity !== "number" || !Number.isFinite(s.opacity) || s.opacity < 0 || s.opacity > 1) {
       errors.push(`${prefix}.opacity must be a number between 0 and 1`);
     }
     if (
@@ -333,7 +351,7 @@ export class DocumentSerializer {
     if (typeof sh.color !== "string") {
       errors.push(`${prefix}.color must be a string`);
     }
-    if (typeof sh.strokeWidth !== "number" || sh.strokeWidth <= 0) {
+    if (typeof sh.strokeWidth !== "number" || !Number.isFinite(sh.strokeWidth) || sh.strokeWidth <= 0) {
       errors.push(`${prefix}.strokeWidth must be a positive number`);
     }
     if (
@@ -396,13 +414,13 @@ export class DocumentSerializer {
     if (typeof t.y !== "number" || !Number.isFinite(t.y)) {
       errors.push(`${prefix}.y must be a number`);
     }
-    if (typeof t.width !== "number" || t.width < 0) {
+    if (typeof t.width !== "number" || !Number.isFinite(t.width) || t.width < 0) {
       errors.push(`${prefix}.width must be a non-negative number`);
     }
-    if (typeof t.height !== "number" || t.height < 0) {
+    if (typeof t.height !== "number" || !Number.isFinite(t.height) || t.height < 0) {
       errors.push(`${prefix}.height must be a non-negative number`);
     }
-    if (typeof t.fontSize !== "number" || t.fontSize <= 0) {
+    if (typeof t.fontSize !== "number" || !Number.isFinite(t.fontSize) || t.fontSize <= 0) {
       errors.push(`${prefix}.fontSize must be a positive number`);
     }
     if (typeof t.color !== "string") {
@@ -437,10 +455,10 @@ export class DocumentSerializer {
     if (typeof img.y !== "number" || !Number.isFinite(img.y)) {
       errors.push(`${prefix}.y must be a number`);
     }
-    if (typeof img.width !== "number" || img.width <= 0) {
+    if (typeof img.width !== "number" || !Number.isFinite(img.width) || img.width <= 0) {
       errors.push(`${prefix}.width must be a positive number`);
     }
-    if (typeof img.height !== "number" || img.height <= 0) {
+    if (typeof img.height !== "number" || !Number.isFinite(img.height) || img.height <= 0) {
       errors.push(`${prefix}.height must be a positive number`);
     }
 
@@ -501,10 +519,12 @@ export class DocumentSerializer {
 
         pages.push({
           id: typeof rp.id === "string" && rp.id ? rp.id : `page_${idx + 1}`,
+          ...(typeof rp.title === "string" ? { title: rp.title } : {}),
+          ...(typeof rp.bookmarked === "boolean" ? { bookmarked: rp.bookmarked } : {}),
           pageNumber: idx + 1,
           dimensions: {
-            width: typeof dim.width === "number" && dim.width > 0 ? dim.width : 595.28,
-            height: typeof dim.height === "number" && dim.height > 0 ? dim.height : 841.89,
+            width: typeof dim.width === "number" && Number.isFinite(dim.width) && dim.width > 0 ? dim.width : 595.28,
+            height: typeof dim.height === "number" && Number.isFinite(dim.height) && dim.height > 0 ? dim.height : 841.89,
             unit: "pt"
           },
           orientation: rp.orientation === "landscape" ? "landscape" : "portrait",
@@ -512,9 +532,12 @@ export class DocumentSerializer {
             type: typeof tmpl.type === "string" ? (tmpl.type as PageData["template"]["type"]) : "ruled",
             backgroundColor: typeof tmpl.backgroundColor === "string" ? tmpl.backgroundColor : "#ffffff",
             lineColor: typeof tmpl.lineColor === "string" ? tmpl.lineColor : "#e2e8f0",
-            spacing: typeof tmpl.spacing === "number" && tmpl.spacing > 0 ? tmpl.spacing : 24,
-            opacity: typeof tmpl.opacity === "number" ? tmpl.opacity : 0.8
+            spacing: typeof tmpl.spacing === "number" && Number.isFinite(tmpl.spacing) && tmpl.spacing > 0 ? tmpl.spacing : 24,
+            opacity: typeof tmpl.opacity === "number" && Number.isFinite(tmpl.opacity) ? tmpl.opacity : 0.8
           },
+          ...(rp.pdfSource && typeof rp.pdfSource === "object"
+            ? { pdfSource: rp.pdfSource as PageData["pdfSource"] }
+            : {}),
           strokes: Array.isArray(rp.strokes) ? (rp.strokes as StrokeObject[]) : [],
           shapes: Array.isArray(rp.shapes) ? (rp.shapes as ShapeObject[]) : [],
           texts: Array.isArray(rp.texts) ? (rp.texts as PageData["texts"]) : [],
@@ -563,9 +586,183 @@ export class DocumentSerializer {
     };
   }
 
-  static serializeDocument(doc: NotebookDocument): string {
+  private static findFrontmatterBounds(raw: string): {
+    contentStart: number;
+    contentEnd: number;
+    blockEnd: number;
+  } | null {
+    const openMatch = /^---[ \t]*\r?\n/.exec(raw);
+    if (!openMatch) {
+      return null;
+    }
+
+    const contentStart = openMatch[0].length;
+    let lineStart = contentStart;
+
+    while (lineStart <= raw.length) {
+      const nlIndex = raw.indexOf("\n", lineStart);
+      const lineEnd = nlIndex === -1 ? raw.length : nlIndex;
+      const lineWithoutCr =
+        lineEnd > lineStart && raw[lineEnd - 1] === "\r"
+          ? raw.slice(lineStart, lineEnd - 1)
+          : raw.slice(lineStart, lineEnd);
+
+      if (/^---[ \t]*$/.test(lineWithoutCr)) {
+        const blockEnd = nlIndex === -1 ? raw.length : nlIndex + 1;
+        let contentEnd = lineStart;
+        if (contentEnd > contentStart && raw[contentEnd - 1] === "\n") {
+          contentEnd -= 1;
+          if (contentEnd > contentStart && raw[contentEnd - 1] === "\r") {
+            contentEnd -= 1;
+          }
+        }
+        return { contentStart, contentEnd, blockEnd };
+      }
+
+      if (nlIndex === -1) {
+        break;
+      }
+      lineStart = nlIndex + 1;
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract the raw YAML frontmatter (excluding the enclosing `---` lines) from a markdown document,
+   * or return `null` if no valid frontmatter block exists at the start of the document.
+   */
+  static extractFrontmatter(raw: string): string | null {
+    const bounds = this.findFrontmatterBounds(raw);
+    if (!bounds) {
+      return null;
+    }
+    return raw.slice(bounds.contentStart, bounds.contentEnd);
+  }
+
+  /**
+   * Return the character offset immediately after the closing `---` line of the frontmatter,
+   * or `0` if no valid frontmatter block exists at the start of the document.
+   */
+  static getFrontmatterEndOffset(raw: string): number {
+    const bounds = this.findFrontmatterBounds(raw);
+    return bounds ? bounds.blockEnd : 0;
+  }
+
+  private static parseTopLevelKey(line: string): string | null {
+    if (line.length === 0 || line[0] === " " || line[0] === "\t" || line[0] === "#") {
+      return null;
+    }
+    if (line === "-" || line.startsWith("- ") || line.startsWith("-\t")) {
+      return null;
+    }
+
+    const doubleQuoted = /^"((?:\\.|[^"\\])*)"[ \t]*:(?:\s|$)/.exec(line);
+    if (doubleQuoted) {
+      return doubleQuoted[1].replace(/\\(.)/g, "$1");
+    }
+
+    const singleQuoted = /^'((?:''|[^'])*)'[ \t]*:(?:\s|$)/.exec(line);
+    if (singleQuoted) {
+      return singleQuoted[1].replace(/''/g, "'");
+    }
+
+    const unquoted = /^([^:\s][^:]*?)[ \t]*:(?:\s|$)/.exec(line);
+    if (unquoted) {
+      return unquoted[1].trimEnd();
+    }
+
+    return null;
+  }
+
+  /**
+   * Merge plugin-owned key/value pairs into an existing raw YAML frontmatter string,
+   * preserving all user-defined keys, comments, ordering, and formatting.
+   */
+  static mergeFrontmatter(
+    existing: string | null | undefined,
+    pluginEntries: ReadonlyArray<readonly [string, string]>
+  ): string {
+    const pluginMap = new Map<string, string>(pluginEntries);
+
+    if (!existing) {
+      return pluginEntries.map(([key, value]) => `${key}: ${value}`).join("\n");
+    }
+
+    const normalized = existing.replace(/\r\n?/g, "\n");
+    if (normalized.trim().length === 0) {
+      return pluginEntries.map(([key, value]) => `${key}: ${value}`).join("\n");
+    }
+
+    const lines = normalized.split("\n");
+    const blocks: FrontmatterBlock[] = [];
+
+    for (const line of lines) {
+      if (line.startsWith("#")) {
+        blocks.push({ key: null, lines: [line] });
+        continue;
+      }
+
+      const key = this.parseTopLevelKey(line);
+      if (key !== null) {
+        blocks.push({ key, lines: [line] });
+      } else if (blocks.length > 0) {
+        blocks[blocks.length - 1].lines.push(line);
+      } else {
+        blocks.push({ key: null, lines: [line] });
+      }
+    }
+
+    const seenPluginKeys = new Set<string>();
+    const mergedLines: string[] = [];
+
+    for (const block of blocks) {
+      if (block.key !== null && pluginMap.has(block.key)) {
+        if (seenPluginKeys.has(block.key)) {
+          continue;
+        }
+        seenPluginKeys.add(block.key);
+        const value = pluginMap.get(block.key)!;
+        mergedLines.push(`${block.key}: ${value}`);
+
+        let trailingBlankCount = 0;
+        for (let i = block.lines.length - 1; i >= 1; i--) {
+          if (block.lines[i].trim() === "") {
+            trailingBlankCount++;
+          } else {
+            break;
+          }
+        }
+        for (let i = 0; i < trailingBlankCount; i++) {
+          mergedLines.push("");
+        }
+      } else {
+        mergedLines.push(...block.lines);
+      }
+    }
+
+    const missingPluginLines: string[] = [];
+    for (const [key, value] of pluginEntries) {
+      if (!seenPluginKeys.has(key)) {
+        missingPluginLines.push(`${key}: ${value}`);
+      }
+    }
+
+    if (missingPluginLines.length > 0) {
+      return [...missingPluginLines, ...mergedLines].join("\n");
+    }
+
+    return mergedLines.join("\n");
+  }
+
+  static serializeDocument(doc: NotebookDocument, options: SerializeOptions = {}): string {
     const pageCount = doc.pages.length;
     const title = doc.metadata.title;
+    const escapedTitle = title
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\r/g, "\\r")
+      .replace(/\n/g, "\\n");
     const updatedDate = new Date(doc.metadata.updatedAt).toISOString();
     const compactDoc: NotebookDocument = {
       ...doc,
@@ -576,14 +773,14 @@ export class DocumentSerializer {
           : []
       }))
     };
-    const jsonBlock = JSON.stringify(compactDoc);
+    const jsonBlock = JSON.stringify(compactDoc).replace(/```/g, "\\u0060\\u0060\\u0060");
 
     const wikilinks = new Set<string>();
     for (const page of doc.pages) {
       if (Array.isArray(page.texts)) {
         for (const textObj of page.texts) {
           if (textObj.content) {
-            const matches = textObj.content.match(/\[\[([^\]]+)\]\]/g);
+            const matches = textObj.content.match(/\[\[([^\]\r\n]+)\]\]/g);
             if (matches) {
               matches.forEach(m => wikilinks.add(m));
             }
@@ -593,13 +790,16 @@ export class DocumentSerializer {
     }
 
     const linksLine = wikilinks.size > 0 ? `\n> Links: ${Array.from(wikilinks).join(", ")}` : "";
+    const frontmatter = this.mergeFrontmatter(options.existingFrontmatter, [
+      [NOTE_PAGES_FRONTMATTER_KEY, "true"],
+      ["notepages-version", String(doc.metadata.schemaVersion || CURRENT_SCHEMA_VERSION)],
+      ["title", `"${escapedTitle}"`],
+      ["page-count", String(pageCount)],
+      ["updated", `"${updatedDate}"`]
+    ]);
 
     return `---
-${NOTE_PAGES_FRONTMATTER_KEY}: true
-notepages-version: ${doc.metadata.schemaVersion || CURRENT_SCHEMA_VERSION}
-title: "${title.replace(/"/g, '\\"')}"
-page-count: ${pageCount}
-updated: "${updatedDate}"
+${frontmatter}
 ---
 
 > [!NOTE] NotePages Notebook
@@ -613,8 +813,9 @@ ${jsonBlock}
   }
 
   static deserializeDocument(raw: string): DeserializationResult {
+    const searchStart = this.getFrontmatterEndOffset(raw);
     const startTag = "```notepages-data";
-    const startIndex = raw.indexOf(startTag);
+    const startIndex = raw.indexOf(startTag, searchStart);
     if (startIndex === -1) {
       return {
         success: false,
@@ -632,7 +833,19 @@ ${jsonBlock}
       };
     }
 
-    const endIndex = raw.indexOf("```", newlineAfterStart);
+    const closingFenceRegex = /\r?\n[ \t]*```[ \t]*(?=\r?\n|$)/g;
+    closingFenceRegex.lastIndex = newlineAfterStart;
+    let endIndex = -1;
+    let fenceMatch: RegExpExecArray | null;
+    while ((fenceMatch = closingFenceRegex.exec(raw)) !== null) {
+      endIndex = fenceMatch.index;
+    }
+    if (endIndex === -1) {
+      const fallbackIdx = raw.lastIndexOf("```");
+      if (fallbackIdx > newlineAfterStart) {
+        endIndex = fallbackIdx;
+      }
+    }
     if (endIndex === -1) {
       return {
         success: false,

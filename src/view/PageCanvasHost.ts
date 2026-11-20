@@ -62,6 +62,18 @@ export class PageCanvasHost {
     this.tessellationScheduler.cancelAll();
     this.backingCache.clear();
     this.pageElements.clear();
+    for (const c of this.committedCanvasMap.values()) {
+      c.width = 0;
+      c.height = 0;
+    }
+    for (const c of this.activeCanvasMap.values()) {
+      c.width = 0;
+      c.height = 0;
+    }
+    for (const c of this.templateCanvasMap.values()) {
+      c.width = 0;
+      c.height = 0;
+    }
     this.committedCanvasMap.clear();
     this.activeCanvasMap.clear();
     this.templateCanvasMap.clear();
@@ -71,30 +83,30 @@ export class PageCanvasHost {
     this.backingCache.release(pageId);
     const committedCanvas = this.committedCanvasMap.get(pageId);
     if (committedCanvas) {
-      committedCanvas.width = 1;
-      committedCanvas.height = 1;
+      committedCanvas.width = 0;
+      committedCanvas.height = 0;
       this.committedCanvasMap.delete(pageId);
     }
 
     const activeCanvas = this.activeCanvasMap.get(pageId);
     if (activeCanvas) {
-      activeCanvas.width = 1;
-      activeCanvas.height = 1;
+      activeCanvas.width = 0;
+      activeCanvas.height = 0;
       this.activeCanvasMap.delete(pageId);
     }
 
     const templateCanvas = this.templateCanvasMap.get(pageId);
     if (templateCanvas) {
-      templateCanvas.width = 1;
-      templateCanvas.height = 1;
+      templateCanvas.width = 0;
+      templateCanvas.height = 0;
       this.templateCanvasMap.delete(pageId);
     }
 
     if (pageWrapper) {
       const extraCanvases = pageWrapper.querySelectorAll("canvas");
       extraCanvases.forEach((c) => {
-        c.width = 1;
-        c.height = 1;
+        c.width = 0;
+        c.height = 0;
       });
       pageWrapper.remove();
     }
@@ -140,7 +152,6 @@ export class PageCanvasHost {
     if (!page) {
       return;
     }
-    this.backingCache.release(page.id);
 
     const committedCanvas = this.committedCanvasMap.get(page.id);
     const activeCanvas = this.activeCanvasMap.get(page.id);
@@ -156,13 +167,13 @@ export class PageCanvasHost {
     }
 
     const scale = this.delegate.getCanvasScale();
-    const targetW = Math.round(page.dimensions.width * scale);
-    const targetH = Math.round(page.dimensions.height * scale);
-
-    this.backingCache.release(page.id);
+    const areaScale = Math.min(scale, Math.sqrt(16_000_000 / Math.max(1, page.dimensions.width * page.dimensions.height)));
+    const targetW = Math.max(1, Math.min(8192, Math.round(page.dimensions.width * areaScale)));
+    const targetH = Math.max(1, Math.min(8192, Math.round(page.dimensions.height * areaScale)));
 
     const committedCanvas = this.committedCanvasMap.get(page.id);
     if (committedCanvas && (committedCanvas.width <= 1 || committedCanvas.width !== targetW || committedCanvas.height !== targetH)) {
+      this.backingCache.release(page.id);
       committedCanvas.width = targetW;
       committedCanvas.height = targetH;
       this.redrawCommittedCanvas(page.id);
@@ -185,7 +196,8 @@ export class PageCanvasHost {
       activeCanvas.height = targetH;
       const ctx = activeCanvas.getContext("2d");
       if (ctx && typeof ctx.setTransform === "function") {
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        const effectiveScale = targetW / Math.max(1, page.dimensions.width);
+        ctx.setTransform(effectiveScale, 0, 0, effectiveScale, 0, 0);
       }
     }
 
@@ -208,39 +220,39 @@ export class PageCanvasHost {
     );
   }
 
-  unmountPageCanvases(pageNumber: number): void {
+  unmountPageCanvases(pageNumber: number): boolean {
     const page = this.delegate.getPageByNumber(pageNumber);
     if (!page) {
-      return;
+      return false;
     }
     if (pageNumber === this.delegate.getCurrentPageNumber()) {
-      return;
+      return false;
     }
     if (this.delegate.getInkingController().isCurrentlyDrawing(page.id)) {
-      return;
+      return false;
     }
     if (this.delegate.isTextEditing()) {
-      return;
+      return false;
     }
 
     this.backingCache.release(page.id);
 
     const committedCanvas = this.committedCanvasMap.get(page.id);
-    if (committedCanvas && committedCanvas.width > 1) {
-      committedCanvas.width = 1;
-      committedCanvas.height = 1;
+    if (committedCanvas && committedCanvas.width > 0) {
+      committedCanvas.width = 0;
+      committedCanvas.height = 0;
     }
 
     const templateCanvas = this.templateCanvasMap.get(page.id);
-    if (templateCanvas && templateCanvas.width > 1) {
-      templateCanvas.width = 1;
-      templateCanvas.height = 1;
+    if (templateCanvas && templateCanvas.width > 0) {
+      templateCanvas.width = 0;
+      templateCanvas.height = 0;
     }
 
     const activeCanvas = this.activeCanvasMap.get(page.id);
-    if (activeCanvas && activeCanvas.width > 1) {
-      activeCanvas.width = 1;
-      activeCanvas.height = 1;
+    if (activeCanvas && activeCanvas.width > 0) {
+      activeCanvas.width = 0;
+      activeCanvas.height = 0;
     }
 
     const pageEl = this.pageElements.get(pageNumber);
@@ -258,6 +270,7 @@ export class PageCanvasHost {
       pageVirtualizer.getMountedPages().length,
       pageVirtualizer.getCulledPages().length
     );
+    return true;
   }
 
   private preparePreviewContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {

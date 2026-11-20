@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { StorageManager, IVaultLike } from "../src/storage/StorageManager";
+import { StorageManager, IVaultLike, normalizeVaultPath } from "../src/storage/StorageManager";
 import { NotebookDocument, PageData } from "../src/types";
 import type { TFile } from "obsidian";
 
@@ -91,6 +91,26 @@ describe("StorageManager", () => {
     const content = modifiedFiles.get("notes/Math.gnote.md")!;
     assert.ok(content.includes("Math Notes"));
     assert.ok(content.includes("```notepages-data"));
+  });
+
+  it("preserves user-defined frontmatter properties when saving via StorageManager", async () => {
+    const { vault, modifiedFiles } = createMockVault();
+    const storage = new StorageManager(vault);
+    const file = createMockFile("notes/Class.gnote.md");
+    const doc = createValidDocument("Class Notes");
+    const existingFrontmatter = [
+      "notepages-plugin: true",
+      "tags:",
+      "  - class",
+      "status: draft"
+    ].join("\n");
+
+    await storage.saveDocument(file, doc, existingFrontmatter);
+
+    const content = modifiedFiles.get("notes/Class.gnote.md")!;
+    assert.ok(content.includes("tags:\n  - class"));
+    assert.ok(content.includes("status: draft"));
+    assert.ok(content.includes('title: "Class Notes"'));
   });
 
   it("coalesces rapid successive saves and runs them sequentially via mutex queue", async () => {
@@ -206,5 +226,10 @@ describe("StorageManager", () => {
     const storage = new StorageManager(vault);
     const resolved = storage.resolveAttachmentPath("attachments/images/diagram.png");
     assert.strictEqual(resolved, "attachments/images/diagram.png");
+  });
+
+  it("normalizeVaultPath strips leading slashes and redundant separators", () => {
+    assert.strictEqual(normalizeVaultPath("/foo_svg/page_1.svg"), "foo_svg/page_1.svg");
+    assert.strictEqual(normalizeVaultPath("./notes\\sub//file.md/"), "notes/sub/file.md");
   });
 });
