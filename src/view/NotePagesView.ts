@@ -577,6 +577,11 @@ export class NotePagesView
     this.propertiesPanel = new NotePagesPropertiesPanel({
       app: this.app,
       getFile: () => this.file,
+      getPreservedFrontmatter: () => this.preservedFrontmatter,
+      setPreservedFrontmatter: async (nextFrontmatter: string) => {
+        this.preservedFrontmatter = nextFrontmatter;
+        await this.save();
+      },
       hasUnsavedChanges: () => this.hasUnsavedChanges,
       saveBeforeFrontmatterEdit: () => this.save(),
       registerDomEvent: (el, type, cb) => this.registerDomEvent(el, type, cb),

@@ -755,6 +755,194 @@ export class DocumentSerializer {
     return mergedLines.join("\n");
   }
 
+  private static parseYamlScalar(raw: string): unknown {
+    const trimmed = raw.trim();
+    if (trimmed === "" || trimmed === "null" || trimmed === "~") {
+      return "";
+    }
+    if (trimmed === "true") return true;
+    if (trimmed === "false") return false;
+    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) return num;
+    }
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
+    ) {
+      const inner = trimmed.slice(1, -1);
+      return trimmed.startsWith('"') ? inner.replace(/\\(.)/g, "$1") : inner.replace(/''/g, "'");
+    }
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      const inner = trimmed.slice(1, -1).trim();
+      if (!inner) return [];
+      return inner
+        .split(",")
+        .map((item) => String(this.parseYamlScalar(item)))
+        .filter((s) => s.length > 0);
+    }
+    return trimmed;
+  }
+
+  private static formatYamlValueLines(key: string, value: unknown): string[] {
+    const safeKey = /^[A-Za-z0-9_-]+$/.test(key)
+      ? key
+      : `"${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return [`${safeKey}: []`];
+      }
+      const lines = [`${safeKey}:`];
+      for (const item of value) {
+        const s = String(item);
+        const needsQuote = s === "" || /[:#[\]{}&*!|>'"%@`\n\r]/.test(s) || /^\s|\s$/.test(s);
+        const formatted = needsQuote ? `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : s;
+        lines.push(`  - ${formatted}`);
+      }
+      return lines;
+    }
+    if (typeof value === "boolean" || typeof value === "number") {
+      return [`${safeKey}: ${String(value)}`];
+    }
+    const str =
+      value === null || value === undefined
+        ? ""
+        : typeof value === "string"
+          ? value
+          : JSON.stringify(value);
+    const needsQuote =
+      str === "" ||
+      str === "true" ||
+      str === "false" ||
+      str === "null" ||
+      /^-?\d+(?:\.\d+)?$/.test(str) ||
+      /[:#[\]{}&*!|>'"%@`\n\r]/.test(str) ||
+      /^\s|\s$/.test(str);
+    const formatted = needsQuote
+      ? `"${str.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n")}"`
+      : str;
+    return [`${safeKey}: ${formatted}`];
+  }
+
+  /**
+   * Parse top-level YAML frontmatter keys/values (used for non-`.md` notebooks such as `.gnote`).
+   */
+  static parseFrontmatterProperties(rawFrontmatter: string | null | undefined): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    if (!rawFrontmatter) {
+      return result;
+    }
+    const lines = rawFrontmatter.replace(/\r\n/g, "\n").split("\n");
+    let currentKey: string | null = null;
+    let currentBlockLines: string[] = [];
+
+    const flushKey = () => {
+      if (!currentKey) return;
+      const firstLine = currentBlockLines[0] ?? "";
+      const colonIdx = firstLine.indexOf(":");
+      const afterColon = colonIdx >= 0 ? firstLine.slice(colonIdx + 1).trim() : "";
+      const listItems: string[] = [];
+      for (let i = 1; i < currentBlockLines.length; i++) {
+        const sub = currentBlockLines[i].trim();
+        if (sub.startsWith("- ")) {
+          listItems.push(String(this.parseYamlScalar(sub.slice(2))));
+        } else if (sub === "-") {
+          listItems.push("");
+        }
+      }
+      if (afterColon === "" && listItems.length > 0) {
+        result[currentKey] = listItems;
+      } else {
+        result[currentKey] = this.parseYamlScalar(afterColon);
+      }
+    };
+
+    for (const line of lines) {
+      const key = this.parseTopLevelKey(line);
+      if (key !== null) {
+        flushKey();
+        currentKey = key;
+        currentBlockLines = [line];
+      } else if (currentKey !== null) {
+        currentBlockLines.push(line);
+      }
+    }
+    flushKey();
+    return result;
+  }
+
+  /**
+   * Mutate user-defined properties inside a raw YAML frontmatter block while preserving
+   * comments, formatting, and untouched keys.
+   */
+  static updateFrontmatterProperties(
+    existing: string | null | undefined,
+    mutator: (fm: Record<string, unknown>) => void
+  ): string {
+    const parsed = this.parseFrontmatterProperties(existing);
+    const snapshotBefore = new Map<string, string>();
+    for (const [k, v] of Object.entries(parsed)) {
+      snapshotBefore.set(k, JSON.stringify(v));
+    }
+
+    const working: Record<string, unknown> = { ...parsed };
+    mutator(working);
+
+    const lines = existing ? existing.replace(/\r\n/g, "\n").split("\n") : [];
+    const outputLines: string[] = [];
+    const handledKeys = new Set<string>();
+
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const key = this.parseTopLevelKey(line);
+      if (key === null) {
+        outputLines.push(line);
+        i++;
+        continue;
+      }
+      const blockEnd = (() => {
+        let j = i + 1;
+        while (j < lines.length) {
+          const nextLine = lines[j];
+          if (this.parseTopLevelKey(nextLine) !== null) break;
+          if (nextLine.trim() !== "" && nextLine[0] !== " " && nextLine[0] !== "\t" && nextLine[0] !== "-") {
+            break;
+          }
+          j++;
+        }
+        return j;
+      })();
+
+      if (!Object.prototype.hasOwnProperty.call(working, key)) {
+        // Key was deleted
+        handledKeys.add(key);
+        i = blockEnd;
+        continue;
+      }
+
+      const nextSerialized = JSON.stringify(working[key]);
+      if (snapshotBefore.get(key) === nextSerialized) {
+        // Unchanged: keep exact original formatting
+        for (let k = i; k < blockEnd; k++) {
+          outputLines.push(lines[k]);
+        }
+      } else {
+        outputLines.push(...this.formatYamlValueLines(key, working[key]));
+      }
+      handledKeys.add(key);
+      i = blockEnd;
+    }
+
+    for (const [key, val] of Object.entries(working)) {
+      if (!handledKeys.has(key)) {
+        outputLines.push(...this.formatYamlValueLines(key, val));
+      }
+    }
+
+    return outputLines.join("\n").replace(/^\n+|\n+$/g, "");
+  }
+
   static serializeDocument(doc: NotebookDocument, options: SerializeOptions = {}): string {
     const pageCount = doc.pages.length;
     const title = doc.metadata.title;

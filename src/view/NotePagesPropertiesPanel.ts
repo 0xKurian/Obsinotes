@@ -1,4 +1,5 @@
 import { App, Notice, TFile, setIcon } from "obsidian";
+import { DocumentSerializer } from "../storage/DocumentSerializer";
 
 export const PLUGIN_OWNED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
   "notepages-plugin",
@@ -13,6 +14,8 @@ export type PropertyValueType = "text" | "list" | "number" | "checkbox";
 export interface NotePagesPropertiesDelegate {
   app: App;
   getFile(): TFile | null;
+  getPreservedFrontmatter(): string | null;
+  setPreservedFrontmatter(nextFrontmatter: string): Promise<void>;
   hasUnsavedChanges(): boolean;
   saveBeforeFrontmatterEdit(): Promise<void>;
   registerDomEvent<K extends keyof HTMLElementEventMap>(
@@ -85,12 +88,16 @@ export class NotePagesPropertiesPanel {
 
   private getUserProperties(): Array<[string, unknown]> {
     const file = this.delegate.getFile();
-    if (!file || file.extension.toLowerCase() !== "md") {
+    if (!file) {
       return [];
     }
 
+    const isMarkdown = file.extension.toLowerCase() === "md";
     const rawFm: Record<string, unknown> | undefined =
-      this.localSnapshot ?? this.delegate.app.metadataCache.getFileCache(file)?.frontmatter;
+      this.localSnapshot ??
+      (isMarkdown
+        ? this.delegate.app.metadataCache.getFileCache(file)?.frontmatter
+        : DocumentSerializer.parseFrontmatterProperties(this.delegate.getPreservedFrontmatter()));
     if (!rawFm || typeof rawFm !== "object") {
       return [];
     }
@@ -107,22 +114,31 @@ export class NotePagesPropertiesPanel {
 
   private async mutateFrontmatter(mutator: (fm: Record<string, unknown>) => void): Promise<void> {
     const file = this.delegate.getFile();
-    if (!file || file.extension.toLowerCase() !== "md" || this.isMutating) {
+    if (!file || this.isMutating) {
       return;
     }
 
     this.isMutating = true;
     try {
-      if (this.delegate.hasUnsavedChanges()) {
-        await this.delegate.saveBeforeFrontmatterEdit();
-      }
-      let nextSnapshot: Record<string, unknown> | null = null;
-      await this.delegate.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-        mutator(fm);
-        nextSnapshot = { ...fm };
-      });
-      if (nextSnapshot) {
-        this.localSnapshot = nextSnapshot;
+      if (file.extension.toLowerCase() === "md") {
+        if (this.delegate.hasUnsavedChanges()) {
+          await this.delegate.saveBeforeFrontmatterEdit();
+        }
+        let nextSnapshot: Record<string, unknown> | null = null;
+        await this.delegate.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+          mutator(fm);
+          nextSnapshot = { ...fm };
+        });
+        if (nextSnapshot) {
+          this.localSnapshot = nextSnapshot;
+        }
+      } else {
+        const updatedRaw = DocumentSerializer.updateFrontmatterProperties(
+          this.delegate.getPreservedFrontmatter(),
+          mutator
+        );
+        this.localSnapshot = DocumentSerializer.parseFrontmatterProperties(updatedRaw);
+        await this.delegate.setPreservedFrontmatter(updatedRaw);
       }
       this.render();
     } catch (err) {
@@ -138,7 +154,7 @@ export class NotePagesPropertiesPanel {
       return;
     }
     const file = this.delegate.getFile();
-    if (!file || file.extension.toLowerCase() !== "md") {
+    if (!file) {
       this.containerEl.empty();
       this.containerEl.addClass("is-hidden");
       return;
