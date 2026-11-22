@@ -632,5 +632,62 @@ ${JSON.stringify(futureDoc)}
       assert.strictEqual(fast.valid, false);
       assert.strictEqual(full.valid, false);
     });
+
+    it("resolveFrontmatterForSave prefers on-disk frontmatter for markdown files so native Properties edits survive save", () => {
+      const doc = createSampleDocument();
+      const staleInMemory = [
+        "notepages-plugin: true",
+        "notepages-version: 1",
+        'title: "Test Physics Notebook"',
+        "page-count: 2",
+        'updated: "2024-10-26T22:40:00.000Z"',
+        "tags:",
+        "  - notepages"
+      ].join("\n");
+
+      const diskContent = [
+        "---",
+        "notepages-plugin: true",
+        "notepages-version: 1",
+        'title: "Test Physics Notebook"',
+        "page-count: 2",
+        'updated: "2024-10-26T22:40:00.000Z"',
+        "tags:",
+        "  - notepages",
+        "status: draft",
+        "---",
+        "",
+        "```notepages-data",
+        "{}",
+        "```"
+      ].join("\n");
+
+      const resolved = DocumentSerializer.resolveFrontmatterForSave(true, diskContent, staleInMemory);
+      assert.ok(resolved !== null);
+      assert.ok(resolved.includes("status: draft"));
+
+      doc.metadata.updatedAt = 1730099999000;
+      const saved = DocumentSerializer.serializeDocument(doc, { existingFrontmatter: resolved });
+      const savedFm = DocumentSerializer.extractFrontmatter(saved)!;
+      assert.ok(savedFm.includes("status: draft"));
+      assert.ok(savedFm.includes(`updated: "${new Date(1730099999000).toISOString()}"`));
+    });
+
+    it("resolveFrontmatterForSave keeps in-memory frontmatter for non-markdown (.gnote) files", () => {
+      const updatedInMemory = [
+        "notepages-plugin: true",
+        "status: reviewed"
+      ].join("\n");
+      const diskContent = "---\nnotepages-plugin: true\nstatus: old\n---\n";
+
+      const resolved = DocumentSerializer.resolveFrontmatterForSave(false, diskContent, updatedInMemory);
+      assert.strictEqual(resolved, updatedInMemory);
+    });
+
+    it("resolveFrontmatterForSave falls back to in-memory frontmatter when disk content has no frontmatter", () => {
+      const inMemory = "notepages-plugin: true\ntags:\n  - notepages";
+      const resolved = DocumentSerializer.resolveFrontmatterForSave(true, "No frontmatter here", inMemory);
+      assert.strictEqual(resolved, inMemory);
+    });
   });
 });

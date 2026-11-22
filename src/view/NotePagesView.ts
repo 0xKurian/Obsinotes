@@ -1271,9 +1271,33 @@ export class NotePagesView
 
     this.isSaving = true;
     try {
-      await super.save(clear);
+      if (this.file && this.document) {
+        const file = this.file;
+        const doc = this.document;
+        const isMarkdown = file.extension.toLowerCase() === "md";
+        if (this.textController?.isEditing()) {
+          this.textController.commitActiveEdit();
+        }
+        const written = await this.app.vault.process(file, (current) => {
+          this.preservedFrontmatter = DocumentSerializer.resolveFrontmatterForSave(
+            isMarkdown,
+            current,
+            this.preservedFrontmatter
+          );
+          return DocumentSerializer.serializeDocument(doc, {
+            existingFrontmatter: this.preservedFrontmatter
+          });
+        });
+        this.data = written;
+        if (clear) {
+          this.clear();
+        }
+      } else {
+        await super.save(clear);
+      }
       this.hasUnsavedChanges = false;
       this.lastSavedData = this.data;
+      this.activePropertiesModal?.refresh(true);
       if (this.statusSaveInfoEl && !this.isCorrupted) {
         this.statusSaveInfoEl.removeClass("notepages-status-error");
         this.statusSaveInfoEl.setText("All changes saved");

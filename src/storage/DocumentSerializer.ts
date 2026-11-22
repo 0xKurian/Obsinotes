@@ -649,6 +649,28 @@ export class DocumentSerializer {
     return bounds ? bounds.blockEnd : 0;
   }
 
+  /**
+   * Resolve the base frontmatter to merge plugin-owned keys into when saving.
+   * - For Markdown files (`.md`), the on-disk frontmatter is the source of truth because
+   *   Obsidian's native Properties sidebar or `fileManager.processFrontMatter` may have
+   *   modified it since the last `setViewData` call.
+   * - For non-Markdown files (`.gnote`), the in-memory `preservedFrontmatter` is authoritative
+   *   because `PropertiesModal` updates it directly before triggering `save()`.
+   */
+  static resolveFrontmatterForSave(
+    isMarkdown: boolean,
+    diskContent: string | null | undefined,
+    inMemoryFrontmatter: string | null
+  ): string | null {
+    if (isMarkdown && typeof diskContent === "string") {
+      const diskFrontmatter = this.extractFrontmatter(diskContent);
+      if (diskFrontmatter !== null) {
+        return diskFrontmatter;
+      }
+    }
+    return inMemoryFrontmatter;
+  }
+
   private static parseTopLevelKey(line: string): string | null {
     if (line.length === 0 || line[0] === " " || line[0] === "\t" || line[0] === "#") {
       return null;
