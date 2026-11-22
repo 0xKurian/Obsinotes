@@ -1,6 +1,8 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem, SettingGroupItem } from "obsidian";
 import type NotePagesPlugin from "../main";
+import { CHANGELOG } from "../changelog/ChangelogData";
+import { WhatsNewModal } from "../modal/WhatsNewModal";
 import {
   DEFAULT_SETTINGS,
   FALLBACK_FEEDBACK_URL,
@@ -289,6 +291,23 @@ export class NotePagesSettingTab extends PluginSettingTab {
       heading: "Community and feedback",
       items: [
         {
+          name: "Show release notes after updates",
+          desc: "Automatically display a summary of changes the first time the plugin loads after an update.",
+          control: { type: "toggle", key: "showWhatsNewOnUpdate" }
+        },
+        {
+          name: "What's new",
+          desc: "View release notes for recent plugin updates.",
+          action: () => {
+            new WhatsNewModal(
+              this.app,
+              CHANGELOG,
+              this.plugin.manifest.version,
+              "changelog"
+            ).open();
+          }
+        },
+        {
           name: "Submit feedback",
           desc: "Share your feedback, ratings, or feature requests to help improve the plugin.",
           action: () => {
@@ -508,7 +527,8 @@ export class NotePagesSettingTab extends PluginSettingTab {
     this.plugin.settings = {
       ...DEFAULT_SETTINGS,
       penPresets: createDefaultPenPresets(),
-      customHotkeys: {}
+      customHotkeys: {},
+      lastSeenVersion: this.plugin.settings.lastSeenVersion
     };
     await this.plugin.saveSettings();
     new Notice("All settings reset to defaults");
@@ -1011,6 +1031,33 @@ export class NotePagesSettingTab extends PluginSettingTab {
     this.renderLegacyHotkeyRows(this.legacyHotkeysListEl);
 
     new Setting(containerEl).setName("Community and feedback").setHeading();
+
+    new Setting(containerEl)
+      .setName("Show release notes after updates")
+      .setDesc("Automatically display a summary of changes the first time the plugin loads after an update.")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.showWhatsNewOnUpdate)
+          .onChange(async (value) => {
+            await this.setControlValue("showWhatsNewOnUpdate", value);
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("What's new")
+      .setDesc("View release notes for recent plugin updates.")
+      .addButton((button) => {
+        button
+          .setButtonText("View release notes")
+          .onClick(() => {
+            new WhatsNewModal(
+              this.app,
+              CHANGELOG,
+              this.plugin.manifest.version,
+              "changelog"
+            ).open();
+          });
+      });
 
     new Setting(containerEl)
       .setName("Submit feedback")

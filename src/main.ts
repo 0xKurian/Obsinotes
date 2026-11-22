@@ -21,6 +21,9 @@ import {
   FALLBACK_FEEDBACK_URL
 } from "./settings/NotePagesSettings";
 import { NotePagesSettingTab } from "./settings/NotePagesSettingTab";
+import { CHANGELOG } from "./changelog/ChangelogData";
+import { evaluateUpdateNotification } from "./changelog/VersionUtils";
+import { WhatsNewModal } from "./modal/WhatsNewModal";
 import { DocumentSerializer } from "./storage/DocumentSerializer";
 import {
   NOTE_PAGES_VIEW_TYPE,
@@ -34,6 +37,7 @@ import {
 export default class NotePagesPlugin extends Plugin {
   settings: NotePagesSettings = DEFAULT_SETTINGS;
   manualMarkdownLeaves: WeakSet<WorkspaceLeaf> = new WeakSet();
+  private hadPersistedSettingsData: boolean = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -408,7 +412,24 @@ export default class NotePagesPlugin extends Plugin {
       });
     }
 
+    this.addCommand({
+      id: "show-whats-new",
+      name: "Show what's new",
+      callback: () => {
+        new WhatsNewModal(
+          this.app,
+          CHANGELOG,
+          this.manifest.version,
+          "changelog"
+        ).open();
+      }
+    });
+
     this.addSettingTab(new NotePagesSettingTab(this.app, this));
+
+    this.app.workspace.onLayoutReady(() => {
+      void this.checkForUpdateNotes();
+    });
   }
 
   onunload(): void {
@@ -416,7 +437,38 @@ export default class NotePagesPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     const loadedData: unknown = await this.loadData();
+    this.hadPersistedSettingsData =
+      loadedData !== null &&
+      loadedData !== undefined &&
+      typeof loadedData === "object" &&
+      !Array.isArray(loadedData);
     this.settings = sanitizeSettings(loadedData);
+  }
+
+  private async checkForUpdateNotes(): Promise<void> {
+    const currentVersion = this.manifest.version;
+    const evaluation = evaluateUpdateNotification({
+      hadPersistedSettingsData: this.hadPersistedSettingsData,
+      lastSeenVersion: this.settings.lastSeenVersion,
+      currentVersion,
+      showWhatsNewOnUpdate: this.settings.showWhatsNewOnUpdate,
+      changelog: CHANGELOG
+    });
+
+    if (evaluation.mode === "welcome" || evaluation.mode === "update") {
+      new WhatsNewModal(
+        this.app,
+        evaluation.entries,
+        currentVersion,
+        evaluation.mode
+      ).open();
+    }
+
+    if (evaluation.shouldPersistVersion) {
+      this.settings.lastSeenVersion = currentVersion;
+      this.hadPersistedSettingsData = true;
+      await this.saveData(this.settings);
+    }
   }
 
   async saveSettings(): Promise<void> {

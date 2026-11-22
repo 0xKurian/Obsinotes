@@ -12,6 +12,7 @@ import {
   ToolbarPlacement
 } from "../types";
 import { sanitizeHotkeyMap } from "./HotkeyHelper";
+import { isValidVersionString } from "../changelog/VersionUtils";
 
 const PRESET_INK_TOOLS: ReadonlySet<ToolType> = new Set([
   "pen",
@@ -108,6 +109,8 @@ export interface NotePagesSettings {
   toolbarFloatingPos: { left: number; top: number } | null;
   penPresets: PenPreset[];
   customHotkeys: HotkeyMap;
+  lastSeenVersion: string | null;
+  showWhatsNewOnUpdate: boolean;
 }
 
 export const DEFAULT_SETTINGS: NotePagesSettings = {
@@ -140,10 +143,13 @@ export const DEFAULT_SETTINGS: NotePagesSettings = {
   toolbarPlacement: "top",
   toolbarFloatingPos: null,
   penPresets: createDefaultPenPresets(),
-  customHotkeys: {}
+  customHotkeys: {},
+  lastSeenVersion: null,
+  showWhatsNewOnUpdate: true
 };
 
 export const FALLBACK_FEEDBACK_URL = "https://github.com/0xKurian/Obsinotes/issues/new/choose";
+export const RELEASES_URL = "https://github.com/0xKurian/Obsinotes/releases";
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
   return typeof value === "number" && Number.isFinite(value)
@@ -228,6 +234,13 @@ export function sanitizeSettings(raw: unknown): NotePagesSettings {
 
   merged.penPresets = sanitizePenPresets(input.penPresets);
   merged.customHotkeys = sanitizeHotkeyMap(input.customHotkeys);
+  merged.lastSeenVersion = isValidVersionString(input.lastSeenVersion)
+    ? input.lastSeenVersion.trim()
+    : null;
+  merged.showWhatsNewOnUpdate =
+    typeof input.showWhatsNewOnUpdate === "boolean"
+      ? input.showWhatsNewOnUpdate
+      : DEFAULT_SETTINGS.showWhatsNewOnUpdate;
 
   return merged;
 }

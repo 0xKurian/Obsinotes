@@ -3559,3 +3559,122 @@ textarea.notepages-inline-text-editor.notepages-sticky-note {
   }
 }
 
+
+/* What's New / Welcome Modal */
+.notepages-whats-new-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notepages-whats-new-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notepages-whats-new-title {
+  margin: 0;
+  font-size: var(--h2-size, 1.35em);
+  line-height: 1.3;
+}
+
+.notepages-whats-new-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small, 13px);
+  line-height: 1.5;
+}
+
+.notepages-whats-new-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.notepages-whats-new-welcome-box {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.notepages-whats-new-section-heading {
+  margin: 0 0 6px 0;
+  font-size: var(--font-ui-medium, 14px);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.notepages-whats-new-entry {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.notepages-whats-new-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.notepages-whats-new-version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-smaller, 12px);
+  font-weight: 600;
+}
+
+.notepages-whats-new-date {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+}
+
+.notepages-whats-new-group-label {
+  margin-top: 6px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.notepages-whats-new-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-ui-small, 13px);
+  line-height: 1.5;
+}
+
+.notepages-whats-new-empty {
+  margin: 8px 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small, 13px);
+}
+
+.notepages-whats-new-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.notepages-whats-new-history-btn {
+  color: var(--text-muted);
+}
