@@ -123,6 +123,9 @@ export class GestureInputRouter {
   private dragConnectorStartY: number = 0;
   private dragConnectorCurrentX: number = 0;
   private dragConnectorCurrentY: number = 0;
+  private dragCreatePointerId: number | null = null;
+  private dragCreatePage: PageData | null = null;
+  private dragCreatePageFrame: HTMLElement | null = null;
   private recoveredEraserPointerId: number | null = null;
   private pageAbortControllers: Map<string, AbortController> = new Map();
 
@@ -137,15 +140,65 @@ export class GestureInputRouter {
     this.touchStartCoords.clear();
     this.touchTapCandidate = null;
     this.isTouchPinching = false;
-    this.isDraggingTextRect = false;
-    this.dragTextCanvas = null;
-    this.isDraggingShape = false;
-    this.dragShapeCanvas = null;
-    this.isDraggingConnector = false;
-    this.dragConnectorCanvas = null;
+    this.cancelActiveElementDrag();
     this.recoveredEraserPointerId = null;
     this.stylusButtonState.reset();
     this.cleanupAllPageListeners();
+  }
+
+  private hasActiveElementDrag(): boolean {
+    return this.isDraggingTextRect || this.isDraggingShape || this.isDraggingConnector;
+  }
+
+  private isMatchingDragCreatePointer(pointerId?: number): boolean {
+    return (
+      pointerId === undefined ||
+      this.dragCreatePointerId === null ||
+      pointerId === this.dragCreatePointerId
+    );
+  }
+
+  private cancelActiveElementDrag(pointerId?: number): void {
+    if (!this.hasActiveElementDrag()) {
+      return;
+    }
+    if (!this.isMatchingDragCreatePointer(pointerId)) {
+      return;
+    }
+    const releaseId = pointerId ?? this.dragCreatePointerId;
+    if (this.isDraggingTextRect) {
+      this.isDraggingTextRect = false;
+      if (this.dragTextCanvas) {
+        if (releaseId !== null) {
+          this.tryReleasePointerCapture(this.dragTextCanvas, releaseId);
+        }
+        this.clearCanvasRect(this.dragTextCanvas);
+        this.dragTextCanvas = null;
+      }
+    }
+    if (this.isDraggingShape) {
+      this.isDraggingShape = false;
+      if (this.dragShapeCanvas) {
+        if (releaseId !== null) {
+          this.tryReleasePointerCapture(this.dragShapeCanvas, releaseId);
+        }
+        this.clearCanvasRect(this.dragShapeCanvas);
+        this.dragShapeCanvas = null;
+      }
+    }
+    if (this.isDraggingConnector) {
+      this.isDraggingConnector = false;
+      if (this.dragConnectorCanvas) {
+        if (releaseId !== null) {
+          this.tryReleasePointerCapture(this.dragConnectorCanvas, releaseId);
+        }
+        this.clearCanvasRect(this.dragConnectorCanvas);
+        this.dragConnectorCanvas = null;
+      }
+    }
+    this.dragCreatePointerId = null;
+    this.dragCreatePage = null;
+    this.dragCreatePageFrame = null;
   }
 
   cleanupPageListeners(pageId: string): void {
@@ -394,27 +447,25 @@ export class GestureInputRouter {
           this.delegate.getZoomController().scheduleCanvasResolutionUpdate(180);
         }
       }
-      if (this.isDraggingTextRect) {
-        this.isDraggingTextRect = false;
-        if (this.dragTextCanvas) {
-          this.clearCanvasRect(this.dragTextCanvas);
-          this.dragTextCanvas = null;
+      if (this.isDraggingTextRect && this.dragTextCanvas && this.dragCreatePage && this.dragCreatePageFrame) {
+        if (this.isMatchingDragCreatePointer(e?.pointerId)) {
+          this.finishTextDrag(e, this.dragCreatePage, this.dragCreatePageFrame, this.dragTextCanvas);
         }
+        return;
       }
-      if (this.isDraggingShape) {
-        this.isDraggingShape = false;
-        if (this.dragShapeCanvas) {
-          this.clearCanvasRect(this.dragShapeCanvas);
-          this.dragShapeCanvas = null;
+      if (this.isDraggingShape && this.dragShapeCanvas && this.dragCreatePage) {
+        if (this.isMatchingDragCreatePointer(e?.pointerId)) {
+          this.finishShapeDrag(e, this.dragCreatePage, this.dragShapeCanvas);
         }
+        return;
       }
-      if (this.isDraggingConnector) {
-        this.isDraggingConnector = false;
-        if (this.dragConnectorCanvas) {
-          this.clearCanvasRect(this.dragConnectorCanvas);
-          this.dragConnectorCanvas = null;
+      if (this.isDraggingConnector && this.dragConnectorCanvas && this.dragCreatePage) {
+        if (this.isMatchingDragCreatePointer(e?.pointerId)) {
+          this.finishConnectorDrag(e, this.dragCreatePage, this.dragConnectorCanvas);
         }
+        return;
       }
+      this.cancelActiveElementDrag(e?.pointerId);
       if (this.isPanning) {
         if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
           this.finishPan();
@@ -454,27 +505,7 @@ export class GestureInputRouter {
           this.delegate.getZoomController().scheduleCanvasResolutionUpdate(180);
         }
       }
-      if (this.isDraggingTextRect) {
-        this.isDraggingTextRect = false;
-        if (this.dragTextCanvas) {
-          this.clearCanvasRect(this.dragTextCanvas);
-          this.dragTextCanvas = null;
-        }
-      }
-      if (this.isDraggingShape) {
-        this.isDraggingShape = false;
-        if (this.dragShapeCanvas) {
-          this.clearCanvasRect(this.dragShapeCanvas);
-          this.dragShapeCanvas = null;
-        }
-      }
-      if (this.isDraggingConnector) {
-        this.isDraggingConnector = false;
-        if (this.dragConnectorCanvas) {
-          this.clearCanvasRect(this.dragConnectorCanvas);
-          this.dragConnectorCanvas = null;
-        }
-      }
+      this.cancelActiveElementDrag(e?.pointerId);
       if (this.isPanning) {
         if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
           this.finishPan();
@@ -541,6 +572,7 @@ export class GestureInputRouter {
         this.isSpacePressed = false;
         rootContainerEl.removeClass("is-space-panning");
       }
+      this.cancelActiveElementDrag();
       this.finishPan();
       this.touchPointers.clear();
       this.touchStartCoords.clear();
@@ -796,6 +828,9 @@ export class GestureInputRouter {
           if (inking.isCurrentlyDrawing()) {
             inking.handlePointerCancel(e);
           }
+          if (this.hasActiveElementDrag()) {
+            this.cancelActiveElementDrag();
+          }
           if (this.isPanning) {
             this.finishPan();
           }
@@ -877,6 +912,9 @@ export class GestureInputRouter {
       }
 
       if (inking.activeTool === "text" || inking.activeTool === "sticky") {
+        if (this.hasActiveElementDrag() || (e.pointerType === "mouse" && e.button !== 0)) {
+          return;
+        }
         const isSticky = inking.activeTool === "sticky";
         const hit = SelectionEngine.hitTestSingleElement([], [], pageX, pageY, 8, page.texts, []);
         if (hit?.text) {
@@ -889,6 +927,9 @@ export class GestureInputRouter {
 
         this.isDraggingTextRect = true;
         this.dragTextCanvas = activeCanvas;
+        this.dragCreatePointerId = e.pointerId;
+        this.dragCreatePage = page;
+        this.dragCreatePageFrame = pageFrame;
         const margin = 10;
         const clampedX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
         const clampedY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
@@ -902,8 +943,14 @@ export class GestureInputRouter {
       }
 
       if (inking.activeTool === "shape") {
+        if (this.hasActiveElementDrag() || (e.pointerType === "mouse" && e.button !== 0)) {
+          return;
+        }
         this.isDraggingShape = true;
         this.dragShapeCanvas = activeCanvas;
+        this.dragCreatePointerId = e.pointerId;
+        this.dragCreatePage = page;
+        this.dragCreatePageFrame = pageFrame;
         const margin = 10;
         const clampedX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
         const clampedY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
@@ -917,8 +964,14 @@ export class GestureInputRouter {
       }
 
       if (inking.activeTool === "connector") {
+        if (this.hasActiveElementDrag() || (e.pointerType === "mouse" && e.button !== 0)) {
+          return;
+        }
         this.isDraggingConnector = true;
         this.dragConnectorCanvas = activeCanvas;
+        this.dragCreatePointerId = e.pointerId;
+        this.dragCreatePage = page;
+        this.dragCreatePageFrame = pageFrame;
         const margin = 10;
         const clampedX = Math.max(margin, Math.min(page.dimensions.width - margin, pageX));
         const clampedY = Math.max(margin, Math.min(page.dimensions.height - margin, pageY));
@@ -1006,6 +1059,9 @@ export class GestureInputRouter {
       const canvasHost = this.delegate.getCanvasHost();
 
       if (this.isDraggingTextRect && this.dragTextCanvas === activeCanvas) {
+        if (!this.isMatchingDragCreatePointer(e.pointerId)) {
+          return;
+        }
         const pageX = (e.clientX - rect.left) * scaleX;
         const pageY = (e.clientY - rect.top) * scaleY;
         const margin = 10;
@@ -1024,6 +1080,9 @@ export class GestureInputRouter {
       }
 
       if (this.isDraggingShape && this.dragShapeCanvas === activeCanvas) {
+        if (!this.isMatchingDragCreatePointer(e.pointerId)) {
+          return;
+        }
         const pageX = (e.clientX - rect.left) * scaleX;
         const pageY = (e.clientY - rect.top) * scaleY;
         const margin = 10;
@@ -1045,6 +1104,9 @@ export class GestureInputRouter {
       }
 
       if (this.isDraggingConnector && this.dragConnectorCanvas === activeCanvas) {
+        if (!this.isMatchingDragCreatePointer(e.pointerId)) {
+          return;
+        }
         const pageX = (e.clientX - rect.left) * scaleX;
         const pageY = (e.clientY - rect.top) * scaleY;
         const margin = 10;
@@ -1133,27 +1195,6 @@ export class GestureInputRouter {
       if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
         this.recoveredEraserPointerId = null;
       }
-      if (this.isDraggingTextRect) {
-        this.isDraggingTextRect = false;
-        if (this.dragTextCanvas) {
-          this.clearCanvasRect(this.dragTextCanvas);
-          this.dragTextCanvas = null;
-        }
-      }
-      if (this.isDraggingShape) {
-        this.isDraggingShape = false;
-        if (this.dragShapeCanvas) {
-          this.clearCanvasRect(this.dragShapeCanvas);
-          this.dragShapeCanvas = null;
-        }
-      }
-      if (this.isDraggingConnector) {
-        this.isDraggingConnector = false;
-        if (this.dragConnectorCanvas) {
-          this.clearCanvasRect(this.dragConnectorCanvas);
-          this.dragConnectorCanvas = null;
-        }
-      }
       if (this.isPanning) {
         if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
           this.finishPan();
@@ -1171,17 +1212,23 @@ export class GestureInputRouter {
       const inking = this.delegate.getInkingController();
 
       if (this.isDraggingTextRect && this.dragTextCanvas === activeCanvas) {
-        this.finishTextDrag(e, page, pageFrame, activeCanvas);
+        if (this.isMatchingDragCreatePointer(e.pointerId)) {
+          this.finishTextDrag(e, page, pageFrame, activeCanvas);
+        }
         return;
       }
 
       if (this.isDraggingShape && this.dragShapeCanvas === activeCanvas) {
-        this.finishShapeDrag(e, page, activeCanvas);
+        if (this.isMatchingDragCreatePointer(e.pointerId)) {
+          this.finishShapeDrag(e, page, activeCanvas);
+        }
         return;
       }
 
       if (this.isDraggingConnector && this.dragConnectorCanvas === activeCanvas) {
-        this.finishConnectorDrag(e, page, activeCanvas);
+        if (this.isMatchingDragCreatePointer(e.pointerId)) {
+          this.finishConnectorDrag(e, page, activeCanvas);
+        }
         return;
       }
 
@@ -1208,27 +1255,6 @@ export class GestureInputRouter {
       if (this.recoveredEraserPointerId !== null && e.pointerId === this.recoveredEraserPointerId) {
         this.recoveredEraserPointerId = null;
       }
-      if (this.isDraggingTextRect) {
-        this.isDraggingTextRect = false;
-        if (this.dragTextCanvas) {
-          this.clearCanvasRect(this.dragTextCanvas);
-          this.dragTextCanvas = null;
-        }
-      }
-      if (this.isDraggingShape) {
-        this.isDraggingShape = false;
-        if (this.dragShapeCanvas) {
-          this.clearCanvasRect(this.dragShapeCanvas);
-          this.dragShapeCanvas = null;
-        }
-      }
-      if (this.isDraggingConnector) {
-        this.isDraggingConnector = false;
-        if (this.dragConnectorCanvas) {
-          this.clearCanvasRect(this.dragConnectorCanvas);
-          this.dragConnectorCanvas = null;
-        }
-      }
       if (this.isPanning) {
         if (!e || this.panPointerId === null || e.pointerId === this.panPointerId) {
           this.finishPan();
@@ -1242,27 +1268,8 @@ export class GestureInputRouter {
         return;
       }
 
-      if (this.isDraggingTextRect && this.dragTextCanvas === activeCanvas) {
-        this.isDraggingTextRect = false;
-        this.tryReleasePointerCapture(activeCanvas, e.pointerId);
-        this.dragTextCanvas = null;
-        this.clearCanvasRect(activeCanvas);
-        return;
-      }
-
-      if (this.isDraggingShape && this.dragShapeCanvas === activeCanvas) {
-        this.isDraggingShape = false;
-        this.tryReleasePointerCapture(activeCanvas, e.pointerId);
-        this.dragShapeCanvas = null;
-        this.clearCanvasRect(activeCanvas);
-        return;
-      }
-
-      if (this.isDraggingConnector && this.dragConnectorCanvas === activeCanvas) {
-        this.isDraggingConnector = false;
-        this.tryReleasePointerCapture(activeCanvas, e.pointerId);
-        this.dragConnectorCanvas = null;
-        this.clearCanvasRect(activeCanvas);
+      if (this.hasActiveElementDrag()) {
+        this.cancelActiveElementDrag(e.pointerId);
         return;
       }
 
@@ -1366,6 +1373,10 @@ export class GestureInputRouter {
     activeCanvas: HTMLCanvasElement
   ): void {
     this.isDraggingTextRect = false;
+    this.dragTextCanvas = null;
+    this.dragCreatePointerId = null;
+    this.dragCreatePage = null;
+    this.dragCreatePageFrame = null;
     this.tryReleasePointerCapture(activeCanvas, e.pointerId);
     this.clearCanvasRect(activeCanvas);
 
@@ -1385,8 +1396,6 @@ export class GestureInputRouter {
     const rawH = Math.abs(this.dragTextCurrentY - this.dragTextStartY);
     const x = Math.min(this.dragTextStartX, this.dragTextCurrentX);
     const y = Math.min(this.dragTextStartY, this.dragTextCurrentY);
-
-    this.dragTextCanvas = null;
 
     const maxAvailableW = Math.max(40, page.dimensions.width - margin - x);
     const maxAvailableH = Math.max(30, page.dimensions.height - margin - y);
@@ -1436,6 +1445,10 @@ export class GestureInputRouter {
 
   private finishShapeDrag(e: PointerEvent, page: PageData, activeCanvas: HTMLCanvasElement): void {
     this.isDraggingShape = false;
+    this.dragShapeCanvas = null;
+    this.dragCreatePointerId = null;
+    this.dragCreatePage = null;
+    this.dragCreatePageFrame = null;
     this.tryReleasePointerCapture(activeCanvas, e.pointerId);
     this.clearCanvasRect(activeCanvas);
 
@@ -1455,8 +1468,6 @@ export class GestureInputRouter {
     let rawH = Math.abs(this.dragShapeCurrentY - this.dragShapeStartY);
     let x = Math.min(this.dragShapeStartX, this.dragShapeCurrentX);
     let y = Math.min(this.dragShapeStartY, this.dragShapeCurrentY);
-
-    this.dragShapeCanvas = null;
 
     if (rawW < 12 && rawH < 12) {
       rawW = 120;
@@ -1497,6 +1508,10 @@ export class GestureInputRouter {
 
   private finishConnectorDrag(e: PointerEvent, page: PageData, activeCanvas: HTMLCanvasElement): void {
     this.isDraggingConnector = false;
+    this.dragConnectorCanvas = null;
+    this.dragCreatePointerId = null;
+    this.dragCreatePage = null;
+    this.dragCreatePageFrame = null;
     this.tryReleasePointerCapture(activeCanvas, e.pointerId);
     this.clearCanvasRect(activeCanvas);
 
@@ -1516,8 +1531,6 @@ export class GestureInputRouter {
     const startY = this.dragConnectorStartY;
     let endX = this.dragConnectorCurrentX;
     let endY = this.dragConnectorCurrentY;
-
-    this.dragConnectorCanvas = null;
 
     const dist = Math.hypot(endX - startX, endY - startY);
     if (dist < 10) {

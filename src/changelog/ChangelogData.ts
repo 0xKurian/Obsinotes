@@ -12,6 +12,17 @@ export interface ChangelogEntry {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.0.17",
+    date: "2026-11-24",
+    highlights: [
+      "Restored drag-to-create and click-to-insert reliability for Shapes, Connectors, Text boxes, and Sticky Notes."
+    ],
+    fixes: [
+      "Fixed a pointerup regression in GestureInputRouter that cleared shape, connector, and text drag state before committing the element to the page.",
+      "Added pointer ID matching, pinch-gesture cancellation, and window pointerup fallback for drag-created elements."
+    ]
+  },
+  {
     version: "2.0.16",
     date: "2026-11-22",
     highlights: [
